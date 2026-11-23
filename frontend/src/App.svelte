@@ -277,8 +277,12 @@
         <h2 id="login-title">{mode === 'login' ? '登录' : '使用邀请码注册'}</h2>
         <p class="muted">{mode === 'login' ? '普通用户与管理员使用同一入口登录。' : '邀请码有效期为 24 小时，仅可使用一次。'}</p>
         <form on:submit|preventDefault={mode === 'login' ? login : register} class="login-form">
-          <label for="identity">邮箱</label>
-          <input id="identity" type="email" bind:value={identity} autocomplete="username" placeholder="name@example.com" required />
+          <label for="identity">{mode === 'login' ? '账号或邮箱' : '邮箱'}</label>
+          {#if mode === 'login'}
+            <input id="identity" type="text" bind:value={identity} autocomplete="username" placeholder="输入账号或邮箱" required />
+          {:else}
+            <input id="identity" type="email" bind:value={identity} autocomplete="username" placeholder="name@example.com" required />
+          {/if}
           <label for="password">密码</label>
           <input id="password" type="password" bind:value={password} autocomplete={mode === 'login' ? 'current-password' : 'new-password'} placeholder="输入密码" required />
           {#if mode === 'register'}

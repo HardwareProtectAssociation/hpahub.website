@@ -15,12 +15,12 @@ compose up -d --build
 
 if [ "$new_database" = true ]; then
     email='admin@hpahub.local'
-    password=$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')
+    password='admin123'
     if ! compose exec -T app ./pocketbase superuser create "$email" "$password"; then
         echo '无法创建测试超级管理员。数据库卷已保留，请检查容器日志。' >&2
         exit 1
     fi
-    printf '测试超级管理员邮箱：%s\n测试超级管理员密码：%s\n' "$email" "$password"
+    printf '测试管理员账号：admin\n测试管理员密码：%s\n' "$password"
 else
     echo '检测到现有数据库，未修改超级管理员。'
 fi

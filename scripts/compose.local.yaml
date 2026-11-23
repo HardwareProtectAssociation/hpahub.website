@@ -1,5 +1,7 @@
 services:
   app:
+    environment:
+      HPA_LOCAL_TEST: "1"
     build:
       labels:
         org.hpahub.local-image: "true"
