@@ -2,7 +2,7 @@ services:
   app:
     build: .
     ports:
-      - "${PORT:-8090}:8090"
+      - "${PORT:-18763}:8090"
     volumes:
       - pb_data:/app/pb_data
     restart: unless-stopped

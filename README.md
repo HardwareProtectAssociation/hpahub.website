@@ -10,7 +10,7 @@
 docker compose up -d --build
 ```
 
-访问 `http://localhost:8090`。设置 `PORT` 环境变量可更改宿主机端口。PocketBase 数据保存在 Docker 卷 `pb_data` 中，更新容器不会清除数据。
+访问 `http://localhost:18763`。设置 `PORT` 环境变量可更改宿主机端口。PocketBase 数据保存在 Docker 卷 `pb_data` 中，更新容器不会清除数据。
 
 创建 PocketBase 超级管理员（将邮箱和密码替换为自己的值）：
 
