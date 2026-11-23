@@ -40,6 +40,7 @@ func loadPolicy(app core.App) (policy, error) {
 
 func main() {
 	app := pocketbase.New()
+	bindNativeAuthLimit(app)
 	var policyMu, backupMu sync.Mutex
 	wake := make(chan struct{}, 1)
 	stop := make(chan struct{})
@@ -55,6 +56,8 @@ func main() {
 	app.OnBackupRestore().BindFunc(lockBackup)
 
 	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
+		if err := initInvitations(app); err != nil { return err }
+		bindInvitationRoutes(e)
 		_, err := app.DB().NewQuery(`CREATE TABLE IF NOT EXISTS hpahub_backup_policy (
 			id INTEGER PRIMARY KEY CHECK (id = 1), interval_hours INTEGER NOT NULL,
 			retain_count INTEGER NOT NULL, last_run INTEGER NOT NULL

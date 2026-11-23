@@ -1,9 +1,18 @@
 <script>
   import { onMount } from 'svelte';
 
-  let token = sessionStorage.getItem('adminToken') || '';
+  let token = sessionStorage.getItem('authToken') || '';
+  let collection = sessionStorage.getItem('authCollection') || '';
+  let checking = !!token;
+  let page = 'home';
+  let mode = 'login';
+  let inviteCode = '';
+  let passwordConfirm = '';
+  let invitations = [];
+  let generating = false;
   let identity = '';
   let password = '';
+  $: isAdmin = collection === '_superusers';
   let policy = { intervalHours: 0, retainCount: 10 };
   let backups = [];
   let loading = false;
@@ -12,6 +21,25 @@
   let downloading = '';
   let error = '';
   let notice = '';
+  let expiryTimer;
+
+  function scheduleExpiry() {
+    clearTimeout(expiryTimer);
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+      const delay = payload.exp * 1000 - Date.now();
+      if (!Number.isFinite(delay)) throw new Error('Invalid token');
+      if (delay <= 0) {
+        logout();
+        error = '登录已失效，请重新登录。';
+      } else {
+        expiryTimer = setTimeout(scheduleExpiry, Math.min(delay, 2147483647));
+      }
+    } catch {
+      logout();
+      error = '登录已失效，请重新登录。';
+    }
+  }
 
   async function request(path, options = {}) {
     const response = await fetch(path, {
@@ -25,8 +53,8 @@
     if (!response.ok) {
       const data = await response.json().catch(() => ({}));
       if (response.status === 401 && token) {
-        token = '';
-        sessionStorage.removeItem('adminToken');
+        logout();
+        error = '登录已失效，请重新登录。';
       }
       throw new Error(data.message || `请求失败（${response.status}）`);
     }
@@ -53,13 +81,16 @@
     loading = true;
     error = '';
     try {
-      const result = await request('/api/collections/_superusers/auth-with-password', {
-        method: 'POST', body: JSON.stringify({ identity, password }),
+      const result = await request('/api/hpahub/login', {
+        method: 'POST', body: JSON.stringify({ email: identity, password }),
       });
+      collection = result.record.collectionName;
       token = result.token;
-      sessionStorage.setItem('adminToken', token);
+      sessionStorage.setItem('authToken', token);
+      sessionStorage.setItem('authCollection', collection);
+      scheduleExpiry();
       password = '';
-      await refresh();
+      page = 'home';
     } catch (err) {
       error = err.message;
     } finally {
@@ -67,11 +98,70 @@
     }
   }
 
+  async function register() {
+    loading = true;
+    error = '';
+    try {
+      const result = await request('/api/hpahub/register', {
+        method: 'POST', body: JSON.stringify({ email: identity, password, passwordConfirm, inviteCode }),
+      });
+      collection = result.record.collectionName;
+      token = result.token;
+      sessionStorage.setItem('authToken', token);
+      sessionStorage.setItem('authCollection', collection);
+      scheduleExpiry();
+      password = '';
+      passwordConfirm = '';
+      inviteCode = '';
+      page = 'home';
+    } catch (err) {
+      error = err.message;
+    } finally {
+      loading = false;
+    }
+  }
+
+  async function openConsole() {
+    page = 'console';
+    error = '';
+    await Promise.all([refresh(), loadInvitations()]);
+  }
+
+  async function loadInvitations() {
+    try {
+      const result = await request('/api/hpahub/invitations');
+      invitations = result.items;
+    } catch (err) {
+      error = err.message;
+    }
+  }
+
+  async function generateInvitation() {
+    generating = true;
+    error = '';
+    notice = '';
+    try {
+      await request('/api/hpahub/invitations', { method: 'POST' });
+      await loadInvitations();
+      if (!error) notice = '邀请码已生成，有效期为 24 小时。';
+    } catch (err) {
+      error = err.message;
+    } finally {
+      generating = false;
+    }
+  }
+
   function logout() {
+    clearTimeout(expiryTimer);
     token = '';
+    collection = '';
+    sessionStorage.removeItem('authToken');
+    sessionStorage.removeItem('authCollection');
     sessionStorage.removeItem('adminToken');
     backups = [];
+    invitations = [];
     password = '';
+    page = 'home';
     error = '';
     notice = '';
   }
@@ -137,40 +227,74 @@
     return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
   }
 
-  onMount(() => { if (token) refresh(); });
+  onMount(async () => {
+    sessionStorage.removeItem('adminToken');
+    if (!token) return;
+    if (!['_superusers', 'users'].includes(collection)) {
+      logout();
+      checking = false;
+      return;
+    }
+    try {
+      const result = await request(`/api/collections/${collection}/auth-refresh`, { method: 'POST' });
+      token = result.token;
+      sessionStorage.setItem('authToken', token);
+      scheduleExpiry();
+    } catch (err) {
+      logout();
+      error = '无法验证登录状态，请重新登录。';
+    } finally {
+      checking = false;
+    }
+  });
 </script>
 
-<svelte:head><title>{token ? '备份管理' : '管理员登录'} · HPA Hub</title></svelte:head>
+<svelte:head><title>{token ? (page === 'console' ? '管理控制台' : '首页') : (mode === 'login' ? '登录' : '注册')} · HPA Hub</title></svelte:head>
 
 <div class="app-shell">
   <header class="topbar">
     <a class="brand" href="/" aria-label="HPA Hub 首页"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span>HPA<span class="brand-light">HUB</span></span></a>
-    <div class="topbar-right"><span class="workspace">管理控制台</span>{#if token}<button class="text-button" on:click={logout}>退出登录 <span aria-hidden="true">↗</span></button>{/if}</div>
+    <nav class="topbar-right" aria-label="主导航">
+      {#if token && !checking}
+        <button class="text-button" on:click={() => { page = 'home'; error = ''; notice = ''; }}>首页</button>
+        {#if isAdmin}<button class="text-button" on:click={openConsole}>管理控制台</button>{/if}
+        <button class="text-button" on:click={logout}>退出登录</button>
+      {/if}
+    </nav>
   </header>
 
-  {#if !token}
+  {#if checking}
+    <main class="dashboard"><p role="status">正在验证登录状态…</p></main>
+  {:else if !token}
     <main class="login-layout">
       <section class="login-intro">
-        <div class="intro-line"><span></span> HPA HUB / ADMIN</div>
-        <h1>重要的数据，<br /><em>值得妥善保存。</em></h1>
-        <p>在一个地方管理备份策略与备份文件，让每一次保存都清晰可见。</p>
-        <div class="archive-art" aria-hidden="true"><div class="art-label">DATA<br />ARCHIVE</div><div class="art-rings"><span></span><span></span><span></span></div><div class="art-bottom">KEEP WHAT MATTERS <span>✳</span></div></div>
+        <h1>欢迎来到<br /><em>HPA Hub。</em></h1>
+        <p>登录你的账户，开始使用 HPA Hub。新用户可使用邀请码注册。</p>
+        <div class="archive-art" aria-hidden="true"><div class="art-label">HPA<br />HUB</div><div class="art-rings"><span></span><span></span><span></span></div><div class="art-bottom">WELCOME <span>✳</span></div></div>
       </section>
       <section class="login-panel" aria-labelledby="login-title">
-        <div class="panel-top"><span>安全访问</span><span>HPA / ADMIN</span></div>
-        <h2 id="login-title">管理员登录</h2>
-        <p class="muted">使用 PocketBase 超级管理员账户继续。</p>
-        <form on:submit|preventDefault={login} class="login-form">
-          <label for="identity">管理员邮箱</label>
+        <div class="panel-top"><span>账户访问</span><span>HPA HUB</span></div>
+        <h2 id="login-title">{mode === 'login' ? '登录' : '使用邀请码注册'}</h2>
+        <p class="muted">{mode === 'login' ? '普通用户与管理员使用同一入口登录。' : '邀请码有效期为 24 小时，仅可使用一次。'}</p>
+        <form on:submit|preventDefault={mode === 'login' ? login : register} class="login-form">
+          <label for="identity">邮箱</label>
           <input id="identity" type="email" bind:value={identity} autocomplete="username" placeholder="name@example.com" required />
           <label for="password">密码</label>
-          <input id="password" type="password" bind:value={password} autocomplete="current-password" placeholder="输入密码" required />
+          <input id="password" type="password" bind:value={password} autocomplete={mode === 'login' ? 'current-password' : 'new-password'} placeholder="输入密码" required />
+          {#if mode === 'register'}
+            <label for="password-confirm">确认密码</label>
+            <input id="password-confirm" type="password" bind:value={passwordConfirm} autocomplete="new-password" required />
+            <label for="invite-code">邀请码</label>
+            <input id="invite-code" bind:value={inviteCode} autocomplete="off" placeholder="HPA-XXXXXXXX" required />
+          {/if}
           {#if error}<p class="message error" role="alert">{error}</p>{/if}
-          <button class="primary login-submit" type="submit" disabled={loading}>{loading ? '正在登录…' : '登录管理控制台'} <span aria-hidden="true">↗</span></button>
+          <button class="primary login-submit" type="submit" disabled={loading}>{loading ? '请稍候…' : (mode === 'login' ? '登录' : '注册')} <span aria-hidden="true">↗</span></button>
         </form>
-        <p class="login-foot">仅限授权管理员访问</p>
+        <p class="login-foot">{mode === 'login' ? '还没有账户？' : '已有账户？'} <button class="text-button" on:click={() => { mode = mode === 'login' ? 'register' : 'login'; error = ''; password = ''; passwordConfirm = ''; }}>{mode === 'login' ? '使用邀请码注册' : '返回登录'}</button></p>
       </section>
     </main>
+  {:else if page === 'home' || !isAdmin}
+    <main class="dashboard" aria-label="首页"></main>
   {:else}
     <main class="dashboard">
       <div class="breadcrumb">管理控制台 <span>/</span> 备份管理</div>
@@ -200,7 +324,19 @@
           <div class="archive-footer"><span>备份文件存储于服务器</span><span>HPA HUB / ARCHIVE</span></div>
         </section>
       </div>
+      <section class="archive-section invitations" aria-labelledby="invitations-title">
+        <div class="archive-head">
+          <div><h2 id="invitations-title">邀请码</h2><p>邀请码有效 24 小时，仅可使用一次。</p></div>
+          <button class="primary" on:click={generateInvitation} disabled={generating}>{generating ? '正在生成…' : '生成邀请码'}</button>
+        </div>
+        <div class="table-wrap"><table><thead><tr><th>邀请码</th><th>创建时间</th><th>到期时间</th><th>状态</th><th>使用者</th><th>使用时间</th></tr></thead><tbody>
+          {#each invitations as invitation (invitation.code)}
+            <tr><td>{invitation.code}</td><td>{formatDate(invitation.created * 1000)}</td><td>{formatDate(invitation.expires * 1000)}</td><td>{invitation.used ? '已使用' : invitation.expires * 1000 <= Date.now() ? '已过期' : '未使用'}</td><td>{invitation.usedBy || '—'}</td><td>{invitation.used ? formatDate(invitation.used * 1000) : '—'}</td></tr>
+          {/each}
+        </tbody></table></div>
+        {#if !invitations.length}<div class="empty"><h3>还没有邀请码</h3><p>生成邀请码后，可在这里查看使用记录。</p></div>{/if}
+      </section>
     </main>
   {/if}
-  <footer class="site-footer"><span>HPA HUB <span class="footer-divider">/</span> 管理控制台</span><span>让数据安心留存。</span></footer>
+  <footer class="site-footer"><span>HPA HUB</span><span>欢迎来到 HPA Hub。</span></footer>
 </div>
