@@ -1,0 +1,42 @@
+services:
+  app:
+    build:
+      labels:
+        org.hpahub.local-image: "true"
+    ports: !override []
+    networks:
+      - isolated
+
+  proxy:
+    image: nginx:alpine
+    depends_on:
+      app:
+        condition: service_started
+        restart: true
+    ports:
+      - "127.0.0.1:${PORT:-18764}:8090"
+    networks:
+      - default
+      - isolated
+    command:
+      - /bin/sh
+      - -c
+      - |
+        printf '%s\n' 'server {
+          listen 8090;
+          client_max_body_size 0;
+          location / {
+            proxy_pass http://app:8090;
+            proxy_http_version 1.1;
+            proxy_set_header Host $$http_host;
+            proxy_set_header Upgrade $$http_upgrade;
+            proxy_set_header Connection "upgrade";
+            proxy_buffering off;
+            proxy_read_timeout 3600s;
+          }
+        }' > /etc/nginx/conf.d/default.conf
+        exec nginx -g 'daemon off;'
+
+networks:
+  isolated:
+    internal: true
