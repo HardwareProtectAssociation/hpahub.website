@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"time"
 
@@ -117,6 +118,9 @@ func bindInvitationRoutes(e *core.ServeEvent) {
 		var input struct { Email string `json:"email"`; Password string `json:"password"` }
 		if err := e.BindBody(&input); err != nil { return e.BadRequestError("Invalid credentials.", nil) }
 		email := strings.TrimSpace(input.Email)
+		if email == "admin" && os.Getenv("HPA_LOCAL_TEST") == "1" {
+			email = "admin@hpahub.local"
+		}
 		record, err := e.App.FindAuthRecordByEmail(core.CollectionNameSuperusers, email)
 		if errors.Is(err, sql.ErrNoRows) { record, err = e.App.FindAuthRecordByEmail("users", email) }
 		if err != nil && !errors.Is(err, sql.ErrNoRows) { return e.InternalServerError("Authentication failed.", err) }

@@ -24,6 +24,20 @@ docker compose exec app ./pocketbase superuser upsert admin@example.com '替换�
 
 管理员还可在控制台设置备份间隔和保留份数、手动创建及下载备份。自动备份默认关闭；保留份数仅限制自动备份，不删除手动备份。
 
+## 本地测试
+
+需要 Docker Compose 2.24.4 或更新版本、Python 3。以下命令使用独立的 `hpahub-local` 项目和数据卷，不影响普通部署：
+
+```sh
+./scripts/local-up.sh                      # 构建、启动并打开页面
+./scripts/local-reset.sh                   # 确认后删除本地测试数据库及备份
+./scripts/local-restore.sh /path/backup.zip # 确认后从 PocketBase ZIP 恢复
+```
+
+测试地址默认为 `http://localhost:18764`，可通过 `PORT` 覆盖。首次创建数据卷时，测试管理员账号为 `admin`，密码为 `admin123`。已有或恢复的数据不会重置管理员。
+
+恢复会停止测试服务，并将原数据保留在测试卷的 `backups/local-restore-*` 目录。恢复后运行启动命令。测试容器只监听本机，并使用隔离网络；生产备份仍包含敏感数据和生产账户，请妥善保管。
+
 ## 备份接口
 
 所有接口均需 PocketBase 超级管理员身份：

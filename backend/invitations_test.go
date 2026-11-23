@@ -101,6 +101,16 @@ func TestInvitationAPIRestrictions(t *testing.T) {
 	}
 	if status := request(http.MethodPost, "/api/hpahub/login", `{"email":"shared@example.com","password":"user-password-123"}`); status < 400 { t.Fatal("shared email fell back to user") }
 	if status := request(http.MethodPost, "/api/hpahub/login", `{"email":"shared@example.com","password":"admin-password-123"}`); status != http.StatusOK { t.Fatalf("admin login returned %d", status) }
+	localAdmin, err := app.FindCollectionByNameOrId(core.CollectionNameSuperusers)
+	if err != nil { t.Fatal(err) }
+	localRecord := core.NewRecord(localAdmin)
+	localRecord.SetEmail("admin@hpahub.local")
+	localRecord.SetPassword("admin123")
+	if err := app.Save(localRecord); err != nil { t.Fatal(err) }
+	t.Setenv("HPA_LOCAL_TEST", "")
+	if status := request(http.MethodPost, "/api/hpahub/login", `{"email":"admin","password":"admin123"}`); status < 400 { t.Fatal("local alias enabled outside local test") }
+	t.Setenv("HPA_LOCAL_TEST", "1")
+	if status := request(http.MethodPost, "/api/hpahub/login", `{"email":"admin","password":"admin123"}`); status != http.StatusOK { t.Fatalf("local alias login returned %d", status) }
 	item, err := newInvitation(app, time.Now())
 	if err != nil { t.Fatal(err) }
 	users, err := app.FindCollectionByNameOrId("users")
