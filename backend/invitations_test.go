@@ -1,0 +1,129 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/pocketbase/pocketbase/apis"
+	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/tests"
+)
+
+func invitationTestApp(t *testing.T) *tests.TestApp {
+	t.Helper()
+	app, err := tests.NewTestApp()
+	if err != nil { t.Fatal(err) }
+	t.Cleanup(app.Cleanup)
+	if err := initInvitations(app); err != nil { t.Fatal(err) }
+	bindNativeAuthLimit(app)
+	return app
+}
+
+func TestInvitationAtomicConsumption(t *testing.T) {
+	app := invitationTestApp(t)
+	now := time.Now()
+	item, err := newInvitation(app, now)
+	if err != nil { t.Fatal(err) }
+	if len(item.Code) != 12 || !strings.HasPrefix(item.Code, "HPA-") || item.Expires-item.Created != 86400 { t.Fatalf("invalid invitation: %+v", item) }
+	if _, err := registerInvitation(app, "bad@example.com", "short", "short", item.Code, now, nil); err == nil { t.Fatal("invalid password accepted") }
+	if _, err := registerInvitation(app, "bad@example.com", "different-password-123", "not-the-same", item.Code, now, nil); err == nil { t.Fatal("mismatched password accepted") }
+	var successes atomic.Int32
+	var wg sync.WaitGroup
+	for i := range 8 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, err := registerInvitation(app, fmt.Sprintf("race%d@example.com", i), "valid-password-123", "valid-password-123", item.Code, now, nil)
+			if err == nil { successes.Add(1) }
+		}()
+	}
+	wg.Wait()
+	if successes.Load() != 1 { t.Fatalf("concurrent successes = %d", successes.Load()) }
+	var stored invitation
+	if err := app.DB().NewQuery("SELECT code, created, expires, used, used_by FROM hpahub_invitations WHERE code = {:code}").Bind(map[string]any{"code": item.Code}).One(&stored); err != nil { t.Fatal(err) }
+	if stored.Used == 0 || stored.UsedBy == "" { t.Fatalf("missing consumption: %+v", stored) }
+	expired, err := newInvitation(app, now.Add(-24*time.Hour))
+	if err != nil { t.Fatal(err) }
+	if _, err := registerInvitation(app, "expired@example.com", "valid-password-123", "valid-password-123", expired.Code, now, nil); err == nil { t.Fatal("expired invitation accepted") }
+}
+
+func TestInvitationAPIRestrictions(t *testing.T) {
+	app := invitationTestApp(t)
+	router, err := apis.NewRouter(app)
+	if err != nil { t.Fatal(err) }
+	bindInvitationRoutes(&core.ServeEvent{App: app, Router: router})
+	mux, err := router.BuildMux()
+	if err != nil { t.Fatal(err) }
+	if collection, err := app.FindCollectionByNameOrId("users"); err != nil || collection.CreateRule != nil { t.Fatalf("users create rule is not locked: %v", err) }
+	request := func(method, path, body string) int {
+		req := httptest.NewRequest(method, path, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		res := httptest.NewRecorder()
+		mux.ServeHTTP(res, req)
+		return res.Code
+	}
+	if status := request(http.MethodPost, "/api/collections/users/records", `{"email":"bypass@example.com","password":"valid-password-123","passwordConfirm":"valid-password-123"}`); status < 400 { t.Fatalf("native registration returned %d", status) }
+	for _, method := range []string{http.MethodGet, http.MethodPost} {
+		if status := request(method, "/api/hpahub/invitations", ""); status < 400 { t.Fatalf("anonymous %s returned %d", method, status) }
+	}
+	for _, collectionName := range []string{"users", core.CollectionNameSuperusers} {
+		collection, err := app.FindCollectionByNameOrId(collectionName)
+		if err != nil { t.Fatal(err) }
+		record := core.NewRecord(collection)
+		record.SetEmail(collectionName + "@example.com")
+		record.SetPassword("valid-password-123")
+		if err := app.Save(record); err != nil { t.Fatal(err) }
+		token, err := record.NewAuthToken()
+		if err != nil { t.Fatal(err) }
+		for _, method := range []string{http.MethodGet, http.MethodPost} {
+			req := httptest.NewRequest(method, "/api/hpahub/invitations", nil)
+			req.Header.Set("Authorization", token)
+			res := httptest.NewRecorder()
+			mux.ServeHTTP(res, req)
+			if collectionName == "users" && res.Code < 400 { t.Fatalf("user %s returned %d", method, res.Code) }
+			if collectionName == core.CollectionNameSuperusers && res.Code != http.StatusOK { t.Fatalf("admin %s returned %d: %s", method, res.Code, res.Body.String()) }
+		}
+	}
+	for _, collectionName := range []string{"users", core.CollectionNameSuperusers} {
+		collection, err := app.FindCollectionByNameOrId(collectionName)
+		if err != nil { t.Fatal(err) }
+		record := core.NewRecord(collection)
+		record.SetEmail("shared@example.com")
+		if collectionName == "users" { record.SetPassword("user-password-123") } else { record.SetPassword("admin-password-123") }
+		if err := app.Save(record); err != nil { t.Fatal(err) }
+	}
+	if status := request(http.MethodPost, "/api/hpahub/login", `{"email":"shared@example.com","password":"user-password-123"}`); status < 400 { t.Fatal("shared email fell back to user") }
+	if status := request(http.MethodPost, "/api/hpahub/login", `{"email":"shared@example.com","password":"admin-password-123"}`); status != http.StatusOK { t.Fatalf("admin login returned %d", status) }
+	item, err := newInvitation(app, time.Now())
+	if err != nil { t.Fatal(err) }
+	users, err := app.FindCollectionByNameOrId("users")
+	if err != nil { t.Fatal(err) }
+	authRule := users.AuthRule
+	users.AuthRule = nil
+	if err := app.Save(users); err != nil { t.Fatal(err) }
+	body := fmt.Sprintf(`{"email":"rollback@example.com","password":"valid-password-123","passwordConfirm":"valid-password-123","inviteCode":%q}`, item.Code)
+	if status := request(http.MethodPost, "/api/hpahub/register", body); status < 400 { t.Fatal("registration ignored auth rule") }
+	users.AuthRule = authRule
+	if err := app.Save(users); err != nil { t.Fatal(err) }
+	if status := request(http.MethodPost, "/api/hpahub/register", body); status != http.StatusBadRequest { t.Fatalf("MFA registration returned %d", status) }
+	users.MFA.Enabled = false
+	if err := app.Save(users); err != nil { t.Fatal(err) }
+	req := httptest.NewRequest(http.MethodPost, "/api/hpahub/register", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+	mux.ServeHTTP(res, req)
+	if res.Code != http.StatusOK { t.Fatalf("failed registration consumed invitation: %d", res.Code) }
+	var result struct { Token string `json:"token"`; Record struct { CollectionName string `json:"collectionName"` } `json:"record"` }
+	if err := json.Unmarshal(res.Body.Bytes(), &result); err != nil || result.Token == "" || result.Record.CollectionName != "users" { t.Fatalf("missing authenticated user: %s", res.Body.String()) }
+	for range 30 {
+		request(http.MethodPost, "/api/hpahub/register", `{}`)
+	}
+	if status := request(http.MethodPost, "/api/hpahub/register", `{}`); status != http.StatusTooManyRequests { t.Fatalf("rate limit returned %d", status) }
+}
