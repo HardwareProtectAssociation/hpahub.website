@@ -2,18 +2,22 @@ package main
 
 import (
 	"crypto/rand"
+	"crypto/subtle"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tools/router"
+	"golang.org/x/crypto/scrypt"
 )
 
 type invitation struct {
@@ -26,13 +30,21 @@ type invitation struct {
 
 var errInvalidInvitation = errors.New("invalid or expired invitation")
 
+var legacyLoginSlots = make(chan struct{}, 2)
+
+func verifyLegacyPassword(password, encoded string) bool {
+	parts := strings.Split(encoded, "$")
+	if len(parts) != 3 || parts[0] != "scrypt:32768:8:1" || parts[1] == "" || !utf8.ValidString(parts[1]) || len(parts[2]) != 128 {
+		return false
+	}
+	expected, err := hex.DecodeString(parts[2])
+	if err != nil { return false }
+	actual, err := scrypt.Key([]byte(password), []byte(parts[1]), 32768, 8, 1, 64)
+	return err == nil && subtle.ConstantTimeCompare(actual, expected) == 1
+}
+
 func initInvitations(app core.App) error {
-	users, err := app.FindCollectionByNameOrId("users")
-	if err != nil { return err }
-	users.CreateRule = nil
-	users.OAuth2.Enabled = false
-	if err := app.Save(users); err != nil { return err }
-	_, err = app.DB().NewQuery(`CREATE TABLE IF NOT EXISTS hpahub_invitations (
+	_, err := app.DB().NewQuery(`CREATE TABLE IF NOT EXISTS hpahub_invitations (
 		code TEXT PRIMARY KEY, created INTEGER NOT NULL, expires INTEGER NOT NULL,
 		used INTEGER NOT NULL DEFAULT 0, used_by TEXT NOT NULL DEFAULT ''
 	)`).Execute()
@@ -89,6 +101,7 @@ func registerInvitation(app core.App, email, password, confirm, code string, now
 		if !collection.PasswordAuth.Enabled { return errors.New("password authentication disabled") }
 		user = core.NewRecord(collection)
 		user.SetEmail(email)
+		user.Set("role", "member")
 		user.SetPassword(password)
 		if err := tx.Save(user); err != nil { return err }
 		if event != nil {
@@ -106,6 +119,21 @@ func registerInvitation(app core.App, email, password, confirm, code string, now
 	return user, nil
 }
 
+func siteRole(record *core.Record) string {
+	if record == nil { return "guest" }
+	switch record.Collection().Name {
+	case core.CollectionNameSuperusers:
+		return "octopus"
+	case "users":
+		switch record.GetString("role") {
+		case "admin", "member":
+			return record.GetString("role")
+		}
+	}
+	return "user"
+}
+
+
 func bindInvitationRoutes(e *core.ServeEvent) {
 	limited := func(e *core.RequestEvent, kind string, limit int) error {
 		ok, err := allowAuthAttempt(e.App, kind, limit)
@@ -113,6 +141,10 @@ func bindInvitationRoutes(e *core.ServeEvent) {
 		if !ok { return e.TooManyRequestsError("Too many requests. Try again later.", nil) }
 		return nil
 	}
+	e.Router.GET("/api/hpahub/me", func(e *core.RequestEvent) error {
+		if e.Auth == nil { return e.UnauthorizedError("Authentication required.", nil) }
+		return e.JSON(http.StatusOK, map[string]string{"id": e.Auth.Id, "role": siteRole(e.Auth)})
+	})
 	e.Router.POST("/api/hpahub/login", func(e *core.RequestEvent) error {
 		if err := limited(e, "login", 60); err != nil { return err }
 		var input struct { Email string `json:"email"`; Password string `json:"password"` }
@@ -124,7 +156,29 @@ func bindInvitationRoutes(e *core.ServeEvent) {
 		record, err := e.App.FindAuthRecordByEmail(core.CollectionNameSuperusers, email)
 		if errors.Is(err, sql.ErrNoRows) { record, err = e.App.FindAuthRecordByEmail("users", email) }
 		if err != nil && !errors.Is(err, sql.ErrNoRows) { return e.InternalServerError("Authentication failed.", err) }
-		if record == nil || !record.ValidatePassword(input.Password) { return e.BadRequestError("Invalid credentials.", nil) }
+		if errors.Is(err, sql.ErrNoRows) {
+			var legacy struct {
+				UserID string `db:"user_id"`
+				PasswordHash string `db:"password_hash"`
+			}
+			err = e.App.DB().NewQuery("SELECT user_id, password_hash FROM hpahub_legacy_accounts WHERE username = {:username}").
+				Bind(dbx.Params{"username": email}).One(&legacy)
+			if err != nil && !errors.Is(err, sql.ErrNoRows) { return e.InternalServerError("Authentication failed.", err) }
+			if err != nil { return e.BadRequestError("Invalid credentials.", nil) }
+			record, err = e.App.FindRecordById("users", legacy.UserID)
+			if err != nil && !errors.Is(err, sql.ErrNoRows) { return e.InternalServerError("Authentication failed.", err) }
+			if err != nil { return e.BadRequestError("Invalid credentials.", nil) }
+			select {
+			case legacyLoginSlots <- struct{}{}:
+				valid := verifyLegacyPassword(input.Password, legacy.PasswordHash)
+				<-legacyLoginSlots
+				if !valid { return e.BadRequestError("Invalid credentials.", nil) }
+			default:
+				return e.TooManyRequestsError("Too many requests. Try again later.", nil)
+			}
+		} else if record == nil || !record.ValidatePassword(input.Password) {
+			return e.BadRequestError("Invalid credentials.", nil)
+		}
 		if !record.Collection().PasswordAuth.Enabled { return e.ForbiddenError("Password authentication disabled.", nil) }
 		return apis.RecordAuthResponse(e, record, core.MFAMethodPassword, nil)
 	})
@@ -137,15 +191,19 @@ func bindInvitationRoutes(e *core.ServeEvent) {
 		return nil
 	})
 	e.Router.POST("/api/hpahub/invitations", func(e *core.RequestEvent) error {
+		if e.Auth == nil { return e.UnauthorizedError("Authentication required.", nil) }
+		if role := siteRole(e.Auth); role != "admin" && role != "octopus" { return e.ForbiddenError("Insufficient permissions.", nil) }
 		item, err := newInvitation(e.App, time.Now())
 		if err != nil { return e.InternalServerError("Failed to create invitation.", err) }
 		return e.JSON(http.StatusOK, item)
-	}).Bind(apis.RequireSuperuserAuth())
+	})
 	e.Router.GET("/api/hpahub/invitations", func(e *core.RequestEvent) error {
+		if e.Auth == nil { return e.UnauthorizedError("Authentication required.", nil) }
+		if role := siteRole(e.Auth); role != "admin" && role != "octopus" { return e.ForbiddenError("Insufficient permissions.", nil) }
 		items := []invitation{}
 		if err := e.App.DB().NewQuery("SELECT code, created, expires, used, used_by FROM hpahub_invitations ORDER BY created DESC, code DESC").All(&items); err != nil { return e.InternalServerError("Failed to load invitations.", err) }
 		return e.JSON(http.StatusOK, map[string]any{"items": items})
-	}).Bind(apis.RequireSuperuserAuth())
+	})
 }
 
 func bindNativeAuthLimit(app core.App) {

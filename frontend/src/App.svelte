@@ -1,18 +1,26 @@
 <script>
   import { onMount } from 'svelte';
+  import Gpu from './Gpu.svelte';
+  import Warehouse from './Warehouse.svelte';
+  import PublicPages from './PublicPages.svelte';
+  import Editors from './Editors.svelte';
+
+  const pathname = location.pathname.replace(/\/+$/, '') || '/';
 
   let token = sessionStorage.getItem('authToken') || '';
   let collection = sessionStorage.getItem('authCollection') || '';
   let checking = !!token;
   let page = 'home';
-  let mode = 'login';
+  let mode = pathname === '/join' ? 'register' : 'login';
   let inviteCode = '';
   let passwordConfirm = '';
   let invitations = [];
   let generating = false;
   let identity = '';
   let password = '';
-  $: isAdmin = collection === '_superusers';
+  let role = 'guest';
+  $: isAdmin = role === 'admin' || role === 'octopus';
+  $: isOctopus = role === 'octopus';
   let policy = { intervalHours: 0, retainCount: 10 };
   let backups = [];
   let loading = false;
@@ -45,7 +53,7 @@
     const response = await fetch(path, {
       ...options,
       headers: {
-        ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+        ...(options.body && !(options.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...options.headers,
       },
@@ -89,11 +97,16 @@
       sessionStorage.setItem('authToken', token);
       sessionStorage.setItem('authCollection', collection);
       scheduleExpiry();
+      checking = true;
+      role = (await request('/api/hpahub/me')).role;
       password = '';
       page = 'home';
+      location.href = '/';
     } catch (err) {
+      if (token && role === 'guest') logout();
       error = err.message;
     } finally {
+      checking = false;
       loading = false;
     }
   }
@@ -110,21 +123,26 @@
       sessionStorage.setItem('authToken', token);
       sessionStorage.setItem('authCollection', collection);
       scheduleExpiry();
+      checking = true;
+      role = (await request('/api/hpahub/me')).role;
       password = '';
       passwordConfirm = '';
       inviteCode = '';
       page = 'home';
+      location.href = '/';
     } catch (err) {
+      if (token && role === 'guest') logout();
       error = err.message;
     } finally {
       loading = false;
+      checking = false;
     }
   }
 
   async function openConsole() {
     page = 'console';
     error = '';
-    await Promise.all([refresh(), loadInvitations()]);
+    await Promise.all([loadInvitations(), ...(role === 'octopus' ? [refresh()] : [])]);
   }
 
   async function loadInvitations() {
@@ -152,9 +170,14 @@
   }
 
   function logout() {
+    fetch('/api/hpahub/warehouse/media-session', {
+      method: 'DELETE',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    }).catch(() => {});
     clearTimeout(expiryTimer);
     token = '';
     collection = '';
+    role = 'guest';
     sessionStorage.removeItem('authToken');
     sessionStorage.removeItem('authCollection');
     sessionStorage.removeItem('adminToken');
@@ -240,6 +263,8 @@
       token = result.token;
       sessionStorage.setItem('authToken', token);
       scheduleExpiry();
+      role = (await request('/api/hpahub/me')).role;
+      if (['admin', 'octopus'].includes(role) && new URLSearchParams(location.search).has('console')) await openConsole();
     } catch (err) {
       logout();
       error = '无法验证登录状态，请重新登录。';
@@ -249,23 +274,48 @@
   });
 </script>
 
-<svelte:head><title>{token ? (page === 'console' ? '管理控制台' : '首页') : (mode === 'login' ? '登录' : '注册')} · HPA Hub</title></svelte:head>
+<svelte:head><title>HPA Hub</title></svelte:head>
 
 <div class="app-shell">
   <header class="topbar">
     <a class="brand" href="/" aria-label="HPA Hub 首页"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span>HPA<span class="brand-light">HUB</span></span></a>
     <nav class="topbar-right" aria-label="主导航">
+      <a class="text-button" href="/gpu">显卡库</a>
+      <a class="text-button" href="/warehouse">仓库</a>
+      <a class="text-button" href="/community">成员</a>
+      <a class="text-button" href="/showcase">项目展示</a>
       {#if token && !checking}
-        <button class="text-button" on:click={() => { page = 'home'; error = ''; notice = ''; }}>首页</button>
-        {#if isAdmin}<button class="text-button" on:click={openConsole}>管理控制台</button>{/if}
+        <a class="text-button" href="/">首页</a>
+        {#if ['member', 'admin'].includes(role)}<a class="text-button" href="/settings">个人设置</a>{/if}
+        {#if isAdmin}
+          <a class="text-button" href="/manage/showcase">项目管理</a>
+          {#if pathname === '/'}<button class="text-button" on:click={openConsole}>管理控制台</button>
+          {:else}<a class="text-button" href="/?console=1">管理控制台</a>{/if}
+        {/if}
         <button class="text-button" on:click={logout}>退出登录</button>
+      {:else if !checking}
+        <a class="text-button" href="/sign-in">登录</a>
       {/if}
     </nav>
   </header>
 
   {#if checking}
     <main class="dashboard"><p role="status">正在验证登录状态…</p></main>
-  {:else if !token}
+  {:else if pathname === '/gpu'}
+    <Gpu {token} {role} />
+  {:else if pathname === '/warehouse'}
+    {#if token && ['member', 'admin', 'octopus'].includes(role)}
+      <Warehouse {token} {role} />
+    {:else}
+      <main class="dashboard"><h1>仓库</h1><p>仓库仅供内部成员访问。</p><a href="/sign-in">登录账户</a></main>
+    {/if}
+  {:else if pathname === '/settings' || pathname === '/manage/showcase'}
+    {#if token && (pathname === '/settings' ? ['member', 'admin'].includes(role) : isAdmin)}
+      <Editors {token} {role} manage={pathname === '/manage/showcase'} />
+    {:else}
+      <main class="dashboard"><h1>无权访问</h1><p>请使用有权限的账户登录。</p><a href="/sign-in">登录</a></main>
+    {/if}
+  {:else if pathname === '/sign-in' || pathname === '/join'}
     <main class="login-layout">
       <section class="login-intro">
         <h1>欢迎来到<br /><em>HPA Hub。</em></h1>
@@ -294,17 +344,22 @@
           {#if error}<p class="message error" role="alert">{error}</p>{/if}
           <button class="primary login-submit" type="submit" disabled={loading}>{loading ? '请稍候…' : (mode === 'login' ? '登录' : '注册')} <span aria-hidden="true">↗</span></button>
         </form>
-        <p class="login-foot">{mode === 'login' ? '还没有账户？' : '已有账户？'} <button class="text-button" on:click={() => { mode = mode === 'login' ? 'register' : 'login'; error = ''; password = ''; passwordConfirm = ''; }}>{mode === 'login' ? '使用邀请码注册' : '返回登录'}</button></p>
+        <p class="login-foot">{mode === 'login' ? '还没有账户？' : '已有账户？'} <a class="text-button" href={mode === 'login' ? '/join' : '/sign-in'}>{mode === 'login' ? '使用邀请码注册' : '返回登录'}</a></p>
       </section>
     </main>
-  {:else if page === 'home' || !isAdmin}
-    <main class="dashboard" aria-label="首页"></main>
+  {:else if pathname !== '/' || page === 'home' || !isAdmin}
+    <PublicPages {pathname} />
   {:else}
     <main class="dashboard">
-      <div class="breadcrumb">管理控制台 <span>/</span> 备份管理</div>
-      <div class="page-heading"><div><h1>备份管理<span class="heading-dot">.</span></h1><p>管理自动备份策略，或随时创建一份备份。</p></div><button class="primary" on:click={createBackup} disabled={creating || loading}><span class="plus" aria-hidden="true">＋</span> {creating ? '正在创建…' : '立即备份'}</button></div>
+      <div class="breadcrumb">管理控制台 <span>/</span> {isOctopus ? '备份管理' : '邀请码'}</div>
+      {#if isOctopus}
+        <div class="page-heading"><div><h1>备份管理<span class="heading-dot">.</span></h1><p>管理自动备份策略，或随时创建一份备份。</p></div><button class="primary" on:click={createBackup} disabled={creating || loading}><span class="plus" aria-hidden="true">＋</span> {creating ? '正在创建…' : '立即备份'}</button></div>
+      {:else}
+        <div class="page-heading"><div><h1>邀请码<span class="heading-dot">.</span></h1><p>生成邀请码并查看使用记录。</p></div></div>
+      {/if}
       {#if error}<div class="message error" role="alert">{error}</div>{/if}
       {#if notice}<div class="message success" role="status">{notice}</div>{/if}
+      {#if isOctopus}
       <div class="content-grid">
         <section class="policy-section" aria-labelledby="policy-title">
           <div class="section-head"><div><div class="section-icon" aria-hidden="true">◷</div><h2 id="policy-title">自动备份</h2><p>设置备份频率与保留数量。</p></div><span class:enabled={Number(policy.intervalHours) > 0} class="status"><span></span>{Number(policy.intervalHours) > 0 ? '已启用' : '未启用'}</span></div>
@@ -328,6 +383,7 @@
           <div class="archive-footer"><span>备份文件存储于服务器</span><span>HPA HUB / ARCHIVE</span></div>
         </section>
       </div>
+      {/if}
       <section class="archive-section invitations" aria-labelledby="invitations-title">
         <div class="archive-head">
           <div><h2 id="invitations-title">邀请码</h2><p>邀请码有效 24 小时，仅可使用一次。</p></div>

@@ -2,10 +2,35 @@ services:
   app:
     build: .
     ports:
-      - "${PORT:-18763}:8090"
+      - "${HOST_BIND:-127.0.0.1}:${PORT:-18763}:8090"
     volumes:
       - pb_data:/app/pb_data
+    networks:
+      - default
+      - sidecars
+    restart: unless-stopped
+
+  gpu:
+    build: ./legacy/gpu
+    volumes:
+      - gpu_data:/app/data
+    networks:
+      - sidecars
+    restart: unless-stopped
+
+  warehouse:
+    build: ./legacy/warehouse
+    volumes:
+      - warehouse_data:/app/data
+    networks:
+      - sidecars
     restart: unless-stopped
 
 volumes:
   pb_data:
+  gpu_data:
+  warehouse_data:
+
+networks:
+  sidecars:
+    internal: true

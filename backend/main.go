@@ -14,6 +14,8 @@ import (
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/plugins/migratecmd"
+	_ "hpahub/backend/migrations"
 )
 
 const autoPrefix = "@hpahub_auto_"
@@ -40,6 +42,15 @@ func loadPolicy(app core.App) (policy, error) {
 
 func main() {
 	app := pocketbase.New()
+	migratecmd.MustRegister(app, app.RootCmd, migratecmd.Config{})
+	registerLegacyImportCommand(app, app.RootCmd)
+	if command, _, err := app.RootCmd.Find(os.Args[1:]); err == nil && command.Name() == "hpa-import-accounts" {
+		if err := app.Bootstrap(); err != nil { log.Fatal(err) }
+		err := app.RootCmd.Execute()
+		if closeErr := app.ResetBootstrapState(); err == nil { err = closeErr }
+		if err != nil { log.Fatal(err) }
+		return
+	}
 	bindNativeAuthLimit(app)
 	var policyMu, backupMu sync.Mutex
 	wake := make(chan struct{}, 1)
@@ -58,6 +69,8 @@ func main() {
 	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
 		if err := initInvitations(app); err != nil { return err }
 		bindInvitationRoutes(e)
+		bindLegacyProxyRoutes(e)
+		bindPublicRoutes(e)
 		_, err := app.DB().NewQuery(`CREATE TABLE IF NOT EXISTS hpahub_backup_policy (
 			id INTEGER PRIMARY KEY CHECK (id = 1), interval_hours INTEGER NOT NULL,
 			retain_count INTEGER NOT NULL, last_run INTEGER NOT NULL
