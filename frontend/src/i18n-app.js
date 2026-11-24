@@ -7,6 +7,8 @@ export default {
   'Too many requests. Try again later.': ['請求過於頻繁，請稍後再試。', 'リクエストが多すぎます。後でもう一度お試しください。', 'Too many requests. Try again later.'],
   '语言': ['語言', '言語', 'Language'],
   'HPA Hub 首页': ['HPA Hub 首頁', 'HPA Hub ホーム', 'HPA Hub home'],
+  '打开导航菜单': ['開啟導覽選單', 'ナビゲーションを開く', 'Open navigation menu'],
+  '关闭导航菜单': ['關閉導覽選單', 'ナビゲーションを閉じる', 'Close navigation menu'],
   '主导航': ['主導覽', 'メインナビゲーション', 'Main navigation'],
   '显卡库': ['顯卡庫', 'グラフィックカード一覧', 'Graphics cards'],
   '仓库': ['倉庫', '倉庫', 'Warehouse'],

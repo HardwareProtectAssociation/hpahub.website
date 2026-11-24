@@ -13,3 +13,23 @@
 
 .public-page{flex:1;padding-bottom:72px}.public-page a{color:#345d3d;text-underline-offset:3px}.public-hero{max-width:760px;padding:60px 0}.public-hero h1{font-size:clamp(36px,6vw,64px);line-height:1.15;margin:0 0 16px}.public-hero p{max-width:58ch;line-height:1.8}.public-links{display:flex;flex-wrap:wrap;gap:12px;margin:32px 0}.public-links a{padding:12px 18px;border:1px solid #a4b69b;background:#e3eddd;text-decoration:none;font-weight:600}.prose{max-width:75ch;line-height:1.9}.public-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:20px;margin:28px 0}.public-card,.editor-list article{border:1px solid #dcded4;background:#fafbf7;padding:24px;min-width:0}.public-card h2,.editor-list h3{margin-top:0}.public-card p,.editor-list p,.profile-heading p{white-space:pre-wrap;overflow-wrap:anywhere}.profile-heading{display:flex;align-items:center;gap:24px;margin:30px 0}.avatar{display:block;width:80px;height:80px;border-radius:50%;object-fit:cover;flex:none}.avatar-default{background:#dce8d2;border:1px solid #b2c3a8}.member-card .avatar{margin-bottom:16px}.image-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px}.image-grid img,.project-cover{display:block;width:100%;height:auto;max-height:400px;object-fit:contain}.editor-page section{margin:36px 0}.editor-form{display:grid;gap:16px;max-width:650px}.editor-form label:not(.check-label){display:grid;gap:6px}.editor-form input:not([type=checkbox]),.editor-form textarea{width:100%;padding:10px;border:1px solid #b9c3b3;background:#fff;font:inherit}.editor-form textarea{resize:vertical}.editor-form button{justify-self:start}.editor-form fieldset{border:1px solid #b9c3b3}.check-label{display:flex;align-items:center;gap:8px;margin:8px 0;overflow-wrap:anywhere}.editor-thumb{width:64px;height:64px;object-fit:contain}.editor-list{display:grid;gap:16px;margin-bottom:32px}.editor-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}.editor-actions button{min-height:44px}.public-page textarea:focus-visible,.public-page button:focus-visible{outline:3px solid #8cae75;outline-offset:3px}
 @media(max-width:600px){.public-hero{padding:28px 0}.public-grid{grid-template-columns:1fr}.profile-heading{align-items:flex-start}.image-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* Navigation stays visible on wide screens and opens from the lower corner on mobile. */
+@media (min-width: 801px) {
+  .app-shell { padding-left: 220px; }
+  .topbar { position: fixed; inset: 0 auto 0 0; z-index: 10; width: 220px; height: 100vh; padding: 36px 24px; border-right: 1px solid #dcded4; border-bottom: 0; flex-direction: column; align-items: stretch; justify-content: flex-start; overflow-y: auto; }
+  .topbar-right { margin-top: 44px; flex-direction: column; align-items: stretch; gap: 2px; }
+}
+.topbar-right .text-button { width: 100%; padding: 12px 14px; text-align: left; border-radius: 4px; }
+.topbar-right .text-button:hover, .topbar-right .text-button[aria-current="page"] { background: #e6eee0; color: #274732; }
+.menu-toggle, .menu-backdrop { display: none; }
+@media (max-width: 800px) {
+  .topbar { position: fixed; z-index: 21; right: 20px; bottom: calc(86px + env(safe-area-inset-bottom)); width: min(260px, calc(100vw - 40px)); height: auto; max-height: calc(100dvh - 110px); overflow-y: auto; padding: 22px; border: 1px solid #dcded4; border-radius: 8px; box-shadow: 0 12px 32px #263a2c24; display: none; }
+  .topbar.menu-open { display: block; }
+  .topbar .brand { margin: 0 0 16px; }
+  .topbar-right { display: flex; flex-direction: column; align-items: stretch; flex-wrap: nowrap; gap: 2px; }
+  .topbar-right .text-button { font-size: 14px; }
+  .menu-toggle { display: grid; place-items: center; position: fixed; z-index: 22; right: 20px; bottom: calc(20px + env(safe-area-inset-bottom)); width: 52px; height: 52px; padding: 0; border: 0; border-radius: 50%; background: #274732; color: white; font-size: 25px; line-height: 1; box-shadow: 0 4px 16px #263a2c40; }
+  .menu-backdrop { display: block; position: fixed; inset: 0; z-index: 20; width: 100%; height: 100%; border: 0; background: #1c30223b; }
+  .site-footer { padding-right: 86px; }
+}
