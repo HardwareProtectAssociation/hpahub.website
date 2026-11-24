@@ -168,6 +168,13 @@
       } catch (err) { if (preview === file) previewText = `加载失败：${err.message}`; }
     }
   }
+  async function transcode(file) {
+    await mutate(async () => {
+      await api(`${filePath(file)}/transcode`, { method: 'POST' });
+      await loadFiles();
+      preview = (files[file.category] || []).find(item => fileKey(item) === fileKey(file)) || file;
+    }, '视频转码完成');
+  }
   function editAllocations() {
     allocations = Object.fromEntries(storage.disks.map(disk => [disk.mountpoint, (storage.allocations[disk.mountpoint] || 0) / 1073741824]));
     editingStorage = true;
@@ -249,7 +256,7 @@
       </div>
     {/if}
     {#if preview}
-      <div class="preview" role="dialog" aria-modal="true" aria-label={`预览 ${preview.name}`}><div class="preview-head"><strong>{preview.name}</strong><div class="actions"><button on:click={() => download(preview)}>下载</button><button on:click={() => preview = null}>关闭预览</button></div></div><div class="preview-body">
+      <div class="preview" role="dialog" aria-modal="true" aria-label={`预览 ${preview.name}`}><div class="preview-head"><strong>{preview.name}</strong><div class="actions">{#if preview.category === 'videos' && !preview.web_url}<button on:click={() => transcode(preview)} disabled={busy}>转码高清预览</button>{/if}<button on:click={() => download(preview)}>下载</button><button on:click={() => preview = null}>关闭预览</button></div></div><div class="preview-body">
         {#if preview.category === 'images'}<img src={mediaUrl('file', preview)} alt={preview.name} />
         {:else if preview.category === 'videos'}<video controls playsinline src={mediaUrl(preview.web_url ? 'web' : preview.preview_url ? 'preview' : 'file', preview)}></video>
         {:else if textExtensions.includes(preview.name.split('.').pop().toLowerCase())}<pre>{previewText}</pre>

@@ -14,61 +14,20 @@ fi
 work=$(mktemp -d)
 trap 'rm -rf -- "$work"' EXIT HUP INT TERM
 
-# Extract only regular files and directories into an empty private directory.
-python3 - "$1" "$work" <<'PY'
-import os
-from pathlib import PurePosixPath
-import shutil
-import sqlite3
-import stat
-import sys
-import zipfile
-
-archive, destination = sys.argv[1:]
-try:
-    with zipfile.ZipFile(archive) as z:
-        seen = set()
-        for entry in z.infolist():
-            name = entry.filename
-            parts = name.rstrip('/').split('/')
-            mode = entry.external_attr >> 16
-            kind = stat.S_IFMT(mode)
-            if (not name or name.startswith('/') or '\\' in name or
-                    any(part in ('', '.', '..') for part in parts) or
-                    parts[0] == 'backups' or parts[0].startswith('.local-restore-') or
-                    kind not in (0, stat.S_IFREG, stat.S_IFDIR) or
-                    (entry.is_dir() and kind == stat.S_IFREG) or
-                    (not entry.is_dir() and kind == stat.S_IFDIR)):
-                raise ValueError(f'不安全的备份路径或文件类型：{name!r}')
-            path = str(PurePosixPath(*parts))
-            if path in seen:
-                raise ValueError(f'备份包含重复路径：{name!r}')
-            seen.add(path)
-            target = os.path.join(destination, *parts)
-            if entry.is_dir():
-                os.makedirs(target, exist_ok=True)
-            else:
-                os.makedirs(os.path.dirname(target), exist_ok=True)
-                with z.open(entry) as source, open(target, 'xb') as output:
-                    shutil.copyfileobj(source, output)
-    db_path = os.path.join(destination, 'data.db')
-    if not os.path.isfile(db_path):
-        raise ValueError('备份缺少 data.db')
-    for filename in ('data.db', 'auxiliary.db'):
-        path = os.path.join(destination, filename)
-        if not os.path.exists(path):
-            continue
-        with sqlite3.connect(path) as db:
-            if db.execute('PRAGMA integrity_check').fetchall() != [('ok',)]:
-                raise ValueError(f'{filename} 完整性检查失败')
-            if filename == 'data.db' and not db.execute(
-                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='_collections'"
-            ).fetchone():
-                raise ValueError('data.db 不是有效的 PocketBase 数据库')
-except (OSError, ValueError, zipfile.BadZipFile, sqlite3.Error, RuntimeError) as exc:
-    print(f'备份验证失败：{exc}', file=sys.stderr)
-    sys.exit(1)
-PY
+# The validator is /app/pocketbase in the locally built application image.
+# Build first; validation never builds, starts PocketBase, or stops services.
+image=${HPA_MAINTENANCE_IMAGE:-hpahub-local-app}
+if ! docker image inspect "$image" >/dev/null 2>&1; then
+  echo "缺少应用镜像 $image。请先运行：" >&2
+  echo "docker compose -p hpahub-local -f \"$root/compose.yaml\" -f \"$root/scripts/compose.local.yaml\" build app" >&2
+  exit 1
+fi
+archive=$(CDPATH= cd -- "$(dirname -- "$1")" && pwd)/$(basename -- "$1")
+docker run --rm --network none --user "$(id -u):$(id -g)" \
+  --entrypoint /app/pocketbase \
+  --mount type=bind,src="$archive",dst=/backup.zip,readonly \
+  --mount type=bind,src="$work",dst=/restore \
+  "$image" hpa-validate-restore /backup.zip /restore
 
 printf '警告：将停止本地测试项目并替换其数据，原数据会保留。输入 RESTORE 确认：'
 IFS= read -r answer
@@ -134,4 +93,4 @@ trap - EXIT HUP INT TERM
 echo "原数据保留在卷 hpahub-local_pb_data 的 ${old#/data/}。"
 SH
 
-echo "恢复完成。启动本地项目：$root/scripts/local-up.sh"
+echo "恢复完成。启动本地项目：sh \"$root/scripts/local-up.sh\""

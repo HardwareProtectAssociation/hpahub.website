@@ -8,7 +8,6 @@ services:
     ports: !override []
     networks: !override
       - isolated
-      - sidecars
 
   proxy:
     image: caddy:2-alpine
