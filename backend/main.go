@@ -21,8 +21,8 @@ import (
 const autoPrefix = "@hpahub_auto_"
 
 type policy struct {
-	IntervalHours int `json:"intervalHours" db:"interval_hours"`
-	RetainCount   int `json:"retainCount" db:"retain_count"`
+	IntervalHours int   `json:"intervalHours" db:"interval_hours"`
+	RetainCount   int   `json:"retainCount" db:"retain_count"`
 	LastRun       int64 `json:"-" db:"last_run"`
 }
 
@@ -41,14 +41,27 @@ func loadPolicy(app core.App) (policy, error) {
 }
 
 func main() {
+	if handled, err := maintenanceCommand(os.Args[1:]); handled {
+		if err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 	app := pocketbase.New()
 	migratecmd.MustRegister(app, app.RootCmd, migratecmd.Config{})
 	registerLegacyImportCommand(app, app.RootCmd)
-	if command, _, err := app.RootCmd.Find(os.Args[1:]); err == nil && command.Name() == "hpa-import-accounts" {
-		if err := app.Bootstrap(); err != nil { log.Fatal(err) }
+	registerDataImportCommands(app, app.RootCmd)
+	if command, _, err := app.RootCmd.Find(os.Args[1:]); err == nil && (command.Name() == "hpa-import-accounts" || command.Name() == "hpa-import-gpu" || command.Name() == "hpa-import-warehouse") {
+		if err := app.Bootstrap(); err != nil {
+			log.Fatal(err)
+		}
 		err := app.RootCmd.Execute()
-		if closeErr := app.ResetBootstrapState(); err == nil { err = closeErr }
-		if err != nil { log.Fatal(err) }
+		if closeErr := app.ResetBootstrapState(); err == nil {
+			err = closeErr
+		}
+		if err != nil {
+			log.Fatal(err)
+		}
 		return
 	}
 	bindNativeAuthLimit(app)
@@ -61,13 +74,20 @@ func main() {
 	lockBackup := func(e *core.BackupEvent) error {
 		backupMu.Lock()
 		defer backupMu.Unlock()
+		warehouseMutex.Lock()
+		defer warehouseMutex.Unlock()
 		return e.Next()
 	}
 	app.OnBackupCreate().BindFunc(lockBackup)
 	app.OnBackupRestore().BindFunc(lockBackup)
 
 	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
-		if err := initInvitations(app); err != nil { return err }
+		if err := checkLegacyDataImported(app, "/legacy/gpu", "/legacy/warehouse"); err != nil {
+			return err
+		}
+		if err := initInvitations(app); err != nil {
+			return err
+		}
 		bindInvitationRoutes(e)
 		bindLegacyProxyRoutes(e)
 		bindPublicRoutes(e)
@@ -75,20 +95,26 @@ func main() {
 			id INTEGER PRIMARY KEY CHECK (id = 1), interval_hours INTEGER NOT NULL,
 			retain_count INTEGER NOT NULL, last_run INTEGER NOT NULL
 		)`).Execute()
-		if err != nil { return err }
-		if _, err = app.DB().NewQuery("INSERT OR IGNORE INTO hpahub_backup_policy VALUES (1, 0, 5, 0)").Execute(); err != nil { return err }
+		if err != nil {
+			return err
+		}
+		if _, err = app.DB().NewQuery("INSERT OR IGNORE INTO hpahub_backup_policy VALUES (1, 0, 5, 0)").Execute(); err != nil {
+			return err
+		}
 
 		e.Router.GET("/api/backup-policy", func(e *core.RequestEvent) error {
 			policyMu.Lock()
 			defer policyMu.Unlock()
 			p, err := loadPolicy(e.App)
-			if err != nil { return e.InternalServerError("Failed to load backup policy.", err) }
+			if err != nil {
+				return e.InternalServerError("Failed to load backup policy.", err)
+			}
 			return e.JSON(http.StatusOK, p)
 		}).Bind(apis.RequireSuperuserAuth())
 		e.Router.PUT("/api/backup-policy", func(e *core.RequestEvent) error {
 			var input struct {
 				IntervalHours *int `json:"intervalHours"`
-				RetainCount *int `json:"retainCount"`
+				RetainCount   *int `json:"retainCount"`
 			}
 			if err := e.BindBody(&input); err != nil {
 				return e.BadRequestError("Invalid backup policy.", err)
@@ -103,8 +129,13 @@ func main() {
 			policyMu.Lock()
 			defer policyMu.Unlock()
 			_, err := e.App.DB().NewQuery("UPDATE hpahub_backup_policy SET interval_hours = {:interval}, retain_count = {:retain}, last_run = {:last} WHERE id = 1").Bind(dbx.Params{"interval": p.IntervalHours, "retain": p.RetainCount, "last": time.Now().Unix()}).Execute()
-			if err != nil { return e.InternalServerError("Failed to save backup policy.", err) }
-			select { case wake <- struct{}{}: default: }
+			if err != nil {
+				return e.InternalServerError("Failed to save backup policy.", err)
+			}
+			select {
+			case wake <- struct{}{}:
+			default:
+			}
 			return e.JSON(http.StatusOK, p)
 		}).Bind(apis.RequireSuperuserAuth())
 		if !e.Router.HasRoute(http.MethodGet, "/{path...}") {
@@ -115,7 +146,12 @@ func main() {
 			defer ticker.Stop()
 			for {
 				runScheduled(app, &policyMu)
-				select { case <-stop: return; case <-wake: case <-ticker.C: }
+				select {
+				case <-stop:
+					return
+				case <-wake:
+				case <-ticker.C:
+				}
 			}
 		}()
 		return e.Next()
@@ -124,30 +160,50 @@ func main() {
 		stopOnce.Do(func() { close(stop) })
 		return e.Next()
 	})
-	if err := app.Start(); err != nil { log.Fatal(err) }
+	if err := app.Start(); err != nil {
+		log.Fatal(err)
+	}
 }
 
 func runScheduled(app core.App, mu *sync.Mutex) {
 	mu.Lock()
 	defer mu.Unlock()
 	p, err := loadPolicy(app)
-	if err != nil { app.Logger().Error("load backup policy", "error", err); return }
-	if !p.due(time.Now()) { return }
+	if err != nil {
+		app.Logger().Error("load backup policy", "error", err)
+		return
+	}
+	if !p.due(time.Now()) {
+		return
+	}
 	name := fmt.Sprintf("%s%d.zip", autoPrefix, time.Now().UnixNano())
 	if err := app.CreateBackup(context.Background(), name); err != nil {
 		app.Logger().Error("create scheduled backup", "error", err)
 		return
 	}
 	_, err = app.DB().NewQuery("UPDATE hpahub_backup_policy SET last_run = {:last} WHERE id = 1").Bind(dbx.Params{"last": time.Now().Unix()}).Execute()
-	if err != nil { app.Logger().Error("save backup time", "error", err); return }
+	if err != nil {
+		app.Logger().Error("save backup time", "error", err)
+		return
+	}
 	fsys, err := app.NewBackupsFilesystem()
-	if err != nil { app.Logger().Error("open backup storage", "error", err); return }
+	if err != nil {
+		app.Logger().Error("open backup storage", "error", err)
+		return
+	}
 	defer fsys.Close()
 	files, err := fsys.List(autoPrefix)
-	if err != nil { app.Logger().Error("list scheduled backups", "error", err); return }
+	if err != nil {
+		app.Logger().Error("list scheduled backups", "error", err)
+		return
+	}
 	sort.Slice(files, func(i, j int) bool { return files[i].ModTime.After(files[j].ModTime) })
-	if len(files) <= p.RetainCount { return }
+	if len(files) <= p.RetainCount {
+		return
+	}
 	for _, f := range files[p.RetainCount:] {
-		if err := fsys.Delete(f.Key); err != nil { app.Logger().Error("delete old scheduled backup", "key", f.Key, "error", err) }
+		if err := fsys.Delete(f.Key); err != nil {
+			app.Logger().Error("delete old scheduled backup", "key", f.Key, "error", err)
+		}
 	}
 }

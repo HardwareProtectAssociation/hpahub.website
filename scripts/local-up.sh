@@ -11,7 +11,7 @@ if ! docker volume inspect hpahub-local_pb_data >/dev/null 2>&1; then
     new_database=true
 fi
 
-compose up -d --build
+compose up -d --build --remove-orphans
 
 if [ "$new_database" = true ]; then
     email='admin@hpahub.local'

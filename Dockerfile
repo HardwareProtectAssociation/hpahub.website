@@ -16,7 +16,7 @@ RUN CGO_ENABLED=0 go build -trimpath -o /pocketbase .
 FROM alpine:3.22
 ARG ALPINE_MIRROR
 RUN if [ -n "$ALPINE_MIRROR" ]; then sed -i "s|https://dl-cdn.alpinelinux.org/alpine|$ALPINE_MIRROR|g" /etc/apk/repositories; fi \
-    && apk add --no-cache ca-certificates tzdata
+    && apk add --no-cache ca-certificates tzdata ffmpeg
 WORKDIR /app
 COPY --from=backend /pocketbase /app/pocketbase
 COPY --from=frontend /app/dist /app/pb_public
