@@ -43,6 +43,14 @@ func loadPolicy(app core.App) (policy, error) {
 func main() {
 	app := pocketbase.New()
 	migratecmd.MustRegister(app, app.RootCmd, migratecmd.Config{})
+	registerLegacyImportCommand(app, app.RootCmd)
+	if command, _, err := app.RootCmd.Find(os.Args[1:]); err == nil && command.Name() == "hpa-import-accounts" {
+		if err := app.Bootstrap(); err != nil { log.Fatal(err) }
+		err := app.RootCmd.Execute()
+		if closeErr := app.ResetBootstrapState(); err == nil { err = closeErr }
+		if err != nil { log.Fatal(err) }
+		return
+	}
 	bindNativeAuthLimit(app)
 	var policyMu, backupMu sync.Mutex
 	wake := make(chan struct{}, 1)

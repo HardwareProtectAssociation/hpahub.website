@@ -2,18 +2,22 @@ package main
 
 import (
 	"crypto/rand"
+	"crypto/subtle"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tools/router"
+	"golang.org/x/crypto/scrypt"
 )
 
 type invitation struct {
@@ -25,6 +29,19 @@ type invitation struct {
 }
 
 var errInvalidInvitation = errors.New("invalid or expired invitation")
+
+var legacyLoginSlots = make(chan struct{}, 2)
+
+func verifyLegacyPassword(password, encoded string) bool {
+	parts := strings.Split(encoded, "$")
+	if len(parts) != 3 || parts[0] != "scrypt:32768:8:1" || parts[1] == "" || !utf8.ValidString(parts[1]) || len(parts[2]) != 128 {
+		return false
+	}
+	expected, err := hex.DecodeString(parts[2])
+	if err != nil { return false }
+	actual, err := scrypt.Key([]byte(password), []byte(parts[1]), 32768, 8, 1, 64)
+	return err == nil && subtle.ConstantTimeCompare(actual, expected) == 1
+}
 
 func initInvitations(app core.App) error {
 	_, err := app.DB().NewQuery(`CREATE TABLE IF NOT EXISTS hpahub_invitations (
@@ -139,7 +156,29 @@ func bindInvitationRoutes(e *core.ServeEvent) {
 		record, err := e.App.FindAuthRecordByEmail(core.CollectionNameSuperusers, email)
 		if errors.Is(err, sql.ErrNoRows) { record, err = e.App.FindAuthRecordByEmail("users", email) }
 		if err != nil && !errors.Is(err, sql.ErrNoRows) { return e.InternalServerError("Authentication failed.", err) }
-		if record == nil || !record.ValidatePassword(input.Password) { return e.BadRequestError("Invalid credentials.", nil) }
+		if errors.Is(err, sql.ErrNoRows) {
+			var legacy struct {
+				UserID string `db:"user_id"`
+				PasswordHash string `db:"password_hash"`
+			}
+			err = e.App.DB().NewQuery("SELECT user_id, password_hash FROM hpahub_legacy_accounts WHERE username = {:username}").
+				Bind(dbx.Params{"username": email}).One(&legacy)
+			if err != nil && !errors.Is(err, sql.ErrNoRows) { return e.InternalServerError("Authentication failed.", err) }
+			if err != nil { return e.BadRequestError("Invalid credentials.", nil) }
+			record, err = e.App.FindRecordById("users", legacy.UserID)
+			if err != nil && !errors.Is(err, sql.ErrNoRows) { return e.InternalServerError("Authentication failed.", err) }
+			if err != nil { return e.BadRequestError("Invalid credentials.", nil) }
+			select {
+			case legacyLoginSlots <- struct{}{}:
+				valid := verifyLegacyPassword(input.Password, legacy.PasswordHash)
+				<-legacyLoginSlots
+				if !valid { return e.BadRequestError("Invalid credentials.", nil) }
+			default:
+				return e.TooManyRequestsError("Too many requests. Try again later.", nil)
+			}
+		} else if record == nil || !record.ValidatePassword(input.Password) {
+			return e.BadRequestError("Invalid credentials.", nil)
+		}
 		if !record.Collection().PasswordAuth.Enabled { return e.ForbiddenError("Password authentication disabled.", nil) }
 		return apis.RecordAuthResponse(e, record, core.MFAMethodPassword, nil)
 	})

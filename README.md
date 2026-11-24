@@ -24,6 +24,16 @@ docker compose exec app ./pocketbase superuser upsert admin@example.com '替换�
 
 PocketBase 超级管理员还可在控制台设置备份间隔和保留份数、手动创建及下载备份。自动备份默认关闭；保留份数仅限制自动备份，不删除手动备份。
 
+## 旧账号导入
+
+旧账号只能从一致的 SQLite 快照离线导入。停止应用服务后，将快照只读挂载到一次性容器：
+
+```sh
+docker compose run --rm --no-deps -T -v "$SNAPSHOT/users.db:/tmp/legacy-users.db:ro" app ./pocketbase hpa-import-accounts --source /tmp/legacy-users.db
+```
+
+导入保留受支持的旧密码和管理员身份。出现不支持的密码哈希或账号冲突时，整个导入回滚；保留快照并使用邀请码注册。
+
 ## 本地测试
 
 需要 Docker Compose 2.24.4 或更新版本、Python 3。以下命令使用独立的 `hpahub-local` 项目和数据卷，不影响普通部署：
