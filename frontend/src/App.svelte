@@ -11,6 +11,7 @@
   let collection = sessionStorage.getItem('authCollection') || '';
   let checking = !!token;
   let page = 'home';
+  let menuOpen = false;
   let mode = pathname === '/join' ? 'register' : 'login';
   let inviteCode = '';
   let passwordConfirm = '';
@@ -140,6 +141,7 @@
   }
 
   async function openConsole() {
+    menuOpen = false;
     page = 'console';
     error = '';
     await Promise.all([loadInvitations(), ...(role === 'octopus' ? [refresh()] : [])]);
@@ -170,6 +172,7 @@
   }
 
   function logout() {
+    menuOpen = false;
     fetch('/api/hpahub/warehouse/media-session', {
       method: 'DELETE',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -276,16 +279,19 @@
 
 <svelte:head><title>HPA Hub</title></svelte:head>
 
+<svelte:window on:keydown={(event) => { if (event.key === 'Escape') menuOpen = false; }} />
+
 <div class="app-shell">
-  <header class="topbar">
+  {#if menuOpen}<button class="menu-backdrop" aria-label="关闭导航菜单" on:click={() => menuOpen = false}></button>{/if}
+  <header class:menu-open={menuOpen} class="topbar">
     <a class="brand" href="/" aria-label="HPA Hub 首页"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span>HPA<span class="brand-light">HUB</span></span></a>
-    <nav class="topbar-right" aria-label="主导航">
+    <nav id="main-navigation" class="topbar-right" aria-label="主导航">
+      <a class="text-button" href="/" aria-current={pathname === '/' && page === 'home' ? 'page' : undefined}>首页</a>
       <a class="text-button" href="/gpu">显卡库</a>
       <a class="text-button" href="/warehouse">仓库</a>
       <a class="text-button" href="/community">成员</a>
       <a class="text-button" href="/showcase">项目展示</a>
       {#if token && !checking}
-        <a class="text-button" href="/">首页</a>
         {#if ['member', 'admin'].includes(role)}<a class="text-button" href="/settings">个人设置</a>{/if}
         {#if isAdmin}
           <a class="text-button" href="/manage/showcase">项目管理</a>
@@ -298,6 +304,9 @@
       {/if}
     </nav>
   </header>
+  <button class="menu-toggle" aria-label={menuOpen ? '关闭导航菜单' : '打开导航菜单'} aria-expanded={menuOpen} aria-controls="main-navigation" on:click={() => menuOpen = !menuOpen}>
+    <span aria-hidden="true">{menuOpen ? '×' : '☰'}</span>
+  </button>
 
   {#if checking}
     <main class="dashboard"><p role="status">正在验证登录状态…</p></main>
