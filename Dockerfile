@@ -6,6 +6,7 @@ COPY frontend/ ./
 RUN npm run build
 
 FROM golang:1.25-alpine AS backend
+ARG GOPROXY=https://proxy.golang.org,direct
 WORKDIR /src
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
@@ -13,7 +14,9 @@ COPY backend/ ./
 RUN CGO_ENABLED=0 go build -trimpath -o /pocketbase .
 
 FROM alpine:3.22
-RUN apk add --no-cache ca-certificates tzdata
+ARG ALPINE_MIRROR
+RUN if [ -n "$ALPINE_MIRROR" ]; then sed -i "s|https://dl-cdn.alpinelinux.org/alpine|$ALPINE_MIRROR|g" /etc/apk/repositories; fi \
+    && apk add --no-cache ca-certificates tzdata
 WORKDIR /app
 COPY --from=backend /pocketbase /app/pocketbase
 COPY --from=frontend /app/dist /app/pb_public
