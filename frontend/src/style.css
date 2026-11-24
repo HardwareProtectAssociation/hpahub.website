@@ -6,3 +6,6 @@
 
 .invitations{margin-top:24px}.invitations .archive-head{gap:20px}.invitations table{min-width:740px}.topbar-right .text-button{min-height:44px}.login-foot .text-button{min-height:44px}
 @media(max-width:480px){.topbar{padding:0 4%}.brand{font-size:15px;gap:6px}.topbar-right{gap:4px}.topbar-right .text-button{font-size:12px}.invitations .archive-head{align-items:flex-start;flex-direction:column}.invitations .archive-head .primary{width:100%;justify-content:center}}
+
+.topbar-right a.text-button{text-decoration:none;display:inline-flex;align-items:center;min-height:44px}
+@media(max-width:600px){.topbar{height:auto;min-height:66px;flex-wrap:wrap;gap:0 12px;padding-top:8px;padding-bottom:8px}.topbar-right{flex-wrap:wrap;gap:0 12px}}

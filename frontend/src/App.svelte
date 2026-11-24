@@ -1,5 +1,9 @@
 <script>
   import { onMount } from 'svelte';
+  import Gpu from './Gpu.svelte';
+  import Warehouse from './Warehouse.svelte';
+
+  const pathname = location.pathname.replace(/\/+$/, '') || '/';
 
   let token = sessionStorage.getItem('authToken') || '';
   let collection = sessionStorage.getItem('authCollection') || '';
@@ -47,7 +51,7 @@
     const response = await fetch(path, {
       ...options,
       headers: {
-        ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+        ...(options.body && !(options.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...options.headers,
       },
@@ -134,7 +138,7 @@
   async function openConsole() {
     page = 'console';
     error = '';
-    await Promise.all([loadInvitations(), ...(isOctopus ? [refresh()] : [])]);
+    await Promise.all([loadInvitations(), ...(role === 'octopus' ? [refresh()] : [])]);
   }
 
   async function loadInvitations() {
@@ -162,6 +166,10 @@
   }
 
   function logout() {
+    fetch('/api/hpahub/warehouse/media-session', {
+      method: 'DELETE',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    }).catch(() => {});
     clearTimeout(expiryTimer);
     token = '';
     collection = '';
@@ -252,6 +260,7 @@
       sessionStorage.setItem('authToken', token);
       scheduleExpiry();
       role = (await request('/api/hpahub/me')).role;
+      if (['admin', 'octopus'].includes(role) && new URLSearchParams(location.search).has('console')) await openConsole();
     } catch (err) {
       logout();
       error = '无法验证登录状态，请重新登录。';
@@ -261,22 +270,37 @@
   });
 </script>
 
-<svelte:head><title>{token ? (page === 'console' ? '管理控制台' : '首页') : (mode === 'login' ? '登录' : '注册')} · HPA Hub</title></svelte:head>
+<svelte:head><title>{pathname === '/gpu' ? '显卡库' : pathname === '/warehouse' ? '仓库' : token ? (page === 'console' ? '管理控制台' : '首页') : (mode === 'login' ? '登录' : '注册')} · HPA Hub</title></svelte:head>
 
 <div class="app-shell">
   <header class="topbar">
     <a class="brand" href="/" aria-label="HPA Hub 首页"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span>HPA<span class="brand-light">HUB</span></span></a>
     <nav class="topbar-right" aria-label="主导航">
+      <a class="text-button" href="/gpu">显卡库</a>
+      <a class="text-button" href="/warehouse">仓库</a>
       {#if token && !checking}
-        <button class="text-button" on:click={() => { page = 'home'; error = ''; notice = ''; }}>首页</button>
-        {#if isAdmin}<button class="text-button" on:click={openConsole}>管理控制台</button>{/if}
+        <a class="text-button" href="/">首页</a>
+        {#if isAdmin}
+          {#if pathname === '/'}<button class="text-button" on:click={openConsole}>管理控制台</button>
+          {:else}<a class="text-button" href="/?console=1">管理控制台</a>{/if}
+        {/if}
         <button class="text-button" on:click={logout}>退出登录</button>
+      {:else if !checking}
+        <a class="text-button" href="/">登录</a>
       {/if}
     </nav>
   </header>
 
   {#if checking}
     <main class="dashboard"><p role="status">正在验证登录状态…</p></main>
+  {:else if pathname === '/gpu'}
+    <Gpu {token} {role} />
+  {:else if pathname === '/warehouse'}
+    {#if token && ['member', 'admin', 'octopus'].includes(role)}
+      <Warehouse {token} {role} />
+    {:else}
+      <main class="dashboard"><h1>仓库</h1><p>仓库仅供内部成员访问。</p><a href="/">登录账户</a></main>
+    {/if}
   {:else if !token}
     <main class="login-layout">
       <section class="login-intro">
