@@ -10,6 +10,8 @@
 docker compose up -d --build
 ```
 
+构建时可通过 Docker 构建参数 `GOPROXY` 和 `ALPINE_MIRROR` 设置 Go 模块代理和 Alpine 软件源。
+
 访问 `http://localhost:18763`。设置 `PORT` 环境变量可更改宿主机端口。PocketBase 数据保存在 Docker 卷 `pb_data` 中，更新容器不会清除数据。
 
 显卡库和仓库分别保存在 `gpu_data`、`warehouse_data` 卷中。PocketBase 备份仅包含 `pb_data`，不能恢复这两个独立数据卷；应分别备份显卡数据库和仓库文件。
