@@ -3,9 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,7 +14,6 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
-	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -24,10 +21,14 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tools/filesystem"
+	"github.com/pocketbase/pocketbase/tools/hook"
+	"github.com/pocketbase/pocketbase/tools/router"
+	"github.com/pocketbase/pocketbase/tools/security"
 )
 
 const warehouseBodyLimit int64 = 500 << 20
@@ -111,132 +112,75 @@ func warehouseName(value any) (string, error) {
 	return name, nil
 }
 
-// Paths are collection keys, never host filesystem paths.
-func (s warehouse) path(parts ...string) (string, error) {
-	key := "projects"
-	for _, part := range parts {
-		record, err := s.record(key)
-		if err != nil && !errors.Is(err, fs.ErrNotExist) {
-			return "", err
-		}
-		if record != nil && !record.GetBool("directory") {
-			return "", warehouseFailure(400, "非法路径")
-		}
-		key = path.Join(key, part)
+func (s warehouse) projectRecord(name string) (*core.Record, error) {
+	if _, err := warehouseName(name); err != nil {
+		return nil, err
 	}
-	return key, nil
-}
-
-func (s warehouse) record(key string) (*core.Record, error) {
-	record, err := s.app.FindFirstRecordByFilter("warehouse_items", "path = {:path}", dbx.Params{"path": key})
+	record, err := s.app.FindFirstRecordByFilter("warehouse_projects", "name = {:name}", dbx.Params{"name": name})
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, fs.ErrNotExist
 	}
 	return record, err
 }
 
-func (s warehouse) children(key string) ([]*core.Record, error) {
-	records, err := s.app.FindRecordsByFilter("warehouse_items", "path ~ {:prefix}", "path", 0, 0, dbx.Params{"prefix": key + "/"})
+func (s warehouse) fileRecord(project, category, name string) (*core.Record, error) {
+	if !warehouseCategory(category) {
+		return nil, warehouseFailure(400, "非法文件分类")
+	}
+	if _, err := warehouseName(name); err != nil {
+		return nil, err
+	}
+	p, err := s.projectRecord(project)
 	if err != nil {
 		return nil, err
 	}
-	result := make([]*core.Record, 0, len(records))
-	for _, record := range records {
-		rel := strings.TrimPrefix(record.GetString("path"), key+"/")
-		if rel != record.GetString("path") && !strings.Contains(rel, "/") {
-			result = append(result, record)
-		}
+	record, err := s.app.FindFirstRecordByFilter("warehouse_files", "project = {:project} && category = {:category} && name = {:name}", dbx.Params{"project": p.Id, "category": category, "name": name})
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, fs.ErrNotExist
 	}
-	return result, nil
+	return record, err
 }
 
-func (s warehouse) mkdir(key string) error {
-	if _, err := s.record(key); err == nil {
-		return fs.ErrExist
-	} else if !errors.Is(err, fs.ErrNotExist) {
-		return err
+func warehouseMetadata(record *core.Record, field string) map[string]any {
+	result := map[string]any{}
+	_ = record.UnmarshalJSONField(field, &result)
+	if result == nil {
+		return map[string]any{}
 	}
-	collection, err := s.app.FindCollectionByNameOrId("warehouse_items")
-	if err != nil {
-		return err
-	}
-	record := core.NewRecord(collection)
-	record.Set("path", key)
-	record.Set("directory", true)
-	record.Set("mode", strconv.FormatUint(uint64(os.ModeDir|0755), 10))
-	now := time.Now()
-	record.Set("modified", strconv.FormatInt(now.UnixNano(), 10))
-	record.Set("created", strconv.FormatInt(now.UnixNano(), 10))
-	return s.app.Save(record)
+	return result
 }
 
-func (s warehouse) ensureDir(key string) error {
-	record, err := s.record(key)
-	if errors.Is(err, fs.ErrNotExist) {
-		return s.mkdir(key)
+func warehouseModified(record *core.Record) time.Time {
+	value, _ := warehouseMetadata(record, "metadata")["modified"].(string)
+	if parsed, err := time.Parse(time.RFC3339Nano, value); err == nil {
+		return parsed
 	}
-	if err != nil {
-		return err
+	if parsed, err := time.ParseInLocation("2006-01-02T15:04:05", value, time.Local); err == nil {
+		return parsed
 	}
-	if !record.GetBool("directory") {
-		return warehouseFailure(400, "非法路径")
-	}
-	return nil
+	return record.GetDateTime("updated").Time()
 }
 
-func (s warehouse) saveFile(key, source string) error {
-	file, err := os.Open(source)
+func (s warehouse) size(record *core.Record, field string) (int64, error) {
+	storage, err := s.app.NewFilesystem()
 	if err != nil {
-		return err
+		return 0, err
 	}
-	hash := sha256.New()
-	_, err = io.Copy(hash, file)
-	closeErr := file.Close()
+	defer storage.Close()
+	attributes, err := storage.Attributes(record.BaseFilesPath() + "/" + record.GetString(field))
 	if err != nil {
-		return err
+		return 0, err
 	}
-	if closeErr != nil {
-		return closeErr
-	}
-	record, err := s.record(key)
-	if errors.Is(err, fs.ErrNotExist) {
-		collection, e := s.app.FindCollectionByNameOrId("warehouse_items")
-		if e != nil {
-			return e
-		}
-		record = core.NewRecord(collection)
-		record.Set("path", key)
-	} else if err != nil {
-		return err
-	} else if record.GetBool("directory") {
-		return warehouseFailure(400, "非法路径")
-	}
-	content, err := filesystem.NewFileFromPath(source)
-	if err != nil {
-		return err
-	}
-	record.Set("directory", false)
-	record.Set("mode", strconv.FormatUint(uint64(0644), 10))
-	record.Set("modified", strconv.FormatInt(time.Now().UnixNano(), 10))
-	record.Set("digest", hex.EncodeToString(hash.Sum(nil)))
-	record.Set("content", content)
-	return s.app.Save(record)
+	return attributes.Size, nil
 }
 
-func (s warehouse) temporary(key string) (string, error) {
-	record, err := s.record(key)
-	if err != nil {
-		return "", err
-	}
-	if record.GetBool("directory") {
-		return "", fs.ErrNotExist
-	}
+func (s warehouse) temporary(record *core.Record, field string) (string, error) {
 	storage, err := s.app.NewFilesystem()
 	if err != nil {
 		return "", err
 	}
 	defer storage.Close()
-	reader, err := storage.GetReader(record.BaseFilesPath() + "/" + record.GetString("content"))
+	reader, err := storage.GetReader(record.BaseFilesPath() + "/" + record.GetString(field))
 	if err != nil {
 		return "", err
 	}
@@ -247,8 +191,7 @@ func (s warehouse) temporary(key string) (string, error) {
 	}
 	name := file.Name()
 	_, err = io.Copy(file, reader)
-	closeErr := file.Close()
-	if err == nil {
+	if closeErr := file.Close(); err == nil {
 		err = closeErr
 	}
 	if err != nil {
@@ -256,158 +199,6 @@ func (s warehouse) temporary(key string) (string, error) {
 		return "", err
 	}
 	return name, nil
-}
-
-func warehouseModified(record *core.Record) time.Time {
-	nanos, _ := strconv.ParseInt(record.GetString("modified"), 10, 64)
-	return time.Unix(0, nanos)
-}
-
-func (s warehouse) size(record *core.Record) (int64, error) {
-	storage, err := s.app.NewFilesystem()
-	if err != nil {
-		return 0, err
-	}
-	defer storage.Close()
-	attributes, err := storage.Attributes(record.BaseFilesPath() + "/" + record.GetString("content"))
-	if err != nil {
-		return 0, err
-	}
-	return attributes.Size, nil
-}
-
-func (s warehouse) tree(key string) ([]*core.Record, error) {
-	record, err := s.record(key)
-	if err != nil {
-		return nil, err
-	}
-	records, err := s.app.FindRecordsByFilter("warehouse_items", "path ~ {:prefix}", "path", 0, 0, dbx.Params{"prefix": key + "/"})
-	if err != nil {
-		return nil, err
-	}
-	result := []*core.Record{record}
-	for _, child := range records {
-		if strings.HasPrefix(child.GetString("path"), key+"/") {
-			result = append(result, child)
-		}
-	}
-	return result, nil
-}
-
-func (s warehouse) moveTree(source, destination string) error {
-	return s.app.RunInTransaction(func(app core.App) error {
-		tx := warehouse{app: app}
-		records, err := tx.tree(source)
-		if err != nil {
-			return err
-		}
-		for _, record := range records {
-			record.Set("path", destination+strings.TrimPrefix(record.GetString("path"), source))
-			if err := app.Save(record); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-}
-
-const warehouseDeletedPrefix = "/.warehouse-deleted/"
-
-func (s warehouse) cleanupDeleted() error {
-	records, err := s.app.FindRecordsByFilter("warehouse_items", "path ~ {:prefix}", "", 0, 0, dbx.Params{"prefix": warehouseDeletedPrefix})
-	if err != nil {
-		return err
-	}
-	if len(records) == 0 {
-		return nil
-	}
-	storage, err := s.app.NewFilesystem()
-	if err != nil {
-		return err
-	}
-	defer storage.Close()
-	for _, record := range records {
-		if !strings.HasPrefix(record.GetString("path"), warehouseDeletedPrefix) {
-			continue
-		}
-		if failures := storage.DeletePrefix(record.BaseFilesPath() + "/"); len(failures) != 0 {
-			return errors.Join(failures...)
-		}
-		if _, err := s.app.DB().Delete("warehouse_items", dbx.HashExp{"id": record.Id}).Execute(); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (s warehouse) deleteTree(keys ...string) error {
-	var records []*core.Record
-	for _, key := range keys {
-		items, err := s.tree(key)
-		if errors.Is(err, fs.ErrNotExist) {
-			continue
-		}
-		if err != nil {
-			return err
-		}
-		records = append(records, items...)
-	}
-	// PocketBase deletes files asynchronously after record deletion. Mark files
-	// in the database first, then clean synchronously under warehouseMutex.
-	err := s.app.RunInTransaction(func(app core.App) error {
-		for _, record := range records {
-			var err error
-			if record.GetString("content") == "" {
-				_, err = app.DB().Delete("warehouse_items", dbx.HashExp{"id": record.Id}).Execute()
-			} else {
-				_, err = app.DB().Update("warehouse_items", dbx.Params{"path": warehouseDeletedPrefix + record.Id}, dbx.HashExp{"id": record.Id}).Execute()
-			}
-			if err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		return err
-	}
-	return s.cleanupDeleted()
-}
-
-func (s warehouse) project(name string) (string, error) {
-	_, err := warehouseName(name)
-	if err != nil {
-		return "", err
-	}
-	return s.path(name)
-}
-
-func (s warehouse) checkedFile(project, category, filename, kind string) (string, error) {
-	if _, err := s.project(project); err != nil {
-		return "", err
-	}
-	_, err := warehouseName(filename)
-	if err != nil {
-		return "", err
-	}
-	if !warehouseCategory(category) {
-		return "", warehouseFailure(400, "非法文件分类")
-	}
-	parts := []string{project, category}
-	switch kind {
-	case "file":
-	case "thumb", "web", "preview":
-		if category != "videos" {
-			return "", warehouseFailure(400, "非法媒体类型")
-		}
-		parts = append(parts, map[string]string{"thumb": ".thumbs", "web": ".web", "preview": ".preview"}[kind])
-		if kind == "thumb" {
-			filename += ".jpg"
-		}
-	default:
-		return "", warehouseFailure(400, "非法媒体类型")
-	}
-	return s.path(append(parts, filename)...)
 }
 
 func warehouseCategory(category string) bool {
@@ -459,201 +250,103 @@ func warehouseIdentity(r *http.Request) map[string]string {
 	return map[string]string{"id": id, "name": name}
 }
 
-func (s warehouse) readJSON(key string) (map[string]any, error) {
-	result := map[string]any{}
-	record, err := s.record(key)
-	if errors.Is(err, fs.ErrNotExist) {
-		return result, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	if record.GetBool("directory") {
-		return nil, warehouseFailure(400, "非法路径")
-	}
-	storage, err := s.app.NewFilesystem()
-	if err != nil {
-		return nil, err
-	}
-	defer storage.Close()
-	reader, err := storage.GetReader(record.BaseFilesPath() + "/" + record.GetString("content"))
-	if err != nil {
-		return nil, err
-	}
-	defer reader.Close()
-	if err := json.NewDecoder(reader).Decode(&result); err != nil {
-		return nil, err
-	}
-	if result == nil {
-		result = map[string]any{}
-	}
-	return result, nil
-}
-
-func (s warehouse) saveJSON(key string, data map[string]any) error {
-	encoded, err := json.MarshalIndent(data, "", "  ")
-	if err != nil {
-		return err
-	}
-	file, err := os.CreateTemp("", "warehouse-json-*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(file.Name())
-	_, err = file.Write(encoded)
-	closeErr := file.Close()
-	if err != nil {
-		return err
-	}
-	if closeErr != nil {
-		return closeErr
-	}
-	return s.saveFile(key, file.Name())
-}
-
-func (s warehouse) meta(project string) (map[string]any, error) {
-	key, err := s.path(project, ".meta.json")
-	if err != nil {
-		return nil, err
-	}
-	return s.readJSON(key)
-}
-
-func (s warehouse) saveMeta(project string, data map[string]any) error {
-	key, err := s.path(project, ".meta.json")
-	if err != nil {
-		return err
-	}
-	return s.saveJSON(key, data)
-}
-
 func warehouseTime(t time.Time) string { return t.Local().Format("2006-01-02T15:04:05") }
 
-func (s warehouse) regular(key string) bool {
-	record, err := s.record(key)
-	return err == nil && !record.GetBool("directory")
+func (s warehouse) projectFiles(project *core.Record) ([]*core.Record, error) {
+	return s.app.FindRecordsByFilter("warehouse_files", "project = {:project}", "name", 0, 0, dbx.Params{"project": project.Id})
 }
 
-func (s warehouse) fileEntry(ctx context.Context, project, category, name, key string) (map[string]any, error) {
-	record, err := s.record(key)
-	if err != nil {
-		return nil, err
-	}
-	size, err := s.size(record)
+func (s warehouse) fileEntry(ctx context.Context, project string, record *core.Record) (map[string]any, error) {
+	name, category := record.GetString("name"), record.GetString("category")
+	size, err := s.size(record, "content")
 	if err != nil {
 		return nil, err
 	}
 	entry := map[string]any{"name": name, "category": category, "size": size, "modified": warehouseTime(warehouseModified(record)), "url": warehouseMediaURL("file", project, category, name)}
 	if category == "videos" {
-		for kind, field := range map[string]string{"thumb": "thumb", "web": "web_url", "preview": "preview_url"} {
-			sidecar, err := s.checkedFile(project, category, name, kind)
-			if err == nil && s.regular(sidecar) {
-				entry[field] = warehouseMediaURL(kind, project, category, name)
+		for kind, field := range map[string]string{"thumb": "thumbnail", "web": "web", "preview": "preview"} {
+			if record.GetString(field) != "" {
+				key := map[string]string{"thumb": "thumb", "web": "web_url", "preview": "preview_url"}[kind]
+				entry[key] = warehouseMediaURL(kind, project, category, name)
 			}
 		}
-		temporary, err := s.temporary(key)
-		if err != nil {
-			return nil, err
+		metadata := warehouseMetadata(record, "metadata")
+		codec, _ := metadata["codec"].(string)
+		if codec == "" {
+			temporary, err := s.temporary(record, "content")
+			if err != nil {
+				return nil, err
+			}
+			codec = warehouseCodec(ctx, temporary)
+			os.Remove(temporary)
 		}
-		entry["codec"] = warehouseCodec(ctx, temporary)
-		os.Remove(temporary)
+		entry["codec"] = codec
 	}
 	return entry, nil
 }
 
 func (s warehouse) files(ctx context.Context, project string) (map[string][]map[string]any, error) {
-	key, err := s.project(project)
+	p, err := s.projectRecord(project)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, warehouseFailure(404, "项目不存在")
+	}
 	if err != nil {
 		return nil, err
 	}
-	record, err := s.record(key)
-	if errors.Is(err, fs.ErrNotExist) || (err == nil && !record.GetBool("directory")) {
-		return nil, warehouseFailure(404, "项目不存在")
-	}
+	records, err := s.projectFiles(p)
 	if err != nil {
 		return nil, err
 	}
 	result := map[string][]map[string]any{}
 	for _, category := range warehouseCategories {
 		result[category] = []map[string]any{}
-		dir, err := s.path(project, category)
+	}
+	for _, record := range records {
+		category := record.GetString("category")
+		if !warehouseCategory(category) {
+			continue
+		}
+		entry, err := s.fileEntry(ctx, project, record)
 		if err != nil {
 			return nil, err
 		}
-		entries, err := s.children(dir)
-		if err != nil {
-			return nil, err
-		}
-		for _, item := range entries {
-			name := path.Base(item.GetString("path"))
-			if strings.HasPrefix(name, ".") || item.GetBool("directory") {
-				continue
-			}
-			key, err := s.checkedFile(project, category, name, "file")
-			if err != nil {
-				continue
-			}
-			entry, err := s.fileEntry(ctx, project, category, name, key)
-			if err != nil {
-				return nil, err
-			}
-			result[category] = append(result[category], entry)
-		}
+		result[category] = append(result[category], entry)
 	}
 	return result, nil
 }
 
 func (s warehouse) summary(project string) (map[string]any, error) {
-	key, err := s.project(project)
+	record, err := s.projectRecord(project)
 	if err != nil {
 		return nil, err
 	}
-	meta, err := s.meta(project)
+	records, err := s.projectFiles(record)
 	if err != nil {
 		return nil, err
 	}
+	meta := warehouseMetadata(record, "metadata")
 	counts := map[string]int{}
-	var size int64
-	total := 0
 	for _, category := range warehouseCategories {
 		counts[category] = 0
-		dir, err := s.path(project, category)
+	}
+	var size int64
+	for _, file := range records {
+		fileSize, err := s.size(file, "content")
 		if err != nil {
 			return nil, err
 		}
-		entries, err := s.children(dir)
-		if err != nil {
-			return nil, err
-		}
-		for _, entry := range entries {
-			if strings.HasPrefix(path.Base(entry.GetString("path")), ".") || entry.GetBool("directory") {
-				continue
-			}
-			fileSize, err := s.size(entry)
-			if err != nil {
-				return nil, err
-			}
-			counts[category]++
-			total++
-			size += fileSize
-		}
+		counts[file.GetString("category")]++
+		size += fileSize
 	}
 	created := meta["created"]
 	if created == nil || created == "" {
-		if record, err := s.record(key); err == nil {
-			nanos, err := strconv.ParseInt(record.GetString("created"), 10, 64)
-			if err == nil {
-				created = warehouseTime(time.Unix(0, nanos))
-			} else {
-				created = warehouseTime(warehouseModified(record))
-			}
-		}
+		created = warehouseTime(record.GetDateTime("created").Time())
 	}
 	display := meta["display_name"]
 	if display == nil {
 		display = project
 	}
-	return map[string]any{"name": project, "display_name": display, "created": created, "counts": counts, "total_files": total, "size_bytes": size, "creator_id": meta["creator_id"], "creator_name": meta["creator_name"]}, nil
+	return map[string]any{"name": project, "display_name": display, "created": created, "counts": counts, "total_files": len(records), "size_bytes": size, "creator_id": meta["creator_id"], "creator_name": meta["creator_name"]}, nil
 }
 
 func warehouseRequestJSON(r *http.Request) (map[string]any, error) {
@@ -669,6 +362,145 @@ func warehouseRequestJSON(r *http.Request) (map[string]any, error) {
 	return data, nil
 }
 
+const mediaCookieName = "hpa_warehouse_media"
+const mediaCookiePath = "/api/hpahub/warehouse/media/"
+const mediaPurpose = "hpahub-warehouse-media"
+
+func mediaKey(record *core.Record) string {
+	return record.TokenKey() + record.Collection().AuthToken.Secret + ":" + mediaPurpose
+}
+
+func mediaCookie(e *core.RequestEvent, value string, expires time.Time, maxAge int) {
+	secure := os.Getenv("HPA_LOCAL_TEST") != "1" || e.Request.TLS != nil
+	http.SetCookie(e.Response, &http.Cookie{Name: mediaCookieName, Value: value, Path: mediaCookiePath, HttpOnly: true, Secure: secure, SameSite: http.SameSiteStrictMode, Expires: expires, MaxAge: maxAge})
+}
+
+func mediaSession(e *core.RequestEvent) error {
+	if e.Request.Method == http.MethodDelete {
+		mediaCookie(e, "", time.Unix(1, 0), -1)
+		return e.NoContent(http.StatusNoContent)
+	}
+	if e.Auth == nil {
+		return e.UnauthorizedError("Authentication required.", nil)
+	}
+	if !internalRole(e.Auth) {
+		return e.ForbiddenError("Insufficient permissions.", nil)
+	}
+	authorization := e.Request.Header.Get("Authorization")
+	if !strings.HasPrefix(authorization, "Bearer ") {
+		return e.UnauthorizedError("Authentication required.", nil)
+	}
+	claims, err := security.ParseUnverifiedJWT(strings.TrimPrefix(authorization, "Bearer "))
+	if err != nil {
+		return e.UnauthorizedError("Authentication required.", nil)
+	}
+	exp, err := claims.GetExpirationTime()
+	if err != nil || exp == nil {
+		return e.UnauthorizedError("Authentication required.", nil)
+	}
+	deadline := time.Now().Add(15 * time.Minute)
+	if exp.Time.Before(deadline) {
+		deadline = exp.Time
+	}
+	if !deadline.After(time.Now()) {
+		return e.UnauthorizedError("Authentication required.", nil)
+	}
+	payload := jwt.MapClaims{"collection": e.Auth.Collection().Name, "id": e.Auth.Id, "purpose": mediaPurpose, "exp": deadline.Unix()}
+	value, err := security.NewJWT(payload, mediaKey(e.Auth), time.Until(deadline))
+	if err != nil {
+		return e.InternalServerError("Unable to create media session.", err)
+	}
+	mediaCookie(e, value, deadline, int(time.Until(deadline).Seconds()))
+	return e.NoContent(http.StatusNoContent)
+}
+
+func mediaIdentity(e *core.RequestEvent) *core.Record {
+	cookie, err := e.Request.Cookie(mediaCookieName)
+	if err != nil {
+		return nil
+	}
+	claims, err := security.ParseUnverifiedJWT(cookie.Value)
+	if err != nil {
+		return nil
+	}
+	collection, _ := claims["collection"].(string)
+	id, _ := claims["id"].(string)
+	if collection != "users" && collection != core.CollectionNameSuperusers {
+		return nil
+	}
+	record, err := e.App.FindRecordById(collection, id)
+	if err != nil || !internalRole(record) {
+		return nil
+	}
+	claims, err = security.ParseJWT(cookie.Value, mediaKey(record))
+	if err != nil || claims["purpose"] != mediaPurpose {
+		return nil
+	}
+	exp, err := claims.GetExpirationTime()
+	if err != nil || exp == nil || !exp.After(time.Now()) {
+		return nil
+	}
+	return record
+}
+
+func bindWarehouseRoutes(e *core.ServeEvent) {
+	e.Router.POST("/api/hpahub/warehouse/media-session", mediaSession)
+	e.Router.DELETE("/api/hpahub/warehouse/media-session", mediaSession)
+	handler := func(e *core.RequestEvent) error {
+		const prefix = "/api/hpahub/warehouse/"
+		escaped := strings.TrimPrefix(e.Request.URL.EscapedPath(), prefix)
+		parts := strings.Split(escaped, "/")
+		for i, part := range parts {
+			value, err := url.PathUnescape(part)
+			if err != nil || value == "" || value == "." || value == ".." || strings.ContainsAny(value, "/\\\x00") {
+				return e.NotFoundError("Not found.", nil)
+			}
+			parts[i] = value
+		}
+		media := len(parts) == 5 && parts[0] == "media" && (e.Request.Method == "GET" || e.Request.Method == "HEAD")
+		auth := e.Auth
+		if media {
+			auth = mediaIdentity(e)
+		}
+		if auth == nil {
+			return e.UnauthorizedError("Authentication required.", nil)
+		}
+		if !internalRole(auth) || (len(parts) == 1 && parts[0] == "storage" && (e.Request.Method == "PUT" || e.Request.Method == "PATCH") && siteRole(auth) != "octopus") {
+			return e.ForbiddenError("Insufficient permissions.", nil)
+		}
+		r := e.Request.Clone(e.Request.Context())
+		r.Header.Del("X-User-Id")
+		r.Header.Del("X-User-Name")
+		r.Header.Set("X-User-Id", auth.Id)
+		name := auth.GetString("name")
+		if name == "" {
+			name = auth.Email()
+		}
+		if name == "" {
+			name = auth.Id
+		}
+		r.Header.Set("X-User-Name", url.PathEscape(name))
+		if media {
+			r.URL.Path = "/api/hpahub/media/" + strings.Join(parts[1:], "/")
+		} else {
+			r.URL.Path = "/api/" + strings.Join(parts, "/")
+		}
+		serveWarehouse(e.App, e.Response, r)
+		return nil
+	}
+	for _, method := range []string{"GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"} {
+		e.Router.Route(method, "/api/hpahub/warehouse/{path...}", handler).Bind(&hook.Handler[*core.RequestEvent]{
+			Priority: apis.DefaultBodyLimitMiddlewarePriority - 1,
+			Func: func(e *core.RequestEvent) error {
+				if body, ok := e.Request.Body.(*router.RereadableReadCloser); ok {
+					e.Request.Body = body.ReadCloser
+				}
+				return e.Next()
+			},
+		}, apis.BodyLimit(warehouseBodyLimit))
+	}
+}
+
 func serveWarehouse(app core.App, w http.ResponseWriter, r *http.Request) {
 	s := warehouse{app: app}
 	if r.ContentLength > warehouseBodyLimit {
@@ -679,19 +511,9 @@ func serveWarehouse(app core.App, w http.ResponseWriter, r *http.Request) {
 	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/"), "/")
 	warehouseMutex.Lock()
 	defer warehouseMutex.Unlock()
-	if err := s.cleanupDeleted(); err != nil {
-		warehouseWriteError(w, err)
-		return
-	}
 	if len(parts) == 7 && parts[0] == "api" && parts[1] == "hpahub" && parts[2] == "media" && (r.Method == "GET" || r.Method == "HEAD") {
 		s.serveMedia(w, r, parts[3], parts[4], parts[5], parts[6])
 		return
-	}
-	for _, key := range []string{".", "projects"} {
-		if err := s.ensureDir(key); err != nil {
-			warehouseWriteError(w, err)
-			return
-		}
 	}
 	data, status, err := s.api(r, parts)
 	if err != nil {
@@ -715,16 +537,13 @@ func (s warehouse) api(r *http.Request, parts []string) (any, int, error) {
 	if len(parts) == 2 {
 		switch r.Method {
 		case "GET":
-			entries, err := s.children("projects")
+			entries, err := s.app.FindRecordsByFilter("warehouse_projects", "", "name", 0, 0)
 			if err != nil {
 				return nil, 0, err
 			}
 			projects := []map[string]any{}
 			for _, entry := range entries {
-				name := path.Base(entry.GetString("path"))
-				if !entry.GetBool("directory") || strings.HasPrefix(name, ".") {
-					continue
-				}
+				name := entry.GetString("name")
 				project, err := s.summary(name)
 				if err != nil {
 					return nil, 0, err
@@ -741,26 +560,23 @@ func (s warehouse) api(r *http.Request, parts []string) (any, int, error) {
 			if err != nil {
 				return nil, 0, err
 			}
-			path, err := s.project(name)
-			if err != nil {
-				return nil, 0, err
-			}
-			if err = s.mkdir(path); errors.Is(err, fs.ErrExist) {
+			if _, err := s.projectRecord(name); err == nil {
 				return nil, 0, warehouseFailure(409, "同名项目已存在")
+			} else if !errors.Is(err, fs.ErrNotExist) {
+				return nil, 0, err
 			}
+			collection, err := s.app.FindCollectionByNameOrId("warehouse_projects")
 			if err != nil {
 				return nil, 0, err
 			}
-			for _, category := range warehouseCategories {
-				if err := s.mkdir(path + "/" + category); err != nil {
-					return nil, 0, err
-				}
-			}
+			record := core.NewRecord(collection)
+			record.Set("name", name)
 			meta := map[string]any{"display_name": name, "created": warehouseTime(time.Now())}
 			if identity := warehouseIdentity(r); identity != nil {
 				meta["creator_id"], meta["creator_name"] = identity["id"], identity["name"]
 			}
-			if err := s.saveMeta(name, meta); err != nil {
+			record.Set("metadata", meta)
+			if err := s.app.Save(record); err != nil {
 				return nil, 0, err
 			}
 			project, err := s.summary(name)
@@ -769,12 +585,8 @@ func (s warehouse) api(r *http.Request, parts []string) (any, int, error) {
 		return nil, 0, warehouseFailure(405, "Method not allowed.")
 	}
 	project := parts[2]
-	path, err := s.project(project)
-	if err != nil {
-		return nil, 0, err
-	}
-	info, err := s.record(path)
-	if errors.Is(err, fs.ErrNotExist) || (err == nil && !info.GetBool("directory")) {
+	info, err := s.projectRecord(project)
+	if errors.Is(err, fs.ErrNotExist) {
 		return nil, 0, warehouseFailure(404, "项目不存在")
 	}
 	if err != nil {
@@ -799,31 +611,35 @@ func (s warehouse) api(r *http.Request, parts []string) (any, int, error) {
 				return nil, 0, err
 			}
 			if name != project {
-				destination, err := s.project(name)
-				if err != nil {
-					return nil, 0, err
-				}
-				if _, err := s.record(destination); err == nil {
+				if _, err := s.projectRecord(name); err == nil {
 					return nil, 0, warehouseFailure(409, "同名项目已存在")
 				} else if !errors.Is(err, fs.ErrNotExist) {
 					return nil, 0, err
 				}
-				if err := s.moveTree(path, destination); err != nil {
-					return nil, 0, err
-				}
-				meta, err := s.meta(name)
-				if err != nil {
-					return nil, 0, err
-				}
+				meta := warehouseMetadata(info, "metadata")
 				meta["display_name"], meta["renamed"] = name, warehouseTime(time.Now())
-				if err := s.saveMeta(name, meta); err != nil {
+				info.Set("name", name)
+				info.Set("metadata", meta)
+				if err := s.app.Save(info); err != nil {
 					return nil, 0, err
 				}
 			}
 			summary, err := s.summary(name)
 			return map[string]any{"ok": true, "project": summary}, 200, err
 		case "DELETE":
-			return ok, 200, s.deleteTree(path)
+			records, err := s.projectFiles(info)
+			if err != nil {
+				return nil, 0, err
+			}
+			err = s.app.RunInTransaction(func(app core.App) error {
+				for _, record := range records {
+					if err := app.Delete(record); err != nil {
+						return err
+					}
+				}
+				return app.Delete(info)
+			})
+			return ok, 200, err
 		}
 	}
 	if len(parts) == 4 && parts[3] == "files" && r.Method == "POST" {
@@ -857,6 +673,14 @@ func (s warehouse) upload(r *http.Request, project string) ([]map[string]any, er
 	if len(uploads) == 0 {
 		return nil, warehouseFailure(400, "没有收到文件")
 	}
+	p, err := s.projectRecord(project)
+	if err != nil {
+		return nil, err
+	}
+	collection, err := s.app.FindCollectionByNameOrId("warehouse_files")
+	if err != nil {
+		return nil, err
+	}
 	saved := []map[string]any{}
 	for index, upload := range uploads {
 		original := strings.ReplaceAll(upload.Filename, "\\", "/")
@@ -889,23 +713,14 @@ func (s warehouse) upload(r *http.Request, project string) ([]map[string]any, er
 			}
 		}
 		category := warehouseClassify(name)
-		directory, err := s.path(project, category)
-		if err != nil {
-			return nil, err
-		}
-		if err := s.ensureDir(directory); err != nil {
-			return nil, err
-		}
 		ext := filepath.Ext(name)
 		stem := strings.TrimSuffix(name, ext)
-		var path string
 		for counter := 0; ; counter++ {
 			candidate := name
 			if counter > 0 {
 				candidate = stem + "_" + strconv.Itoa(counter) + ext
 			}
-			path = directory + "/" + candidate
-			_, err = s.record(path)
+			_, err = s.fileRecord(project, category, candidate)
 			if err == nil {
 				continue
 			}
@@ -934,14 +749,24 @@ func (s warehouse) upload(r *http.Request, project string) ([]map[string]any, er
 		if err == nil {
 			err = closeErr
 		}
+		record := core.NewRecord(collection)
+		record.Set("project", p.Id)
+		record.Set("category", category)
+		record.Set("name", name)
+		record.Set("metadata", map[string]any{"modified": time.Now().Format(time.RFC3339Nano)})
 		if err == nil {
-			err = s.saveFile(path, temporary)
+			var content *filesystem.File
+			content, err = filesystem.NewFileFromPath(temporary)
+			if err == nil {
+				record.Set("content", content)
+				err = s.app.Save(record)
+			}
 		}
 		os.Remove(temporary)
 		if err != nil {
 			return nil, err
 		}
-		entry, err := s.fileEntry(r.Context(), project, category, name, path)
+		entry, err := s.fileEntry(r.Context(), project, record)
 		if err != nil {
 			return nil, err
 		}
@@ -958,16 +783,16 @@ func (s warehouse) upload(r *http.Request, project string) ([]map[string]any, er
 }
 
 func (s warehouse) fileAPI(r *http.Request, project, category, name string, suffix []string) (any, int, error) {
-	path, err := s.checkedFile(project, category, name, "file")
-	if err != nil {
-		return nil, 0, err
-	}
-	if !s.regular(path) {
+	record, err := s.fileRecord(project, category, name)
+	if errors.Is(err, fs.ErrNotExist) {
 		status := 400
 		if r.Method == "DELETE" {
 			status = 404
 		}
 		return nil, 0, warehouseFailure(status, "文件不存在")
+	}
+	if err != nil {
+		return nil, 0, err
 	}
 	if len(suffix) == 1 && suffix[0] == "transcode" && r.Method == "POST" {
 		if _, err := s.generateMedia(r.Context(), project, category, name, "web"); err != nil {
@@ -980,30 +805,7 @@ func (s warehouse) fileAPI(r *http.Request, project, category, name string, suff
 	}
 	switch r.Method {
 	case "DELETE":
-		keys := []string{path}
-		if category == "videos" {
-			for _, kind := range []string{"thumb", "web", "preview"} {
-				sidecar, err := s.checkedFile(project, category, name, kind)
-				if err != nil {
-					return nil, 0, err
-				}
-				record, err := s.record(sidecar)
-				if errors.Is(err, fs.ErrNotExist) {
-					continue
-				}
-				if err != nil {
-					return nil, 0, err
-				}
-				if record.GetBool("directory") {
-					return nil, 0, warehouseFailure(400, "非法路径")
-				}
-				keys = append(keys, sidecar)
-			}
-		}
-		if err := s.deleteTree(keys...); err != nil {
-			return nil, 0, err
-		}
-		return map[string]any{"ok": true}, 200, nil
+		return map[string]any{"ok": true}, 200, s.app.Delete(record)
 	case "PUT", "PATCH":
 		data, err := warehouseRequestJSON(r)
 		if err != nil {
@@ -1013,64 +815,22 @@ func (s warehouse) fileAPI(r *http.Request, project, category, name string, suff
 		if err != nil {
 			return nil, 0, err
 		}
-		destination, err := s.checkedFile(project, category, newName, "file")
-		if err != nil {
+		if _, err := warehouseName(newName); err != nil {
 			return nil, 0, err
 		}
 		if newName != name {
-			if _, err := s.record(destination); err == nil {
+			if _, err := s.fileRecord(project, category, newName); err == nil {
 				return nil, 0, warehouseFailure(400, "同名文件已存在")
 			} else if !errors.Is(err, fs.ErrNotExist) {
 				return nil, 0, err
 			}
-			moves := [][2]string{{path, destination}}
-			if category == "videos" {
-				for _, kind := range []string{"thumb", "web", "preview"} {
-					oldSidecar, err := s.checkedFile(project, category, name, kind)
-					if err != nil {
-						return nil, 0, err
-					}
-					newSidecar, err := s.checkedFile(project, category, newName, kind)
-					if err != nil {
-						return nil, 0, err
-					}
-					record, err := s.record(oldSidecar)
-					if errors.Is(err, fs.ErrNotExist) {
-						continue
-					}
-					if err != nil {
-						return nil, 0, err
-					}
-					if record.GetBool("directory") {
-						continue
-					}
-					if _, err := s.record(newSidecar); err == nil {
-						return nil, 0, warehouseFailure(400, "同名文件已存在")
-					} else if !errors.Is(err, fs.ErrNotExist) {
-						return nil, 0, err
-					}
-					moves = append(moves, [2]string{oldSidecar, newSidecar})
-				}
-			}
-			err = s.app.RunInTransaction(func(app core.App) error {
-				tx := warehouse{app: app}
-				for _, move := range moves {
-					record, err := tx.record(move[0])
-					if err != nil {
-						return err
-					}
-					record.Set("path", move[1])
-					if err := app.Save(record); err != nil {
-						return err
-					}
-				}
-				return nil
-			})
+			record.Set("name", newName)
+			err = s.app.Save(record)
 			if err != nil {
 				return nil, 0, err
 			}
 		}
-		entry, err := s.fileEntry(r.Context(), project, category, newName, destination)
+		entry, err := s.fileEntry(r.Context(), project, record)
 		return map[string]any{"ok": true, "file": entry}, 200, err
 	}
 	return nil, 0, warehouseFailure(405, "Method not allowed.")
@@ -1087,21 +847,18 @@ func warehouseCodec(parent context.Context, path string) string {
 }
 
 func (s warehouse) generateMedia(parent context.Context, project, category, name, kind string) (string, error) {
-	source, err := s.checkedFile(project, category, name, "file")
+	field := map[string]string{"thumb": "thumbnail", "web": "web", "preview": "preview"}[kind]
+	if category != "videos" || field == "" {
+		return "", warehouseFailure(400, "非法媒体类型")
+	}
+	record, err := s.fileRecord(project, category, name)
 	if err != nil {
 		return "", err
 	}
-	destination, err := s.checkedFile(project, category, name, kind)
-	if err != nil {
-		return "", err
+	if record.GetString(field) != "" {
+		return field, nil
 	}
-	if s.regular(destination) {
-		return destination, nil
-	}
-	if err := s.ensureDir(path.Dir(destination)); err != nil {
-		return "", err
-	}
-	source, err = s.temporary(source)
+	source, err := s.temporary(record, "content")
 	if err != nil {
 		return "", err
 	}
@@ -1122,7 +879,7 @@ func (s warehouse) generateMedia(parent context.Context, project, category, name
 	switch kind {
 	case "thumb":
 		duration = 30 * time.Second
-		args = append(args, "-ss", "1", "-i", source, "-vframes", "1", "-vf", "scale=480:-2", "-q:v", "4", "-f", "image2", temporary)
+		args = append(args, "-ss", "1", "-i", source, "-vframes", "1", "-vf", "scale=480:-2", "-c:v", "mjpeg", "-q:v", "4", "-f", "image2", temporary)
 	case "web":
 		args = append(args, "-i", source, "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-vf", "scale='min(1280,iw)':-2", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", "-f", "mp4", temporary)
 	case "preview":
@@ -1140,29 +897,27 @@ func (s warehouse) generateMedia(parent context.Context, project, category, name
 	if err != nil || info.Size() == 0 {
 		return "", warehouseFailure(400, "转码失败")
 	}
-	if err := s.saveFile(destination, temporary); err != nil {
+	content, err := filesystem.NewFileFromPath(temporary)
+	if err != nil {
 		return "", err
 	}
-	return destination, nil
+	record.Set(field, content)
+	if err := s.app.Save(record); err != nil {
+		return "", err
+	}
+	return field, nil
 }
 
 func (s warehouse) serveMedia(w http.ResponseWriter, r *http.Request, kind, project, category, name string) {
 	w.Header().Set("Cache-Control", "private, no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	key, err := s.checkedFile(project, category, name, kind)
-	if err != nil {
+	field := map[string]string{"file": "content", "thumb": "thumbnail", "web": "web", "preview": "preview"}[kind]
+	if field == "" || (kind != "file" && category != "videos") {
 		http.NotFound(w, r)
 		return
 	}
-	for parent := path.Dir(key); parent != "."; parent = path.Dir(parent) {
-		directory, err := s.record(parent)
-		if err != nil || !directory.GetBool("directory") {
-			http.NotFound(w, r)
-			return
-		}
-	}
-	record, err := s.record(key)
-	if err != nil || record.GetBool("directory") {
+	record, err := s.fileRecord(project, category, name)
+	if err != nil || record.GetString(field) == "" {
 		http.NotFound(w, r)
 		return
 	}
@@ -1172,12 +927,12 @@ func (s warehouse) serveMedia(w http.ResponseWriter, r *http.Request, kind, proj
 		return
 	}
 	defer storage.Close()
-	size, err := s.size(record)
+	size, err := s.size(record, field)
 	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
-	contentType := mime.TypeByExtension(filepath.Ext(key))
+	contentType := mime.TypeByExtension(filepath.Ext(name))
 	if kind == "thumb" {
 		contentType = "image/jpeg"
 	}
@@ -1196,16 +951,19 @@ func (s warehouse) serveMedia(w http.ResponseWriter, r *http.Request, kind, proj
 		w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": name}))
 	}
 	w.Header().Set("ETag", fmt.Sprintf("\"%x-%x\"", warehouseModified(record).UnixNano(), size))
-	if err := storage.Serve(w, r, record.BaseFilesPath()+"/"+record.GetString("content"), name); err != nil {
+	if err := storage.Serve(w, r, record.BaseFilesPath()+"/"+record.GetString(field), name); err != nil {
 		http.NotFound(w, r)
 	}
 }
 
 func (s warehouse) storage(r *http.Request) (any, int, error) {
-	key := "storage_config.json"
-	config, err := s.readJSON(key)
-	if err != nil {
+	record, err := s.app.FindFirstRecordByFilter("warehouse_settings", "key = 'storage_config'")
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, 0, err
+	}
+	config := map[string]any{}
+	if record != nil {
+		config = warehouseMetadata(record, "value")
 	}
 	allocations, exists := config["allocations"]
 	if !exists {
@@ -1217,35 +975,16 @@ func (s warehouse) storage(r *http.Request) (any, int, error) {
 		for _, category := range warehouseCategories {
 			usage[category] = 0
 		}
-		entries, err := s.children("projects")
+		entries, err := s.app.FindRecordsByFilter("warehouse_files", "", "", 0, 0)
 		if err != nil {
 			return nil, 0, err
 		}
-		for _, entry := range entries {
-			project := path.Base(entry.GetString("path"))
-			if !entry.GetBool("directory") || strings.HasPrefix(project, ".") {
-				continue
+		for _, file := range entries {
+			size, err := s.size(file, "content")
+			if err != nil {
+				return nil, 0, err
 			}
-			for _, category := range warehouseCategories {
-				dir, err := s.path(project, category)
-				if err != nil {
-					return nil, 0, err
-				}
-				files, err := s.children(dir)
-				if err != nil {
-					return nil, 0, err
-				}
-				for _, file := range files {
-					if file.GetBool("directory") {
-						continue
-					}
-					size, err := s.size(file)
-					if err != nil {
-						return nil, 0, err
-					}
-					usage[category] += size
-				}
-			}
+			usage[file.GetString("category")] += size
 		}
 		return map[string]any{"ok": true, "disks": warehouseDisks(), "categories": usage, "allocations": allocations}, 200, nil
 	case "PUT", "PATCH":
@@ -1257,7 +996,16 @@ func (s warehouse) storage(r *http.Request) (any, int, error) {
 			allocations = value
 		}
 		config["allocations"] = allocations
-		if err := s.saveJSON(key, config); err != nil {
+		if record == nil {
+			collection, err := s.app.FindCollectionByNameOrId("warehouse_settings")
+			if err != nil {
+				return nil, 0, err
+			}
+			record = core.NewRecord(collection)
+			record.Set("key", "storage_config")
+		}
+		record.Set("value", config)
+		if err := s.app.Save(record); err != nil {
 			return nil, 0, err
 		}
 		return map[string]any{"ok": true, "allocations": allocations}, 200, nil

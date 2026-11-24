@@ -7,22 +7,29 @@ import (
 
 func init() {
 	migrations.Register(func(app core.App) error {
-		collection := core.NewBaseCollection("warehouse_items")
-		collection.Fields.Add(&core.TextField{Name: "path", Required: true, Max: 4096})
-		collection.Fields.Add(&core.BoolField{Name: "directory"})
-		collection.Fields.Add(&core.TextField{Name: "mode", Required: true, Max: 32})
-		collection.Fields.Add(&core.TextField{Name: "modified", Required: true, Max: 32})
-		collection.Fields.Add(&core.TextField{Name: "created", Max: 32})
-		collection.Fields.Add(&core.TextField{Name: "digest", Max: 64})
-		collection.Fields.Add(&core.FileField{Name: "content", MaxSelect: 1, MaxSize: 1<<53 - 1, Protected: true})
-		collection.Indexes = append(collection.Indexes, "CREATE UNIQUE INDEX idx_warehouse_items_path ON warehouse_items (path)")
-		if err := app.Save(collection); err != nil {
+		projects := core.NewBaseCollection("warehouse_projects")
+		projects.Fields.Add(&core.TextField{Name: "name", Required: true, Max: 255})
+		projects.Fields.Add(&core.JSONField{Name: "metadata"})
+		projects.Indexes = append(projects.Indexes, "CREATE UNIQUE INDEX idx_warehouse_projects_name ON warehouse_projects (name)")
+		if err := app.Save(projects); err != nil {
 			return err
 		}
-		imports := core.NewBaseCollection("warehouse_imports")
-		imports.Fields.Add(&core.TextField{Name: "version", Required: true, Max: 16})
-		imports.Fields.Add(&core.TextField{Name: "manifest", Required: true, Max: 64})
-		imports.Indexes = append(imports.Indexes, "CREATE UNIQUE INDEX idx_warehouse_imports_version ON warehouse_imports (version)")
-		return app.Save(imports)
+		files := core.NewBaseCollection("warehouse_files")
+		files.Fields.Add(&core.RelationField{Name: "project", CollectionId: projects.Id, Required: true, MaxSelect: 1, CascadeDelete: true})
+		files.Fields.Add(&core.TextField{Name: "category", Required: true, Max: 255})
+		files.Fields.Add(&core.TextField{Name: "name", Required: true, Max: 255})
+		for _, name := range []string{"content", "thumbnail", "web", "preview"} {
+			files.Fields.Add(&core.FileField{Name: name, MaxSelect: 1, MaxSize: 1<<53 - 1, Protected: true, Required: name == "content"})
+		}
+		files.Fields.Add(&core.JSONField{Name: "metadata"})
+		files.Indexes = append(files.Indexes, "CREATE UNIQUE INDEX idx_warehouse_files_identity ON warehouse_files (project, category, name)")
+		if err := app.Save(files); err != nil {
+			return err
+		}
+		settings := core.NewBaseCollection("warehouse_settings")
+		settings.Fields.Add(&core.TextField{Name: "key", Required: true, Max: 255})
+		settings.Fields.Add(&core.JSONField{Name: "value"})
+		settings.Indexes = append(settings.Indexes, "CREATE UNIQUE INDEX idx_warehouse_settings_key ON warehouse_settings (key)")
+		return app.Save(settings)
 	}, nil)
 }

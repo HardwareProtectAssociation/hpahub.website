@@ -3,7 +3,6 @@ package main
 import (
 	"database/sql"
 	"errors"
-	"flag"
 	"fmt"
 	"net/url"
 	"path/filepath"
@@ -21,25 +20,6 @@ func maintenanceCommand(args []string) (handled bool, err error) {
 		}
 		if err := maintenanceValidateRestore(args[1], args[2]); err != nil {
 			return true, fmt.Errorf("备份验证失败：%w", err)
-		}
-		return true, nil
-	case "hpa-legacy-snapshot":
-		flags := flag.NewFlagSet(args[0], flag.ContinueOnError)
-		gpu := flags.String("gpu-db", "", "legacy GPU SQLite database")
-		warehouse := flags.String("warehouse-root", "", "legacy warehouse directory")
-		auth := flags.String("auth-db", "", "legacy account SQLite database")
-		output := flags.String("output", "", "new private snapshot directory (must not exist)")
-		if err := flags.Parse(args[1:]); err != nil {
-			if errors.Is(err, flag.ErrHelp) {
-				return true, nil
-			}
-			return true, err
-		}
-		if flags.NArg() != 0 || *gpu == "" || *warehouse == "" || *auth == "" || *output == "" {
-			return true, errors.New("hpa-legacy-snapshot requires --gpu-db, --warehouse-root, --auth-db and --output")
-		}
-		if err := maintenanceSnapshot(*gpu, *warehouse, *auth, *output); err != nil {
-			return true, fmt.Errorf("snapshot failed: %w", err)
 		}
 		return true, nil
 	default:

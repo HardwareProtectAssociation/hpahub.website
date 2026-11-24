@@ -3,6 +3,7 @@ package main
 import (
 	"archive/zip"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"os"
@@ -68,7 +69,7 @@ func TestWarehouseImportBackupRestore(t *testing.T) {
 	}
 	defer app.Cleanup()
 	source := t.TempDir()
-	for _, dir := range []string{"projects/empty", "projects/demo/videos/.thumbs", "projects/demo/docs"} {
+	for _, dir := range []string{"projects/empty", "projects/demo/videos/.thumbs", "projects/demo/videos/.web", "projects/demo/videos/.preview", "projects/demo/docs"} {
 		if err := os.MkdirAll(filepath.Join(source, filepath.FromSlash(dir)), 0755); err != nil {
 			t.Fatal(err)
 		}
@@ -77,7 +78,9 @@ func TestWarehouseImportBackupRestore(t *testing.T) {
 		"storage_config.json":                        `{"allocations":{"docs":12}}`,
 		"projects/demo/.meta.json":                   `{"display_name":"demo","extra":true}`,
 		"projects/demo/videos/movie.mp4":             "video-data",
-		"projects/demo/videos/.thumbs/movie.mp4.jpg": "preview-data",
+		"projects/demo/videos/.thumbs/movie.mp4.jpg": "thumbnail-data",
+		"projects/demo/videos/.web/movie.mp4":        "web-data",
+		"projects/demo/videos/.preview/movie.mp4":    "preview-data",
 		"projects/demo/docs/empty.txt":               "",
 	}
 	for name, content := range files {
@@ -107,12 +110,59 @@ func TestWarehouseImportBackupRestore(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer storage.Close()
-	for name, expected := range files {
-		record, err := restored.FindFirstRecordByFilter("warehouse_items", "path = {:path}", dbx.Params{"path": name})
-		if err != nil {
-			t.Fatal(err)
+	project, err := restored.FindFirstRecordByFilter("warehouse_projects", "name = 'demo'")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metadata map[string]any
+	encoded, err := json.Marshal(project.Get("metadata"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(encoded, &metadata); err != nil || metadata["display_name"] != "demo" || metadata["extra"] != true {
+		t.Fatalf("restored metadata: %s (%v)", encoded, err)
+	}
+	if _, err := restored.FindFirstRecordByFilter("warehouse_projects", "name = 'empty'"); err == nil {
+		t.Fatal("empty legacy directory became a project")
+	}
+	settings, err := restored.FindFirstRecordByFilter("warehouse_settings", "key = 'storage_config'")
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err = json.Marshal(settings.Get("value"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var value struct {
+		Allocations map[string]int `json:"allocations"`
+	}
+	if err := json.Unmarshal(encoded, &value); err != nil || value.Allocations["docs"] != 12 {
+		t.Fatalf("restored settings: %s (%v)", encoded, err)
+	}
+	video, err := restored.FindFirstRecordByFilter("warehouse_files", "project = {:project} && category = 'videos' && name = 'movie.mp4'", dbx.Params{"project": project.Id})
+	if err != nil {
+		t.Fatal(err)
+	}
+	document, err := restored.FindFirstRecordByFilter("warehouse_files", "project = {:project} && category = 'docs' && name = 'empty.txt'", dbx.Params{"project": project.Id})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range []struct {
+		record   *core.Record
+		field    string
+		expected string
+	}{
+		{video, "content", "video-data"},
+		{video, "thumbnail", "thumbnail-data"},
+		{video, "web", "web-data"},
+		{video, "preview", "preview-data"},
+		{document, "content", ""},
+	} {
+		name := item.record.GetString(item.field)
+		if name == "" {
+			t.Fatalf("missing restored %s", item.field)
 		}
-		reader, err := storage.GetReader(record.BaseFilesPath() + "/" + record.GetString("content"))
+		reader, err := storage.GetReader(item.record.BaseFilesPath() + "/" + name)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -121,12 +171,9 @@ func TestWarehouseImportBackupRestore(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if string(data) != expected {
-			t.Fatalf("restored %s: %q", name, data)
+		if string(data) != item.expected {
+			t.Fatalf("restored %s: %q", item.field, data)
 		}
-	}
-	if _, err := restored.FindFirstRecordByFilter("warehouse_items", "path = {:path} && directory = true", dbx.Params{"path": "projects/empty"}); err != nil {
-		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(source, "projects", "demo", "docs", "empty.txt"), []byte("changed"), 0644); err != nil {
 		t.Fatal(err)
@@ -155,7 +202,7 @@ func TestWarehouseImportRejectsSymlinksAndCanRetry(t *testing.T) {
 	if err := importWarehouse(app, source); err == nil {
 		t.Fatal("symlink accepted")
 	}
-	if _, err := app.FindFirstRecordByFilter("warehouse_imports", "version = '1'"); err == nil {
+	if _, err := app.FindFirstRecordByFilter("warehouse_settings", "key = '__import_manifest'"); err == nil {
 		t.Fatal("failed import marked complete")
 	}
 	if err := os.Remove(link); err != nil {
@@ -164,7 +211,7 @@ func TestWarehouseImportRejectsSymlinksAndCanRetry(t *testing.T) {
 	if err := importWarehouse(app, source); err != nil {
 		t.Fatalf("retry: %v", err)
 	}
-	if _, err := app.FindFirstRecordByFilter("warehouse_imports", "version = '1'"); err != nil {
+	if _, err := app.FindFirstRecordByFilter("warehouse_settings", "key = '__import_manifest'"); err != nil {
 		t.Fatalf("completion marker: %v", err)
 	}
 	if data, err := os.ReadFile(target); err != nil || string(data) != "secret" {
@@ -179,15 +226,12 @@ func TestWarehouseImportRetriesAfterWriteFailure(t *testing.T) {
 	}
 	defer app.Cleanup()
 	source := t.TempDir()
-	if err := os.WriteFile(filepath.Join(source, "a"), []byte("first"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(source, "b"), []byte("second"), 0600); err != nil {
-		t.Fatal(err)
+	for name, content := range map[string]string{"a.txt": "first", "b.txt": "second"} {
+		warehouseTestFile(t, source, "demo", "docs", name, []byte(content))
 	}
 	fail := true
-	app.OnRecordCreate("warehouse_items").BindFunc(func(e *core.RecordEvent) error {
-		if fail && e.Record.GetString("path") == "b" {
+	app.OnRecordCreate("warehouse_files").BindFunc(func(e *core.RecordEvent) error {
+		if fail && e.Record.GetString("name") == "b.txt" {
 			return errors.New("injected write failure")
 		}
 		return e.Next()
@@ -195,14 +239,14 @@ func TestWarehouseImportRetriesAfterWriteFailure(t *testing.T) {
 	if err := importWarehouse(app, source); err == nil {
 		t.Fatal("write failure ignored")
 	}
-	if _, err := app.FindFirstRecordByFilter("warehouse_imports", "version = '1'"); err == nil {
+	if _, err := app.FindFirstRecordByFilter("warehouse_settings", "key = '__import_manifest'"); err == nil {
 		t.Fatal("failed import marked complete")
 	}
 	fail = false
 	if err := importWarehouse(app, source); err != nil {
 		t.Fatalf("retry: %v", err)
 	}
-	if _, err := app.FindFirstRecordByFilter("warehouse_imports", "version = '1'"); err != nil {
+	if _, err := app.FindFirstRecordByFilter("warehouse_settings", "key = '__import_manifest'"); err != nil {
 		t.Fatal(err)
 	}
 }

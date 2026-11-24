@@ -152,7 +152,7 @@ func TestWarehouseCRUDAndStorageCompatibility(t *testing.T) {
 	if storage["allocations"].(map[string]any)["/"] != float64(1073741824) {
 		t.Fatal(storage)
 	}
-	if _, err := warehouseTestApp.FindFirstRecordByFilter("warehouse_items", "path = 'storage_config.json'"); err != nil {
+	if _, err := warehouseTestApp.FindFirstRecordByFilter("warehouse_settings", "key = 'storage_config'"); err != nil {
 		t.Fatal(err)
 	}
 	_, storage = warehouseTestRequest(t, "GET", "/api/storage", nil, nil, 200)
@@ -179,6 +179,168 @@ func TestWarehouseCRUDAndStorageCompatibility(t *testing.T) {
 	warehouseTestRequest(t, "GET", "/api/projects/新项目", nil, nil, 404)
 }
 
+func TestWarehouseSharedSchema(t *testing.T) {
+	warehouseTestSetup(t)
+	for _, name := range []string{"warehouse_projects", "warehouse_files", "warehouse_settings"} {
+		collection, err := warehouseTestApp.FindCollectionByNameOrId(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if collection.ListRule != nil || collection.ViewRule != nil || collection.CreateRule != nil || collection.UpdateRule != nil || collection.DeleteRule != nil {
+			t.Fatalf("%s permits native records API", name)
+		}
+	}
+	collection, err := warehouseTestApp.FindCollectionByNameOrId("warehouse_files")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"content", "thumbnail", "web", "preview"} {
+		field, ok := collection.Fields.GetByName(name).(*core.FileField)
+		if !ok || !field.Protected {
+			t.Fatalf("warehouse_files.%s is not protected", name)
+		}
+	}
+	warehouseTestJSON(t, "POST", "/api/projects", map[string]any{"name": "one"}, 201)
+	warehouseTestUpload(t, "one", []string{"same.txt"}, nil, [][]byte{[]byte("one")}, 201)
+	warehouseTestJSON(t, "PUT", "/api/storage", map[string]any{"allocations": map[string]any{"/": 1}}, 200)
+	for _, test := range []struct {
+		collection string
+		filter     string
+		fields     []string
+	}{
+		{"warehouse_projects", "name = 'one'", []string{"name"}},
+		{"warehouse_files", "name = 'same.txt'", []string{"project", "category", "name"}},
+		{"warehouse_settings", "key = 'storage_config'", []string{"key"}},
+	} {
+		existing, err := warehouseTestApp.FindFirstRecordByFilter(test.collection, test.filter)
+		if err != nil {
+			t.Fatal(err)
+		}
+		duplicate := core.NewRecord(existing.Collection())
+		for _, field := range test.fields {
+			duplicate.Set(field, existing.Get(field))
+		}
+		if test.collection == "warehouse_files" {
+			duplicate.Set("content", existing.Get("content"))
+		}
+		if err := warehouseTestApp.Save(duplicate); err == nil {
+			t.Fatalf("%s accepted duplicate key", test.collection)
+		}
+	}
+}
+
+func TestWarehouseRoutePermissions(t *testing.T) {
+	warehouseTestSetup(t)
+	warehouseTestJSON(t, "POST", "/api/projects", map[string]any{"name": "private"}, 201)
+	warehouseTestUpload(t, "private", []string{"secret.txt"}, nil, [][]byte{[]byte("secret")}, 201)
+	router, err := apis.NewRouter(warehouseTestApp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bindWarehouseRoutes(&core.ServeEvent{App: warehouseTestApp, Router: router})
+	mux, err := router.BuildMux()
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := func(collectionName, role string) string {
+		t.Helper()
+		collection, err := warehouseTestApp.FindCollectionByNameOrId(collectionName)
+		if err != nil {
+			t.Fatal(err)
+		}
+		record := core.NewRecord(collection)
+		record.SetEmail(role + "@warehouse.example")
+		record.SetPassword("valid-password-123")
+		if collectionName == "users" {
+			record.Set("role", role)
+		}
+		if err := warehouseTestApp.Save(record); err != nil {
+			t.Fatal(err)
+		}
+		value, err := record.NewAuthToken()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return value
+	}
+	user := token("users", "user")
+	member := token("users", "member")
+	admin := token("users", "admin")
+	superuser := token(core.CollectionNameSuperusers, "octopus")
+	request := func(method, path, auth, body string, cookie *http.Cookie) *httptest.ResponseRecorder {
+		t.Helper()
+		req := httptest.NewRequest(method, path, strings.NewReader(body))
+		if auth != "" {
+			req.Header.Set("Authorization", "Bearer "+auth)
+		}
+		if body != "" {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		if cookie != nil {
+			req.AddCookie(cookie)
+		}
+		res := httptest.NewRecorder()
+		mux.ServeHTTP(res, req)
+		return res
+	}
+	want := func(res *httptest.ResponseRecorder, status int) {
+		t.Helper()
+		if res.Code != status {
+			t.Fatalf("status = %d, want %d: %s", res.Code, status, res.Body.String())
+		}
+	}
+	const base = "/api/hpahub/warehouse"
+	for _, path := range []string{"/projects", "/storage"} {
+		want(request("GET", base+path, "", "", nil), http.StatusUnauthorized)
+		want(request("GET", base+path, user, "", nil), http.StatusForbidden)
+		want(request("GET", base+path, member, "", nil), http.StatusOK)
+	}
+	want(request("GET", base+"/media/file/private/docs/secret.txt", member, "", nil), http.StatusUnauthorized)
+	for _, auth := range []string{user, member, admin} {
+		want(request("PUT", base+"/storage", auth, `{"allocations":{}}`, nil), http.StatusForbidden)
+	}
+	want(request("PUT", base+"/storage", superuser, `{"allocations":{}}`, nil), http.StatusOK)
+	want(request("POST", base+"/media-session", "", "", nil), http.StatusUnauthorized)
+	want(request("POST", base+"/media-session", user, "", nil), http.StatusForbidden)
+	session := request("POST", base+"/media-session", member, "", nil)
+	want(session, http.StatusNoContent)
+	var mediaCookie *http.Cookie
+	for _, cookie := range session.Result().Cookies() {
+		if cookie.Name == "hpa_warehouse_media" {
+			mediaCookie = cookie
+		}
+	}
+	if mediaCookie == nil || !mediaCookie.HttpOnly {
+		t.Fatal("missing protected media session cookie")
+	}
+	media := request("GET", base+"/media/file/private/docs/secret.txt", "", "", mediaCookie)
+	want(media, http.StatusOK)
+	if media.Body.String() != "secret" {
+		t.Fatalf("media content: %q", media.Body.String())
+	}
+	tampered := *mediaCookie
+	tampered.Value += "invalid"
+	want(request("GET", base+"/media/file/private/docs/secret.txt", "", "", &tampered), http.StatusUnauthorized)
+	for _, name := range []string{"warehouse_projects", "warehouse_files", "warehouse_settings"} {
+		for _, auth := range []string{"", user, member, admin} {
+			res := request("GET", "/api/collections/"+name+"/records", auth, "", nil)
+			if res.Code < 400 {
+				t.Fatalf("native records API exposed %s: %d", name, res.Code)
+			}
+		}
+	}
+	record, err := warehouseTestApp.FindFirstRecordByFilter("warehouse_files", "name = 'secret.txt'")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, auth := range []string{"", user, member, admin} {
+		res := request("GET", "/api/files/warehouse_files/"+record.Id+"/"+record.GetString("content"), auth, "", nil)
+		if res.Code < 400 {
+			t.Fatalf("native file API exposed media: %d", res.Code)
+		}
+	}
+}
+
 func TestWarehouseMediaIsolationRangeAndHEAD(t *testing.T) {
 	root := t.TempDir()
 	warehouseTestSetup(t)
@@ -201,6 +363,10 @@ func TestWarehouseMediaIsolationRangeAndHEAD(t *testing.T) {
 	w, _ := warehouseTestRequest(t, "GET", path, nil, nil, 200)
 	if w.Body.String() != "first" || w.Header().Get("Cache-Control") != "private, no-store" || w.Header().Get("X-Content-Type-Options") != "nosniff" {
 		t.Fatalf("media headers/body: %v %q", w.Header(), w.Body.String())
+	}
+	other, _ := warehouseTestRequest(t, "GET", "/api/hpahub/media/file/two/docs/same.html", nil, nil, 200)
+	if other.Body.String() != "second" {
+		t.Fatalf("other project media: %q", other.Body.String())
 	}
 	disposition, params, err := mime.ParseMediaType(w.Header().Get("Content-Disposition"))
 	if err != nil || disposition != "attachment" || params["filename"] != "same.html" {

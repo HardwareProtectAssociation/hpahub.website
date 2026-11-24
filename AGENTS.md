@@ -17,7 +17,7 @@
 - 安装 Docker、Docker Compose 2.24.4 或更新版本。
 - 在仓库根目录运行 `sh scripts/local-up.sh` 构建并启动隔离的本地测试环境，默认访问 `http://localhost:18764`。新建测试数据库的账号为 `admin`，密码为 `admin123`；已有数据库不会重置管理员。
 - 需要时运行 `sh scripts/local-restore.sh /path/backup.zip` 导入备份；确认后运行 `sh scripts/local-reset.sh` 清除本地测试数据。恢复和清除前确认目标和数据影响。
-- 根据改动运行适当检查，例如 `cd backend && go test ./...`、`cd frontend && npm ci && npm run build`。Go 测试覆盖备份验证、迁移快照与仓库文件安全。界面改动还要在浏览器检查实际页面。
+- 根据改动运行适当检查，例如 `cd backend && go test ./...`、`cd frontend && npm ci && npm run build`。Go 测试覆盖备份验证、数据导入与仓库文件安全。界面改动还要在浏览器检查实际页面。
 - 生产部署仅使用经过合并和验证的 `main`：在部署环境检出目标 `main` 版本后，按照 `README.md` 执行 `docker compose up -d --build`。先备份并确认恢复方案；不使用本地测试脚本部署生产。
 
 ## Windows：测试与部署

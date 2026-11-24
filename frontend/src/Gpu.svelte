@@ -26,7 +26,7 @@
   const labels = {gpu:'显卡',cpu:'CPU',device:'设备'};
   const tabs = [['all','全部'],['gpu-amd','AMD显卡'],['cpu-amd','AMD CPU'],['gpu-intel','英特尔显卡'],['cpu-intel','英特尔 CPU'],['gpu-nvidia','英伟达显卡'],['device','设备']];
   async function request(path, method = 'GET', body) {
-    const res = await fetch('/api/hpahub/gpu' + path, {method, headers:{...(token ? {Authorization:`Bearer ${token}`} : {}), ...(body !== undefined ? {'Content-Type':'application/json'} : {})}, ...(body !== undefined ? {body:JSON.stringify(body)} : {})});
+    const res = await fetch('/api/hpahub/hardware' + path, {method, headers:{...(token ? {Authorization:`Bearer ${token}`} : {}), ...(body !== undefined ? {'Content-Type':'application/json'} : {})}, ...(body !== undefined ? {body:JSON.stringify(body)} : {})});
     const text = await res.text(); let data;
     try { data = text ? JSON.parse(text) : null; } catch { data = text; }
     if (!res.ok) throw new Error(data?.error || data?.message || `请求失败（${res.status}）`);
@@ -34,7 +34,7 @@
   }
   async function load() {
     loading = true; error = '';
-    try { [stats,gpus,items,gameOptions] = await Promise.all([request('/stats'),request('/gpus'),request('/items'),request('/options/games')]); }
+    try { const [records,options] = await Promise.all([request('/records'),request('/options/games')]); gameOptions = options; gpus = records.filter(r => r.kind === 'gpu').map(r => ({...r.data.fields,...r,model:r.data.fields?.model || r.name})); items = records.filter(r => r.kind !== 'gpu').map(r => ({...r,fields:r.data.fields})); stats = {games:records.reduce((n,r) => n + (r.data.rows?.games?.length || 0),0)}; }
     catch (e) { error = e.message; } finally { loading = false; }
   }
   onMount(load);
@@ -48,30 +48,35 @@
   $: all = [...gpus.map(data => ({type:'gpu',data})), ...items.map(data => ({type:data.kind,data}))];
   $: shown = all.filter(({type,data}) => (filter === 'all' || filter === type || filter === `${type}-${vendor(type,data)}`) && JSON.stringify(data).toLowerCase().includes(search.trim().toLowerCase()));
   function blank(k) {
-    if (k === 'gpu') return {gpu:{},cooling:{},mark3d:{},blender:{},sw:{},productivity:[],games:[],encoding:[],decoding:[],custom:{basic:{hidden:[],extra:[]},cooling:{hidden:[],extra:[]},mark3d:{hidden:[],extra:[]}}};
-    return {kind:k,name:'',brand:'',subtitle:'',fields:{},rows:Object.fromEntries(schemas[k].rows.map(([key]) => [key,[]]))};
+    return normalize({kind:k,name:'',brand:'',subtitle:'',sort_order:0,data:{fields:{},sections:{},rows:{},custom:{}}},k);
   }
-  function normalize(d,k) {
+  function normalize(record,k) {
+    const data = record.data || {};
+    const d = {...record,fields:data.fields || {},rows:data.rows || {}};
     if (k === 'gpu') {
-      for (const [key] of gpuGroups) d[key === 'basic' ? 'gpu' : key] ||= {};
-      d.custom ||= {}; for (const key of ['basic','cooling','mark3d']) { d.custom[key] ||= {}; d.custom[key].hidden ||= []; d.custom[key].extra ||= []; }
-      for (const [key] of gpuRows) d[key] ||= [];
-    } else { d.fields ||= {}; d.rows ||= {}; for (const [key] of schemas[k].rows) d.rows[key] ||= []; }
+      d.gpu = d.fields;
+      for (const [key] of gpuGroups) if (key !== 'basic') d[key] = data.sections?.[key] || {};
+      d.custom = data.custom || {}; for (const key of ['basic','cooling','mark3d']) { d.custom[key] ||= {}; d.custom[key].hidden ||= []; d.custom[key].extra ||= []; }
+      for (const [key] of gpuRows) d[key] = d.rows[key] || [];
+    } else { for (const [key] of schemas[k].rows) d.rows[key] ||= []; }
     return d;
   }
   async function open(k, recordId, edit = false) {
     kind = k; id = recordId; editing = edit; error = ''; notice = ''; loading = true; gameFilter = resolutionFilter = qualityFilter = ''; media = [];
     try {
-      detail = normalize(recordId ? await request(`/${k === 'gpu' ? 'gpus' : 'items'}/${recordId}`) : blank(k), k);
+      detail = recordId ? normalize(await request(`/records/${recordId}`),k) : blank(k);
       view = 'detail';
-      if (k === 'gpu' && recordId && canEdit) media = (await request(`/related-media?gpu_id=${recordId}`)).media || [];
+      if (recordId && canEdit) media = (await request(`/records/${recordId}/media`)).paths || [];
     } catch (e) { error = e.message; } finally { loading = false; }
   }
   async function save() {
     if (!canEdit || busy) return; busy = true; error = ''; notice = '';
     try {
       if (kind !== 'gpu') { const sc = schemas[kind]; detail.name = detail.fields[sc.name] || ''; detail.brand = detail.fields.brand || ''; detail.subtitle = sc.subtitle.map(k => detail.fields[k]).filter(Boolean).join(' · '); }
-      const result = await request(`/${kind === 'gpu' ? 'gpus' : 'items'}${id ? '/'+id : ''}`, id ? 'PUT' : 'POST', detail);
+      else { detail.name = detail.gpu.model || ''; detail.brand = detail.gpu.brand || ''; }
+      const data = {...detail.data,fields:detail.fields,rows:kind === 'gpu' ? {...detail.rows,...Object.fromEntries(gpuRows.map(([key]) => [key,detail[key]]))} : detail.rows};
+      if (kind === 'gpu') { data.sections = {...data.sections,...Object.fromEntries(gpuGroups.filter(([key]) => key !== 'basic').map(([key]) => [key,detail[key]]))}; data.custom = detail.custom; }
+      const result = await request(`/records${id ? '/'+id : ''}`, id ? 'PUT' : 'POST', {kind,name:detail.name,brand:detail.brand,subtitle:detail.subtitle,sort_order:detail.sort_order,data});
       id = result.id || id; notice = '已保存';
     } catch (e) { error = e.message; } finally { busy = false; }
   }
@@ -80,7 +85,7 @@
     if (actionName === 'delete' && !confirm('确定删除此记录？此操作无法撤销。')) return;
     busy = true; error = '';
     try {
-      const path = `/${kind === 'gpu' ? 'gpus' : 'items'}/${id}`;
+      const path = `/records/${id}`;
       if (actionName === 'delete') { await request(path,'DELETE'); view = 'list'; await load(); }
       else { const result = await request(path + '/copy','POST'); await open(kind,result.id); }
     } catch (e) { error = e.message; } finally { busy = false; }
@@ -96,14 +101,14 @@
   function addCustom(key) { const label = prompt('项目名称'); if (label?.trim()) { detail.custom[key].extra = [...detail.custom[key].extra,{key:'c_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),label:label.trim(),value:''}]; detail = detail; } }
   function hideField(group,key) { detail[group === 'basic' ? 'gpu' : group][key] = ''; detail.custom[group].hidden = [...detail.custom[group].hidden,key]; detail = detail; }
   async function addGame() { if (!newGame.trim()) return; try { await request('/options/games','POST',{value:newGame.trim()}); gameOptions = await request('/options/games'); newGame = ''; notice = '游戏选项已添加'; } catch (e) { error = e.message; } }
-  async function changeMedia(actionName,path) { if (!path.trim() || !id) return; try { media = (await request(`/related-media?gpu_id=${id}`,'POST',{action:actionName,path:path.trim()})).media; mediaPath = ''; } catch (e) { error = e.message; } }
-  function mediaUrl(path) { try { const url = new URL(path, location.origin); return ['http:','https:'].includes(url.protocol) ? url.href : ''; } catch { return ''; } }
+  async function changeMedia(actionName,path) { if (!id || (actionName === 'add' && !path.trim())) return; try { const paths = actionName === 'add' ? (media.includes(path.trim()) ? media : [...media,path.trim()]) : media.filter(p => p !== path); media = (await request(`/records/${id}/media`,'PUT',{paths})).paths; mediaPath = ''; } catch (e) { error = e.message; } }
+  function mediaUrl(path) { if (typeof path !== 'string') return ''; try { const url = new URL(path, location.origin); return ['http:','https:'].includes(url.protocol) ? url.href : ''; } catch { return ''; } }
   const unique = values => [...new Set(values.map(v => String(v ?? '')))];
   $: gameRows = detail ? (kind === 'gpu' ? detail.games : detail.rows?.games) || [] : [];
   $: resolutions = unique(gameRows.filter(r => !gameFilter || r.game === gameFilter).map(r => r.resolution));
   $: qualities = unique(gameRows.filter(r => (!gameFilter || r.game === gameFilter) && (!resolutionFilter || r.resolution === resolutionFilter)).map(r => r.quality));
   $: filteredGames = gameRows.filter(r => (!gameFilter || r.game === gameFilter) && (!resolutionFilter || r.resolution === resolutionFilter) && (!qualityFilter || r.quality === qualityFilter));
-  async function compare() { if (selected.length < 2) { error = '至少选择两张显卡'; return; } loading = true; error = ''; try { compareDetails = await Promise.all(selected.map(i => request(`/gpus/${i}`))); view = 'compare'; } catch (e) { error = e.message; } finally { loading = false; } }
+  async function compare() { if (selected.length < 2) { error = '至少选择两张显卡'; return; } loading = true; error = ''; try { compareDetails = (await Promise.all(selected.map(i => request(`/records/${i}`)))).map(d => normalize(d,'gpu')); view = 'compare'; } catch (e) { error = e.message; } finally { loading = false; } }
   $: compareGames = unique(compareDetails.flatMap(d => (d.games || []).map(r => r.game))).filter(Boolean);
   $: compareResolutions = unique(compareDetails.flatMap(d => (d.games || []).filter(r => r.game === compareGame).map(r => r.resolution)));
   function numeric(v) { const m = String(v ?? '').match(/\d+(?:\.\d+)?/g); return !m ? null : m.length > 1 && /[-~～]/.test(v) ? (Number(m[0])+Number(m[1]))/2 : Number(m[0]); }
@@ -149,7 +154,7 @@
       </section>
     {/each}
     {#if editing}<section class="panel"><h3>游戏选项</h3><div class="toolbar"><label>新游戏名称<input bind:value={newGame} /></label><button on:click={addGame}>添加游戏选项</button></div></section>{/if}
-    {#if kind === 'gpu' && id && canEdit}<section class="panel"><h3>相关媒体</h3>{#if media.length}<ul>{#each media as path}<li>{#if mediaUrl(path)}<a href={mediaUrl(path)} target="_blank" rel="noopener noreferrer">{path}</a>{:else}{path}{/if}<button class="small" on:click={() => changeMedia('remove',path)}>移除</button></li>{/each}</ul>{:else}<p class="empty">暂无相关媒体</p>{/if}<div class="toolbar"><label>媒体路径或链接<input bind:value={mediaPath} /></label><button on:click={() => changeMedia('add',mediaPath)}>添加媒体</button></div></section>{/if}
+    {#if id && canEdit}<section class="panel"><h3>相关媒体</h3>{#if media.length}<ul>{#each media as path}<li>{#if mediaUrl(path)}<a href={mediaUrl(path)} target="_blank" rel="noopener noreferrer">{path}</a>{:else}{typeof path === 'string' ? path : JSON.stringify(path)}{/if}<button class="small" on:click={() => changeMedia('remove',path)}>移除</button></li>{/each}</ul>{:else}<p class="empty">暂无相关媒体</p>{/if}<div class="toolbar"><label>媒体路径或链接<input bind:value={mediaPath} /></label><button on:click={() => changeMedia('add',mediaPath)}>添加媒体</button></div></section>{/if}
     {#if editing}<button class="primary" disabled={busy} on:click={save}>保存所有更改</button>{/if}
   {/if}
   {#each Object.entries(suggestions) as [key,values]}<datalist id={'gpu-option-'+key}>{#each key === 'game' ? unique([...values,...gameOptions]) : values as value}<option {value}></option>{/each}</datalist>{/each}

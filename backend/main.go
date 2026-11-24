@@ -82,14 +82,12 @@ func main() {
 	app.OnBackupRestore().BindFunc(lockBackup)
 
 	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
-		if err := checkLegacyDataImported(app, "/legacy/gpu", "/legacy/warehouse"); err != nil {
-			return err
-		}
 		if err := initInvitations(app); err != nil {
 			return err
 		}
 		bindInvitationRoutes(e)
-		bindLegacyProxyRoutes(e)
+		bindHardwareRoutes(e)
+		bindWarehouseRoutes(e)
 		bindPublicRoutes(e)
 		_, err := app.DB().NewQuery(`CREATE TABLE IF NOT EXISTS hpahub_backup_policy (
 			id INTEGER PRIMARY KEY CHECK (id = 1), interval_hours INTEGER NOT NULL,

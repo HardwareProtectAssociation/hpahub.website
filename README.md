@@ -14,23 +14,23 @@ docker compose up -d --build --remove-orphans
 
 访问 `http://localhost:18763`。设置 `PORT` 环境变量可更改宿主机端口。PocketBase 数据保存在 Docker 卷 `pb_data` 中，更新容器不会清除数据。
 
-显卡数据、仓库项目与文件由 PocketBase 管理，保存在 `pb_data`；默认本地文件存储会随 PocketBase 备份一起保存。视频缩略图和预览依赖容器内的 FFmpeg、ffprobe。旧 `gpu_data`、`warehouse_data` 卷仅以只读方式挂载用于迁移，不会自动删除。
+显卡数据、仓库项目与文件由 PocketBase 管理，保存在 `pb_data`；默认本地文件存储会随 PocketBase 备份一起保存。视频缩略图和预览依赖容器内的 FFmpeg、ffprobe。运行时 Compose 只挂载 `pb_data`，不挂载历史卷，也不执行启动兼容检查。
 
 ## 从旧版本迁移
 
-先备份三个数据卷并验证恢复。停止所有旧服务和写入；新版本导入期间不能运行其他应用实例。以下命令保留旧卷；不要使用 `down -v`。命令失败时停止操作，保留备份及旧卷，修复错误后可重试。
+先停止所有旧服务和写入，并备份和验证 `pb_data`、`gpu_data`、`warehouse_data` 三个卷。确认实际 Compose 项目卷名及新应用镜像；以下卷名和 `IMAGE` 均须替换为实际值。仅在已授权的隔离环境操作，不触碰生产数据。导入期间不能运行其他应用实例。
 
 ```sh
 docker compose down --remove-orphans
 docker compose build app
 # 仅当旧显卡卷包含 gpu.db 时运行：
-docker compose run --rm --no-deps app ./pocketbase hpa-import-gpu --source /legacy/gpu/gpu.db
+docker run --rm --network none --mount type=volume,src=实际项目_pb_data,dst=/app/pb_data --mount type=volume,src=实际项目_gpu_data,dst=/source,readonly --entrypoint /app/pocketbase IMAGE hpa-import-gpu --source /source/gpu.db
 # 仅当旧仓库卷包含数据时运行：
-docker compose run --rm --no-deps app ./pocketbase hpa-import-warehouse --source /legacy/warehouse
+docker run --rm --network none --mount type=volume,src=实际项目_pb_data,dst=/app/pb_data --mount type=volume,src=实际项目_warehouse_data,dst=/source,readonly --entrypoint /app/pocketbase IMAGE hpa-import-warehouse --source /source
 docker compose up -d --build --remove-orphans
 ```
 
-导入读取旧卷，不修改旧数据；重复导入会检查冲突。发现未导入的旧卷时，服务拒绝启动，避免显示空数据。切换后检查显卡、项目、文件、预览和访问权限，并创建、验证新的 PocketBase 备份。新服务产生写入后，直接回退旧卷会丢失这些写入；恢复前先停写并确认回滚方案。若使用 PocketBase 外部对象存储，须单独备份和验证对象；不能假定 PocketBase ZIP 包含远程文件。
+导入只执行一次，不保留长期兼容实现。保留旧卷，不要使用 `down -v`；失败时停止操作并保留备份和源卷。切换后检查显卡、项目、文件、预览和访问权限，并创建、验证新的 PocketBase 备份。新服务产生写入后，直接回退旧卷会丢失这些写入；恢复前先停写并确认回滚方案。若使用 PocketBase 外部对象存储，须单独备份和验证对象；不能假定 PocketBase ZIP 包含远程文件。
 
 创建 PocketBase 超级管理员（将邮箱和密码替换为自己的值）：
 
@@ -57,26 +57,10 @@ sh scripts/local-restore.sh /path/backup.zip # 确认后从 PocketBase ZIP 恢�
 ```sh
 (cd backend && go test ./...)
 (cd frontend && npm ci && npm run build)
-# Go 测试同时覆盖备份验证、迁移快照与仓库文件安全。
+# Go 测试覆盖备份验证、数据导入与仓库文件安全。
 ```
 
 恢复会停止测试服务，并将原数据保留在测试卷的 `backups/local-restore-*` 目录。恢复后运行启动命令。本地使用 Caddy 反向代理，仅监听本机；应用运行在隔离网络中。生产备份仍包含敏感数据和生产账户，请妥善保管。
-
-## 一次性旧数据快照
-
-先构建本地应用镜像，再从已授权的隔离测试数据创建快照：
-
-```sh
-docker compose -p hpahub-local -f compose.yaml -f scripts/compose.local.yaml build app
-sh scripts/hpa-legacy-snapshot.sh \
-  --gpu-db /path/to/gpu.db \
-  --warehouse-root /path/to/warehouse \
-  --auth-db /path/to/users.db \
-  --output /path/to/new-snapshot
-```
-
-脚本使用 Go 维护命令，不需要宿主机语言运行时。默认镜像为 `hpahub-local-app`；可通过 `HPA_MAINTENANCE_IMAGE` 指定已构建的镜像。恢复脚本也使用此镜像。快照输出必须不存在；数据库通过 SQLite 在线备份包含 WAL 数据，文件清单记录大小及 SHA-256。输出含敏感账户数据，不得提交或公开。该工具面向 Linux Docker 环境，Windows 请在 WSL 2 中执行。
-
 
 ## 备份接口
 

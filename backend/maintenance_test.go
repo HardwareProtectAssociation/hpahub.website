@@ -10,7 +10,7 @@ func TestMaintenanceCommandDispatch(t *testing.T) {
 			t.Fatalf("unexpected maintenance dispatch: %v %v %v", args, handled, err)
 		}
 	}
-	for _, args := range [][]string{{"hpa-validate-restore"}, {"hpa-validate-restore", "a", "b", "extra"}, {"hpa-legacy-snapshot"}, {"hpa-legacy-snapshot", "--unknown"}} {
+	for _, args := range [][]string{{"hpa-validate-restore"}, {"hpa-validate-restore", "a", "b", "extra"}} {
 		if handled, err := maintenanceCommand(args); !handled || err == nil {
 			t.Fatalf("invalid arguments accepted: %v %v %v", args, handled, err)
 		}
