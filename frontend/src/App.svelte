@@ -2,6 +2,8 @@
   import { onMount } from 'svelte';
   import Gpu from './Gpu.svelte';
   import Warehouse from './Warehouse.svelte';
+  import PublicPages from './PublicPages.svelte';
+  import Editors from './Editors.svelte';
 
   const pathname = location.pathname.replace(/\/+$/, '') || '/';
 
@@ -9,7 +11,7 @@
   let collection = sessionStorage.getItem('authCollection') || '';
   let checking = !!token;
   let page = 'home';
-  let mode = 'login';
+  let mode = pathname === '/join' ? 'register' : 'login';
   let inviteCode = '';
   let passwordConfirm = '';
   let invitations = [];
@@ -99,6 +101,7 @@
       role = (await request('/api/hpahub/me')).role;
       password = '';
       page = 'home';
+      location.href = '/';
     } catch (err) {
       if (token && role === 'guest') logout();
       error = err.message;
@@ -126,6 +129,7 @@
       passwordConfirm = '';
       inviteCode = '';
       page = 'home';
+      location.href = '/';
     } catch (err) {
       if (token && role === 'guest') logout();
       error = err.message;
@@ -270,7 +274,7 @@
   });
 </script>
 
-<svelte:head><title>{pathname === '/gpu' ? '显卡库' : pathname === '/warehouse' ? '仓库' : token ? (page === 'console' ? '管理控制台' : '首页') : (mode === 'login' ? '登录' : '注册')} · HPA Hub</title></svelte:head>
+<svelte:head><title>HPA Hub</title></svelte:head>
 
 <div class="app-shell">
   <header class="topbar">
@@ -278,15 +282,19 @@
     <nav class="topbar-right" aria-label="主导航">
       <a class="text-button" href="/gpu">显卡库</a>
       <a class="text-button" href="/warehouse">仓库</a>
+      <a class="text-button" href="/community">成员</a>
+      <a class="text-button" href="/showcase">项目展示</a>
       {#if token && !checking}
         <a class="text-button" href="/">首页</a>
+        {#if ['member', 'admin'].includes(role)}<a class="text-button" href="/settings">个人设置</a>{/if}
         {#if isAdmin}
+          <a class="text-button" href="/manage/showcase">项目管理</a>
           {#if pathname === '/'}<button class="text-button" on:click={openConsole}>管理控制台</button>
           {:else}<a class="text-button" href="/?console=1">管理控制台</a>{/if}
         {/if}
         <button class="text-button" on:click={logout}>退出登录</button>
       {:else if !checking}
-        <a class="text-button" href="/">登录</a>
+        <a class="text-button" href="/sign-in">登录</a>
       {/if}
     </nav>
   </header>
@@ -299,9 +307,15 @@
     {#if token && ['member', 'admin', 'octopus'].includes(role)}
       <Warehouse {token} {role} />
     {:else}
-      <main class="dashboard"><h1>仓库</h1><p>仓库仅供内部成员访问。</p><a href="/">登录账户</a></main>
+      <main class="dashboard"><h1>仓库</h1><p>仓库仅供内部成员访问。</p><a href="/sign-in">登录账户</a></main>
     {/if}
-  {:else if !token}
+  {:else if pathname === '/settings' || pathname === '/manage/showcase'}
+    {#if token && (pathname === '/settings' ? ['member', 'admin'].includes(role) : isAdmin)}
+      <Editors {token} {role} manage={pathname === '/manage/showcase'} />
+    {:else}
+      <main class="dashboard"><h1>无权访问</h1><p>请使用有权限的账户登录。</p><a href="/sign-in">登录</a></main>
+    {/if}
+  {:else if pathname === '/sign-in' || pathname === '/join'}
     <main class="login-layout">
       <section class="login-intro">
         <h1>欢迎来到<br /><em>HPA Hub。</em></h1>
@@ -330,11 +344,11 @@
           {#if error}<p class="message error" role="alert">{error}</p>{/if}
           <button class="primary login-submit" type="submit" disabled={loading}>{loading ? '请稍候…' : (mode === 'login' ? '登录' : '注册')} <span aria-hidden="true">↗</span></button>
         </form>
-        <p class="login-foot">{mode === 'login' ? '还没有账户？' : '已有账户？'} <button class="text-button" on:click={() => { mode = mode === 'login' ? 'register' : 'login'; error = ''; password = ''; passwordConfirm = ''; }}>{mode === 'login' ? '使用邀请码注册' : '返回登录'}</button></p>
+        <p class="login-foot">{mode === 'login' ? '还没有账户？' : '已有账户？'} <a class="text-button" href={mode === 'login' ? '/join' : '/sign-in'}>{mode === 'login' ? '使用邀请码注册' : '返回登录'}</a></p>
       </section>
     </main>
-  {:else if page === 'home' || !isAdmin}
-    <main class="dashboard" aria-label="首页"></main>
+  {:else if pathname !== '/' || page === 'home' || !isAdmin}
+    <PublicPages {pathname} />
   {:else}
     <main class="dashboard">
       <div class="breadcrumb">管理控制台 <span>/</span> {isOctopus ? '备份管理' : '邀请码'}</div>
