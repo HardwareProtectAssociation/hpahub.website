@@ -14,15 +14,17 @@
 
 ## Linux：测试与部署
 
-- 安装 Docker、Docker Compose 2.24.4 或更新版本。
+- Linux 开发和测试只使用 Docker；安装 Docker、Docker Compose 2.24.4 或更新版本，不在宿主机启动开发服务器或运行测试。
 - 在仓库根目录运行 `sh scripts/local-up.sh` 构建并启动隔离的本地测试环境，默认访问 `http://localhost:18764`。新建测试数据库的账号为 `admin`，密码为 `admin123`；已有数据库不会重置管理员。
 - 需要时运行 `sh scripts/local-restore.sh /path/backup.zip` 导入备份；确认后运行 `sh scripts/local-reset.sh` 清除本地测试数据。恢复和清除前确认目标和数据影响。
-- 根据改动运行适当检查，例如 `cd backend && go test ./...`、`cd frontend && npm ci && npm run build`。Go 测试覆盖备份验证、数据导入与仓库文件安全。界面改动还要在浏览器检查实际页面。
+- 根据改动在隔离容器中运行适当检查，例如 `go test ./...` 和 `npm ci && npm run build`。Go 测试覆盖备份验证、数据导入与仓库文件安全。界面改动还要在浏览器检查实际页面。
 - 生产部署仅使用经过合并和验证的 `main`：在部署环境检出目标 `main` 版本后，按照 `README.md` 执行 `docker compose up -d --build`。先备份并确认恢复方案；不使用本地测试脚本部署生产。
 
 ## Windows：测试与部署
 
 - 优先使用 Docker Desktop 和 WSL 2，在 WSL 的 Linux shell 中执行上述 Linux 测试命令。确保 Docker Desktop 的 WSL 集成可用；不要假设 PowerShell 能直接执行 `.sh` 脚本。
+- 无法使用 WSL 和 Docker 时，才在 Windows PowerShell 中使用 `scripts/dev-backend.ps1` 和 `scripts/dev-frontend.ps1` 启动开发服务器；准备步骤和隔离数据目录见 `README.md`。
+- 启动开发服务器时，如果端口被占用，先检查占用进程；若为上一次未正确关闭的开发服务器，先停止该服务器及其子进程，再重新启动。不要终止不属于本项目的进程，也不要改用其他端口掩盖冲突。
 - 在 Windows 上准备生产部署时，同样使用 Docker Compose，从已合并并验证的 `main` 部署，执行 `docker compose up -d --build`。生产配置、数据卷和凭据与本地测试环境分离。
 
 ## PocketBase 数据库变更

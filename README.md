@@ -52,11 +52,40 @@ sh scripts/local-restore.sh /path/backup.zip # 确认后从 PocketBase ZIP 恢�
 
 测试地址默认为 `http://localhost:18764`，可通过 `PORT` 覆盖。首次创建数据卷时，测试管理员账号为 `admin`，密码为 `admin123`。已有或恢复的数据不会重置管理员。
 
-其他检查：
+Linux 开发和测试仅使用 Docker。Windows 优先使用 WSL 2 和 Docker Desktop，并在 WSL 中运行上述命令。
+
+### Windows PowerShell 开发服务器
+
+仅在无法使用 WSL 和 Docker 时使用。安装 Go 1.24 或更新版本和 Node.js 22，并在 PowerShell 中安装前端依赖：
+
+```powershell
+cd frontend
+npm ci
+cd ..
+```
+
+分别在两个 PowerShell 窗口中运行：
+
+```powershell
+.\scripts\dev-backend.ps1
+.\scripts\dev-frontend.ps1
+```
+
+访问 `http://127.0.0.1:5173`，前端将 `/api` 请求代理到 `127.0.0.1:8090`。两个服务均只监听本机；按 Ctrl+C 停止各自的服务。后端数据保存在独立的 `backend/pb_data`，不与 Docker 数据卷共享，也不会自动创建测试管理员。需要管理员时，在第三个 PowerShell 窗口运行：
+
+```powershell
+cd backend
+go run . superuser create admin@hpahub.local '替换为测试密码' --dir (Join-Path (Get-Location) 'pb_data')
+```
+
+如果 8090 或 5173 端口被占用，先检查占用进程；如果是上一次未正确关闭的本项目开发服务器，停止该服务器及其子进程后重启。不要终止其他项目的进程。视频预览还需要在 Windows 上安装 FFmpeg 并加入 PATH。
+
+其他检查应在隔离容器中执行：
 
 ```sh
-(cd backend && go test ./...)
-(cd frontend && npm ci && npm run build)
+# 在相应容器内执行：
+go test ./...
+npm ci && npm run build
 # Go 测试覆盖备份验证、数据导入与仓库文件安全。
 ```
 
