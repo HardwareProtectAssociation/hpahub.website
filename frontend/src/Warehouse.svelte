@@ -1,5 +1,8 @@
 <script>
   import { onMount } from 'svelte';
+  import { get } from 'svelte/store';
+  import { t } from './i18n.js';
+  import { warehouseServerErrors } from './i18n-warehouse.js';
 
   export let token = '';
   export let role = 'guest';
@@ -31,6 +34,20 @@
   $: visibleFiles = allFiles.filter(file => (filter === 'all' || file.category === filter) && file.name.toLowerCase().includes(search.trim().toLowerCase()));
   $: selectedFiles = allFiles.filter(file => selected.includes(fileKey(file)));
 
+  function displayError(value, translate) {
+    if (typeof value !== 'string') {
+      const params = value.params && { ...value.params };
+      if (params && params.message) params.message = displayError(params.message, translate);
+      return translate(value.key, params);
+    }
+    if (Object.hasOwn(warehouseServerErrors, value)) return translate(value);
+    const match = /^文件名「([\s\S]*)」无效: ([\s\S]*)$/.exec(value);
+    if (match && Object.hasOwn(warehouseServerErrors, match[2])) {
+      return translate('文件名「{name}」无效: {message}', { name: match[1], message: translate(match[2]) });
+    }
+    return value;
+  }
+
   function fileKey(file) { return `${file.category}/${file.name}`; }
   function pathPart(value) { return encodeURIComponent(value); }
   function projectPath(name = project) { return `/projects/${pathPart(name)}`; }
@@ -47,7 +64,12 @@
       headers: { Authorization: `Bearer ${token}`, ...(options.body && !(options.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}), ...options.headers },
     });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok || data.ok === false) throw new Error(data.error || data.message || `请求失败（${response.status}）`);
+    if (!response.ok || data.ok === false) {
+      if (data.error || data.message) throw new Error(data.error || data.message);
+      const err = new Error();
+      err.translation = { key: '请求失败（{status}）', params: { status: response.status } };
+      throw err;
+    }
     return data;
   }
   async function issueMediaSession() {
@@ -56,7 +78,7 @@
       mediaReady = true;
     } catch (err) {
       mediaReady = false;
-      error = `媒体会话创建失败：${err.message}`;
+      error = { key: '媒体会话创建失败：{message}', params: { message: err.translation || err.message } };
     }
   }
   async function loadProjects() {
@@ -73,7 +95,7 @@
     loading = true;
     error = '';
     try { await loadProjects(); if (project) await loadFiles(); }
-    catch (err) { error = err.message; }
+    catch (err) { error = err.translation || err.message; }
     finally { loading = false; }
   }
   async function openProject(name) {
@@ -86,12 +108,12 @@
     await refresh();
   }
   async function createProject() {
-    const name = prompt('请输入项目名称');
+    const name = prompt(get(t)('请输入项目名称'));
     if (!name || !name.trim()) return;
     await mutate(async () => { await api('/projects', { method: 'POST', body: JSON.stringify({ name: name.trim() }) }); await loadProjects(); }, '项目已创建');
   }
   async function renameProject(name) {
-    const next = prompt('请输入新项目名称', name);
+    const next = prompt(get(t)('请输入新项目名称'), name);
     if (!next || !next.trim() || next.trim() === name) return;
     await mutate(async () => {
       const result = await api(projectPath(name), { method: 'PUT', body: JSON.stringify({ name: next.trim() }) });
@@ -100,30 +122,30 @@
     }, '项目已重命名');
   }
   async function deleteProject(name) {
-    if (!confirm(`确定删除项目「${name}」及其所有文件吗？此操作不可恢复。`)) return;
+    if (!confirm(get(t)('确定删除项目「{name}」及其所有文件吗？此操作不可恢复。', { name }))) return;
     await mutate(async () => { await api(projectPath(name), { method: 'DELETE' }); if (project === name) { project = ''; preview = null; } await loadProjects(); }, '项目已删除');
   }
   async function mutate(action, message) {
     busy = true; error = ''; notice = '';
-    try { await action(); notice = message; }
-    catch (err) { error = err.message; }
+    try { await action(); notice = { key: message }; }
+    catch (err) { error = err.translation || err.message; }
     finally { busy = false; }
   }
   async function renameFile(file) {
-    const name = prompt('请输入新文件名', file.name);
+    const name = prompt(get(t)('请输入新文件名'), file.name);
     if (!name || !name.trim() || name.trim() === file.name) return;
     await mutate(async () => { await api(filePath(file), { method: 'PUT', body: JSON.stringify({ name: name.trim() }) }); preview = null; selected = []; await loadFiles(); }, '文件已重命名');
   }
   async function deleteFiles(items) {
-    if (!items.length || !confirm(`确定删除选中的 ${items.length} 个文件吗？此操作不可恢复。`)) return;
+    if (!items.length || !confirm(get(t)('确定删除选中的 {count} 个文件吗？此操作不可恢复。', { count: items.length }))) return;
     busy = true; error = ''; notice = '';
     const results = await Promise.allSettled(items.map(file => api(filePath(file), { method: 'DELETE' })));
     const failed = results.filter(result => result.status === 'rejected');
     try { await Promise.all([loadFiles(), loadProjects()]); }
-    catch (err) { error = err.message; }
+    catch (err) { error = err.translation || err.message; }
     selected = []; preview = null; busy = false;
-    if (failed.length) error = `删除失败 ${failed.length} 个：${failed[0].reason.message}`;
-    else notice = `已删除 ${items.length} 个文件`;
+    if (failed.length) error = { key: '删除失败 {count} 个：{message}', params: { count: failed.length, message: failed[0].reason.translation || failed[0].reason.message } };
+    else notice = { key: '已删除 {count} 个文件', params: { count: items.length } };
   }
   function chooseFiles(list) { pending = Array.from(list).map(file => ({ file, name: file.name })); }
   function upload() {
@@ -139,12 +161,12 @@
       let result = {};
       try { result = JSON.parse(xhr.responseText); } catch (_) { /* Display HTTP error below. */ }
       if (xhr.status >= 200 && xhr.status < 300 && result.ok !== false) {
-        pending = []; notice = `已上传 ${(result.files || []).length} 个文件`;
-        try { await Promise.all([loadFiles(), loadProjects()]); } catch (err) { error = err.message; }
-      } else error = result.error || result.message || `上传失败（${xhr.status}）`;
+        pending = []; notice = { key: '已上传 {count} 个文件', params: { count: (result.files || []).length } };
+        try { await Promise.all([loadFiles(), loadProjects()]); } catch (err) { error = err.translation || err.message; }
+      } else error = result.error || result.message || { key: '上传失败（{status}）', params: { status: xhr.status } };
       busy = false;
     };
-    xhr.onerror = () => { error = '上传失败：网络错误'; busy = false; };
+    xhr.onerror = () => { error = { key: '上传失败：网络错误' }; busy = false; };
     xhr.send(data);
   }
   function toggle(file) {
@@ -159,13 +181,13 @@
     preview = file; previewText = '';
     const ext = file.name.split('.').pop().toLowerCase();
     if (textExtensions.includes(ext)) {
-      previewText = '加载中…';
+      previewText = { key: '加载中…' };
       try {
         const response = await fetch(mediaUrl('file', file));
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const text = await response.text();
         if (preview === file) previewText = text.slice(0, 500000);
-      } catch (err) { if (preview === file) previewText = `加载失败：${err.message}`; }
+      } catch (err) { if (preview === file) previewText = { key: '加载失败：{message}', params: { message: err.message } }; }
     }
   }
   async function transcode(file) {
@@ -195,72 +217,72 @@
 
 <section class="warehouse">
   <header class="heading">
-    <div><h1>测试数据储存仓库</h1><p>管理项目、测试文件和存储容量</p></div>
-    {#if allowed}<button on:click={refresh} disabled={loading || busy}>刷新</button>{/if}
+    <div><h1>{$t('测试数据储存仓库')}</h1><p>{$t('管理项目、测试文件和存储容量')}</p></div>
+    {#if allowed}<button on:click={refresh} disabled={loading || busy}>{$t('刷新')}</button>{/if}
   </header>
   {#if !allowed}
-    <p class="empty">此页面仅供内部成员访问。</p>
+    <p class="empty">{$t('此页面仅供内部成员访问。')}</p>
   {:else}
-    {#if error}<p class="message error" role="alert">{error}</p>{/if}
-    {#if notice}<p class="message" role="status">{notice}</p>{/if}
+    {#if error}<p class="message error" role="alert">{displayError(error, $t)}</p>{/if}
+    {#if notice}<p class="message" role="status">{$t(notice.key, notice.params)}</p>{/if}
     {#if !project}
-      <section class="capacity" aria-label="存储容量">
-        <div class="section-heading"><h2>存储容量</h2>{#if role === 'octopus'}<button on:click={editAllocations} disabled={busy}>容量分配</button>{/if}</div>
+      <section class="capacity" aria-label={$t('存储容量')}>
+        <div class="section-heading"><h2>{$t('存储容量')}</h2>{#if role === 'octopus'}<button on:click={editAllocations} disabled={busy}>{$t('容量分配')}</button>{/if}</div>
         {#each storage.disks || [] as disk}
-          <div class="disk"><div class="disk-label"><strong>{disk.mountpoint} · {disk.device}</strong><span>已用 {size(disk.used)} / {size(disk.total)} · 可用 {size(disk.free)}{storage.allocations[disk.mountpoint] ? ` · 分配 ${size(storage.allocations[disk.mountpoint])}` : ''}</span></div><progress max={disk.total || 1} value={disk.used}>已用 {size(disk.used)}</progress></div>
-        {:else}<p class="muted">暂无容量信息</p>{/each}
-        <p class="muted">仓库分类用量：{Object.entries(categories).map(([key, label]) => `${label} ${size(storage.categories[key])}`).join(' · ')}</p>
+          <div class="disk"><div class="disk-label"><strong>{disk.mountpoint} · {disk.device}</strong><span>{$t('已用 {used} / {total} · 可用 {free}', { used: size(disk.used), total: size(disk.total), free: size(disk.free) })}{storage.allocations[disk.mountpoint] ? ` · ${$t('分配 {size}', { size: size(storage.allocations[disk.mountpoint]) })}` : ''}</span></div><progress max={disk.total || 1} value={disk.used}>{$t('已用 {size}', { size: size(disk.used) })}</progress></div>
+        {:else}<p class="muted">{$t('暂无容量信息')}</p>{/each}
+        <p class="muted">{$t('仓库分类用量：')}{Object.entries(categories).map(([key, label]) => `${$t(label)} ${size(storage.categories[key])}`).join(' · ')}</p>
         {#if editingStorage}
           <form class="allocation" on:submit|preventDefault={saveAllocations}>
-            <h3>容量分配</h3><p class="muted">单位 GB；0 表示不限制。</p>
+            <h3>{$t('容量分配')}</h3><p class="muted">{$t('单位 GB；0 表示不限制。')}</p>
             {#each storage.disks as disk}
-              <label>{disk.mountpoint}（可用 {size(disk.free)}）<input type="number" min="0" max={Math.floor(disk.free / 1073741824)} step="1" bind:value={allocations[disk.mountpoint]} /></label>
+              <label>{disk.mountpoint} {$t('（可用 {size}）', { size: size(disk.free) })}<input type="number" min="0" max={Math.floor(disk.free / 1073741824)} step="1" bind:value={allocations[disk.mountpoint]} /></label>
             {/each}
-            <div class="actions"><button type="submit" class="primary" disabled={busy}>保存</button><button type="button" on:click={() => editingStorage = false}>取消</button></div>
+            <div class="actions"><button type="submit" class="primary" disabled={busy}>{$t('保存')}</button><button type="button" on:click={() => editingStorage = false}>{$t('取消')}</button></div>
           </form>
         {/if}
       </section>
-      <div class="section-heading"><h2>项目 <span class="muted">{projects.length}</span></h2><button class="primary" on:click={createProject} disabled={busy}>新建项目</button></div>
+      <div class="section-heading"><h2>{$t('项目')} <span class="muted">{projects.length}</span></h2><button class="primary" on:click={createProject} disabled={busy}>{$t('新建项目')}</button></div>
       <div class="project-list">
         {#each projects as item}
           <article class="project-card">
-            <button class="project-open" on:click={() => openProject(item.name)}><strong>{item.display_name || item.name}</strong><span>{item.total_files} 个文件 · {size(item.size_bytes)}{item.creator_name ? ` · ${item.creator_name}` : ''}</span><span>{Object.entries(categories).map(([key, label]) => `${label} ${item.counts[key] || 0}`).join(' · ')}</span></button>
-            <div class="actions"><button on:click={() => renameProject(item.name)} disabled={busy}>重命名</button><button on:click={() => deleteProject(item.name)} disabled={busy}>删除</button></div>
+            <button class="project-open" on:click={() => openProject(item.name)}><strong>{item.display_name || item.name}</strong><span>{$t('{count} 个文件', { count: item.total_files })} · {size(item.size_bytes)}{item.creator_name ? ` · ${item.creator_name}` : ''}</span><span>{Object.entries(categories).map(([key, label]) => `${$t(label)} ${item.counts[key] || 0}`).join(' · ')}</span></button>
+            <div class="actions"><button on:click={() => renameProject(item.name)} disabled={busy}>{$t('重命名')}</button><button on:click={() => deleteProject(item.name)} disabled={busy}>{$t('删除')}</button></div>
           </article>
-        {:else}<p class="empty">{loading ? '正在加载项目…' : '暂无项目，请创建项目。'}</p>{/each}
+        {:else}<p class="empty">{$t(loading ? '正在加载项目…' : '暂无项目，请创建项目。')}</p>{/each}
       </div>
     {:else}
-      <div class="section-heading"><div><button on:click={() => { project = ''; preview = null; selected = []; refresh(); }}>返回项目</button><h2 class="project-title">{project}</h2></div><div class="actions"><button on:click={() => renameProject(project)} disabled={busy}>重命名项目</button><button on:click={() => deleteProject(project)} disabled={busy}>删除项目</button></div></div>
-      <div class="upload" on:dragover|preventDefault on:drop|preventDefault={(event) => chooseFiles(event.dataTransfer.files)} role="group" aria-label="上传文件">
-        <label>选择或拖放文件上传<input type="file" multiple on:change={(event) => { chooseFiles(event.currentTarget.files); event.currentTarget.value = ''; }} disabled={busy} /></label>
-        <p class="muted">文件按扩展名自动分类。</p>
+      <div class="section-heading"><div><button on:click={() => { project = ''; preview = null; selected = []; refresh(); }}>{$t('返回项目')}</button><h2 class="project-title">{project}</h2></div><div class="actions"><button on:click={() => renameProject(project)} disabled={busy}>{$t('重命名项目')}</button><button on:click={() => deleteProject(project)} disabled={busy}>{$t('删除项目')}</button></div></div>
+      <div class="upload" on:dragover|preventDefault on:drop|preventDefault={(event) => chooseFiles(event.dataTransfer.files)} role="group" aria-label={$t('上传文件')}>
+        <label>{$t('选择或拖放文件上传')}<input type="file" multiple on:change={(event) => { chooseFiles(event.currentTarget.files); event.currentTarget.value = ''; }} disabled={busy} /></label>
+        <p class="muted">{$t('文件按扩展名自动分类。')}</p>
       </div>
       {#if pending.length}
         <form class="pending" on:submit|preventDefault={upload}>
-          <h3>待上传文件</h3>
+          <h3>{$t('待上传文件')}</h3>
           {#each pending as item, index}
-            <div class="pending-row"><label>文件名 <input required maxlength="255" bind:value={item.name} /></label><span>{size(item.file.size)}</span><button type="button" disabled={busy} on:click={() => pending = pending.filter((_, i) => i !== index)}>移除</button></div>
+            <div class="pending-row"><label>{$t('文件名')} <input required maxlength="255" bind:value={item.name} /></label><span>{size(item.file.size)}</span><button type="button" disabled={busy} on:click={() => pending = pending.filter((_, i) => i !== index)}>{$t('移除')}</button></div>
           {/each}
-          {#if busy}<progress max="100" value={progress}>上传 {progress}%</progress><span>上传 {progress}%</span>{/if}
-          <div class="actions"><button class="primary" disabled={busy} type="submit">上传 {pending.length} 个文件</button><button type="button" disabled={busy} on:click={() => pending = []}>取消</button></div>
+          {#if busy}<progress max="100" value={progress}>{$t('上传 {progress}%', { progress })}</progress><span>{$t('上传 {progress}%', { progress })}</span>{/if}
+          <div class="actions"><button class="primary" disabled={busy} type="submit">{$t('上传 {count} 个文件', { count: pending.length })}</button><button type="button" disabled={busy} on:click={() => pending = []}>{$t('取消')}</button></div>
         </form>
       {/if}
-      <div class="filters"><button class:active={filter === 'all'} on:click={() => filter = 'all'}>全部 {allFiles.length}</button>{#each Object.entries(categories) as [key, label]}<button class:active={filter === key} on:click={() => filter = key}>{label} {(files[key] || []).length}</button>{/each}<label class="search">搜索文件 <input type="search" bind:value={search} /></label></div>
-      <div class="batch"><label><input type="checkbox" checked={visibleFiles.length > 0 && visibleFiles.every(file => selected.includes(fileKey(file)))} on:change={(event) => { const keys = visibleFiles.map(fileKey); selected = event.currentTarget.checked ? [...new Set([...selected, ...keys])] : selected.filter(key => !keys.includes(key)); }} /> 全选当前结果</label><span>已选 {selected.length} 个</span><button disabled={!selected.length || !mediaReady} on:click={() => selectedFiles.forEach(download)}>批量下载</button><button disabled={!selected.length || busy} on:click={() => deleteFiles(selectedFiles)}>批量删除</button><button disabled={!selected.length} on:click={() => selected = []}>清空选择</button></div>
+      <div class="filters"><button class:active={filter === 'all'} on:click={() => filter = 'all'}>{$t('全部')} {allFiles.length}</button>{#each Object.entries(categories) as [key, label]}<button class:active={filter === key} on:click={() => filter = key}>{$t(label)} {(files[key] || []).length}</button>{/each}<label class="search">{$t('搜索文件')} <input type="search" bind:value={search} /></label></div>
+      <div class="batch"><label><input type="checkbox" checked={visibleFiles.length > 0 && visibleFiles.every(file => selected.includes(fileKey(file)))} on:change={(event) => { const keys = visibleFiles.map(fileKey); selected = event.currentTarget.checked ? [...new Set([...selected, ...keys])] : selected.filter(key => !keys.includes(key)); }} /> {$t('全选当前结果')}</label><span>{$t('已选 {count} 个', { count: selected.length })}</span><button disabled={!selected.length || !mediaReady} on:click={() => selectedFiles.forEach(download)}>{$t('批量下载')}</button><button disabled={!selected.length || busy} on:click={() => deleteFiles(selectedFiles)}>{$t('批量删除')}</button><button disabled={!selected.length} on:click={() => selected = []}>{$t('清空选择')}</button></div>
       <div class="file-list">
         {#each visibleFiles as file (fileKey(file))}
-          <article class="file-card"><label class="select"><input type="checkbox" checked={selected.includes(fileKey(file))} on:change={() => toggle(file)} aria-label={`选择 ${file.name}`} /></label><button class="file-preview" on:click={() => openPreview(file)} disabled={!mediaReady} aria-label={`预览 ${file.name}`}>
-            {#if mediaReady && file.category === 'images'}<img src={mediaUrl('file', file)} alt="" loading="lazy" />{:else if mediaReady && file.category === 'videos' && file.thumb}<img src={mediaUrl('thumb', file)} alt="" loading="lazy" />{:else}<span>{categories[file.category]}</span>{/if}
-          </button><div class="file-info"><strong title={file.name}>{file.name}</strong><span>{categories[file.category]} · {size(file.size)}</span></div><div class="actions"><button on:click={() => download(file)} disabled={!mediaReady}>下载</button><button on:click={() => renameFile(file)} disabled={busy}>重命名</button><button on:click={() => deleteFiles([file])} disabled={busy}>删除</button></div></article>
-        {:else}<p class="empty">{loading ? '正在加载文件…' : '没有符合条件的文件。'}</p>{/each}
+          <article class="file-card"><label class="select"><input type="checkbox" checked={selected.includes(fileKey(file))} on:change={() => toggle(file)} aria-label={$t('选择 {name}', { name: file.name })} /></label><button class="file-preview" on:click={() => openPreview(file)} disabled={!mediaReady} aria-label={$t('预览 {name}', { name: file.name })}>
+            {#if mediaReady && file.category === 'images'}<img src={mediaUrl('file', file)} alt="" loading="lazy" />{:else if mediaReady && file.category === 'videos' && file.thumb}<img src={mediaUrl('thumb', file)} alt="" loading="lazy" />{:else}<span>{$t(categories[file.category])}</span>{/if}
+          </button><div class="file-info"><strong title={file.name}>{file.name}</strong><span>{$t(categories[file.category])} · {size(file.size)}</span></div><div class="actions"><button on:click={() => download(file)} disabled={!mediaReady}>{$t('下载')}</button><button on:click={() => renameFile(file)} disabled={busy}>{$t('重命名')}</button><button on:click={() => deleteFiles([file])} disabled={busy}>{$t('删除')}</button></div></article>
+        {:else}<p class="empty">{$t(loading ? '正在加载文件…' : '没有符合条件的文件。')}</p>{/each}
       </div>
     {/if}
     {#if preview}
-      <div class="preview" role="dialog" aria-modal="true" aria-label={`预览 ${preview.name}`}><div class="preview-head"><strong>{preview.name}</strong><div class="actions">{#if preview.category === 'videos' && !preview.web_url}<button on:click={() => transcode(preview)} disabled={busy}>转码高清预览</button>{/if}<button on:click={() => download(preview)}>下载</button><button on:click={() => preview = null}>关闭预览</button></div></div><div class="preview-body">
+      <div class="preview" role="dialog" aria-modal="true" aria-label={$t('预览 {name}', { name: preview.name })}><div class="preview-head"><strong>{preview.name}</strong><div class="actions">{#if preview.category === 'videos' && !preview.web_url}<button on:click={() => transcode(preview)} disabled={busy}>{$t('转码高清预览')}</button>{/if}<button on:click={() => download(preview)}>{$t('下载')}</button><button on:click={() => preview = null}>{$t('关闭预览')}</button></div></div><div class="preview-body">
         {#if preview.category === 'images'}<img src={mediaUrl('file', preview)} alt={preview.name} />
         {:else if preview.category === 'videos'}<video controls playsinline src={mediaUrl(preview.web_url ? 'web' : preview.preview_url ? 'preview' : 'file', preview)}></video>
-        {:else if textExtensions.includes(preview.name.split('.').pop().toLowerCase())}<pre>{previewText}</pre>
-        {:else}<p>此文件无法预览，请下载后查看。</p>{/if}
+        {:else if textExtensions.includes(preview.name.split('.').pop().toLowerCase())}<pre>{typeof previewText === 'string' ? previewText : $t(previewText.key, previewText.params)}</pre>
+        {:else}<p>{$t('此文件无法预览，请下载后查看。')}</p>{/if}
       </div></div>
     {/if}
   {/if}
