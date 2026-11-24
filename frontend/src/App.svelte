@@ -12,7 +12,9 @@
   let generating = false;
   let identity = '';
   let password = '';
-  $: isAdmin = collection === '_superusers';
+  let role = 'guest';
+  $: isAdmin = role === 'admin' || role === 'octopus';
+  $: isOctopus = role === 'octopus';
   let policy = { intervalHours: 0, retainCount: 10 };
   let backups = [];
   let loading = false;
@@ -89,11 +91,15 @@
       sessionStorage.setItem('authToken', token);
       sessionStorage.setItem('authCollection', collection);
       scheduleExpiry();
+      checking = true;
+      role = (await request('/api/hpahub/me')).role;
       password = '';
       page = 'home';
     } catch (err) {
+      if (token && role === 'guest') logout();
       error = err.message;
     } finally {
+      checking = false;
       loading = false;
     }
   }
@@ -110,21 +116,25 @@
       sessionStorage.setItem('authToken', token);
       sessionStorage.setItem('authCollection', collection);
       scheduleExpiry();
+      checking = true;
+      role = (await request('/api/hpahub/me')).role;
       password = '';
       passwordConfirm = '';
       inviteCode = '';
       page = 'home';
     } catch (err) {
+      if (token && role === 'guest') logout();
       error = err.message;
     } finally {
       loading = false;
+      checking = false;
     }
   }
 
   async function openConsole() {
     page = 'console';
     error = '';
-    await Promise.all([refresh(), loadInvitations()]);
+    await Promise.all([loadInvitations(), ...(isOctopus ? [refresh()] : [])]);
   }
 
   async function loadInvitations() {
@@ -155,6 +165,7 @@
     clearTimeout(expiryTimer);
     token = '';
     collection = '';
+    role = 'guest';
     sessionStorage.removeItem('authToken');
     sessionStorage.removeItem('authCollection');
     sessionStorage.removeItem('adminToken');
@@ -240,6 +251,7 @@
       token = result.token;
       sessionStorage.setItem('authToken', token);
       scheduleExpiry();
+      role = (await request('/api/hpahub/me')).role;
     } catch (err) {
       logout();
       error = '无法验证登录状态，请重新登录。';
@@ -301,10 +313,15 @@
     <main class="dashboard" aria-label="首页"></main>
   {:else}
     <main class="dashboard">
-      <div class="breadcrumb">管理控制台 <span>/</span> 备份管理</div>
-      <div class="page-heading"><div><h1>备份管理<span class="heading-dot">.</span></h1><p>管理自动备份策略，或随时创建一份备份。</p></div><button class="primary" on:click={createBackup} disabled={creating || loading}><span class="plus" aria-hidden="true">＋</span> {creating ? '正在创建…' : '立即备份'}</button></div>
+      <div class="breadcrumb">管理控制台 <span>/</span> {isOctopus ? '备份管理' : '邀请码'}</div>
+      {#if isOctopus}
+        <div class="page-heading"><div><h1>备份管理<span class="heading-dot">.</span></h1><p>管理自动备份策略，或随时创建一份备份。</p></div><button class="primary" on:click={createBackup} disabled={creating || loading}><span class="plus" aria-hidden="true">＋</span> {creating ? '正在创建…' : '立即备份'}</button></div>
+      {:else}
+        <div class="page-heading"><div><h1>邀请码<span class="heading-dot">.</span></h1><p>生成邀请码并查看使用记录。</p></div></div>
+      {/if}
       {#if error}<div class="message error" role="alert">{error}</div>{/if}
       {#if notice}<div class="message success" role="status">{notice}</div>{/if}
+      {#if isOctopus}
       <div class="content-grid">
         <section class="policy-section" aria-labelledby="policy-title">
           <div class="section-head"><div><div class="section-icon" aria-hidden="true">◷</div><h2 id="policy-title">自动备份</h2><p>设置备份频率与保留数量。</p></div><span class:enabled={Number(policy.intervalHours) > 0} class="status"><span></span>{Number(policy.intervalHours) > 0 ? '已启用' : '未启用'}</span></div>
@@ -328,6 +345,7 @@
           <div class="archive-footer"><span>备份文件存储于服务器</span><span>HPA HUB / ARCHIVE</span></div>
         </section>
       </div>
+      {/if}
       <section class="archive-section invitations" aria-labelledby="invitations-title">
         <div class="archive-head">
           <div><h2 id="invitations-title">邀请码</h2><p>邀请码有效 24 小时，仅可使用一次。</p></div>

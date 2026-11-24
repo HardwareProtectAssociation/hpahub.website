@@ -14,6 +14,8 @@ import (
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/plugins/migratecmd"
+	_ "hpahub/backend/migrations"
 )
 
 const autoPrefix = "@hpahub_auto_"
@@ -40,6 +42,7 @@ func loadPolicy(app core.App) (policy, error) {
 
 func main() {
 	app := pocketbase.New()
+	migratecmd.MustRegister(app, app.RootCmd, migratecmd.Config{})
 	bindNativeAuthLimit(app)
 	var policyMu, backupMu sync.Mutex
 	wake := make(chan struct{}, 1)

@@ -27,12 +27,7 @@ type invitation struct {
 var errInvalidInvitation = errors.New("invalid or expired invitation")
 
 func initInvitations(app core.App) error {
-	users, err := app.FindCollectionByNameOrId("users")
-	if err != nil { return err }
-	users.CreateRule = nil
-	users.OAuth2.Enabled = false
-	if err := app.Save(users); err != nil { return err }
-	_, err = app.DB().NewQuery(`CREATE TABLE IF NOT EXISTS hpahub_invitations (
+	_, err := app.DB().NewQuery(`CREATE TABLE IF NOT EXISTS hpahub_invitations (
 		code TEXT PRIMARY KEY, created INTEGER NOT NULL, expires INTEGER NOT NULL,
 		used INTEGER NOT NULL DEFAULT 0, used_by TEXT NOT NULL DEFAULT ''
 	)`).Execute()
@@ -89,6 +84,7 @@ func registerInvitation(app core.App, email, password, confirm, code string, now
 		if !collection.PasswordAuth.Enabled { return errors.New("password authentication disabled") }
 		user = core.NewRecord(collection)
 		user.SetEmail(email)
+		user.Set("role", "member")
 		user.SetPassword(password)
 		if err := tx.Save(user); err != nil { return err }
 		if event != nil {
@@ -106,6 +102,21 @@ func registerInvitation(app core.App, email, password, confirm, code string, now
 	return user, nil
 }
 
+func siteRole(record *core.Record) string {
+	if record == nil { return "guest" }
+	switch record.Collection().Name {
+	case core.CollectionNameSuperusers:
+		return "octopus"
+	case "users":
+		switch record.GetString("role") {
+		case "admin", "member":
+			return record.GetString("role")
+		}
+	}
+	return "user"
+}
+
+
 func bindInvitationRoutes(e *core.ServeEvent) {
 	limited := func(e *core.RequestEvent, kind string, limit int) error {
 		ok, err := allowAuthAttempt(e.App, kind, limit)
@@ -113,6 +124,10 @@ func bindInvitationRoutes(e *core.ServeEvent) {
 		if !ok { return e.TooManyRequestsError("Too many requests. Try again later.", nil) }
 		return nil
 	}
+	e.Router.GET("/api/hpahub/me", func(e *core.RequestEvent) error {
+		if e.Auth == nil { return e.UnauthorizedError("Authentication required.", nil) }
+		return e.JSON(http.StatusOK, map[string]string{"id": e.Auth.Id, "role": siteRole(e.Auth)})
+	})
 	e.Router.POST("/api/hpahub/login", func(e *core.RequestEvent) error {
 		if err := limited(e, "login", 60); err != nil { return err }
 		var input struct { Email string `json:"email"`; Password string `json:"password"` }
@@ -137,15 +152,19 @@ func bindInvitationRoutes(e *core.ServeEvent) {
 		return nil
 	})
 	e.Router.POST("/api/hpahub/invitations", func(e *core.RequestEvent) error {
+		if e.Auth == nil { return e.UnauthorizedError("Authentication required.", nil) }
+		if role := siteRole(e.Auth); role != "admin" && role != "octopus" { return e.ForbiddenError("Insufficient permissions.", nil) }
 		item, err := newInvitation(e.App, time.Now())
 		if err != nil { return e.InternalServerError("Failed to create invitation.", err) }
 		return e.JSON(http.StatusOK, item)
-	}).Bind(apis.RequireSuperuserAuth())
+	})
 	e.Router.GET("/api/hpahub/invitations", func(e *core.RequestEvent) error {
+		if e.Auth == nil { return e.UnauthorizedError("Authentication required.", nil) }
+		if role := siteRole(e.Auth); role != "admin" && role != "octopus" { return e.ForbiddenError("Insufficient permissions.", nil) }
 		items := []invitation{}
 		if err := e.App.DB().NewQuery("SELECT code, created, expires, used, used_by FROM hpahub_invitations ORDER BY created DESC, code DESC").All(&items); err != nil { return e.InternalServerError("Failed to load invitations.", err) }
 		return e.JSON(http.StatusOK, map[string]any{"items": items})
-	}).Bind(apis.RequireSuperuserAuth())
+	})
 }
 
 func bindNativeAuthLimit(app core.App) {

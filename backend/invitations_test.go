@@ -22,6 +22,8 @@ func invitationTestApp(t *testing.T) *tests.TestApp {
 	if err != nil { t.Fatal(err) }
 	t.Cleanup(app.Cleanup)
 	if err := initInvitations(app); err != nil { t.Fatal(err) }
+	var notMembers int
+	if err := app.DB().NewQuery("SELECT count(*) FROM users WHERE role != 'member'").Row(&notMembers); err != nil || notMembers != 0 { t.Fatalf("existing users not migrated to member: count=%d err=%v", notMembers, err) }
 	bindNativeAuthLimit(app)
 	return app
 }
@@ -61,7 +63,15 @@ func TestInvitationAPIRestrictions(t *testing.T) {
 	bindInvitationRoutes(&core.ServeEvent{App: app, Router: router})
 	mux, err := router.BuildMux()
 	if err != nil { t.Fatal(err) }
-	if collection, err := app.FindCollectionByNameOrId("users"); err != nil || collection.CreateRule != nil { t.Fatalf("users create rule is not locked: %v", err) }
+	collection, err := app.FindCollectionByNameOrId("users")
+	if err != nil { t.Fatal(err) }
+	if collection.CreateRule != nil || collection.UpdateRule != nil || collection.DeleteRule != nil || collection.OAuth2.Enabled { t.Fatal("users writes or OAuth2 are not locked") }
+	if collection.Fields.GetByName("email").(*core.EmailField).Required { t.Fatal("email must be optional for legacy accounts") }
+	if siteRole(nil) != "guest" { t.Fatal("anonymous role is not guest") }
+	unknown := core.NewRecord(collection)
+	if siteRole(unknown) != "user" { t.Fatal("missing role did not fall back to user") }
+	unknown.Set("role", "unexpected")
+	if siteRole(unknown) != "user" { t.Fatal("invalid role did not fall back to user") }
 	request := func(method, path, body string) int {
 		req := httptest.NewRequest(method, path, strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
@@ -71,14 +81,21 @@ func TestInvitationAPIRestrictions(t *testing.T) {
 	}
 	if status := request(http.MethodPost, "/api/collections/users/records", `{"email":"bypass@example.com","password":"valid-password-123","passwordConfirm":"valid-password-123"}`); status < 400 { t.Fatalf("native registration returned %d", status) }
 	for _, method := range []string{http.MethodGet, http.MethodPost} {
-		if status := request(method, "/api/hpahub/invitations", ""); status < 400 { t.Fatalf("anonymous %s returned %d", method, status) }
+		if status := request(method, "/api/hpahub/invitations", ""); status != http.StatusUnauthorized { t.Fatalf("anonymous %s returned %d", method, status) }
 	}
-	for _, collectionName := range []string{"users", core.CollectionNameSuperusers} {
-		collection, err := app.FindCollectionByNameOrId(collectionName)
+	if status := request(http.MethodGet, "/api/hpahub/me", ""); status != http.StatusUnauthorized { t.Fatalf("anonymous me returned %d", status) }
+	for _, identity := range []struct{ collection, role string; status int }{
+		{"users", "user", http.StatusForbidden},
+		{"users", "member", http.StatusForbidden},
+		{"users", "admin", http.StatusOK},
+		{core.CollectionNameSuperusers, "octopus", http.StatusOK},
+	} {
+		collection, err := app.FindCollectionByNameOrId(identity.collection)
 		if err != nil { t.Fatal(err) }
 		record := core.NewRecord(collection)
-		record.SetEmail(collectionName + "@example.com")
+		record.SetEmail("hpa-role-" + identity.role + "@example.com")
 		record.SetPassword("valid-password-123")
+		if identity.collection == "users" { record.Set("role", identity.role) }
 		if err := app.Save(record); err != nil { t.Fatal(err) }
 		token, err := record.NewAuthToken()
 		if err != nil { t.Fatal(err) }
@@ -87,8 +104,28 @@ func TestInvitationAPIRestrictions(t *testing.T) {
 			req.Header.Set("Authorization", token)
 			res := httptest.NewRecorder()
 			mux.ServeHTTP(res, req)
-			if collectionName == "users" && res.Code < 400 { t.Fatalf("user %s returned %d", method, res.Code) }
-			if collectionName == core.CollectionNameSuperusers && res.Code != http.StatusOK { t.Fatalf("admin %s returned %d: %s", method, res.Code, res.Body.String()) }
+			if res.Code != identity.status { t.Fatalf("%s %s returned %d: %s", identity.role, method, res.Code, res.Body.String()) }
+		}
+		req := httptest.NewRequest(http.MethodGet, "/api/hpahub/me", nil)
+		req.Header.Set("Authorization", token)
+		res := httptest.NewRecorder()
+		mux.ServeHTTP(res, req)
+		var me struct { ID string `json:"id"`; Role string `json:"role"` }
+		if err := json.Unmarshal(res.Body.Bytes(), &me); err != nil || res.Code != http.StatusOK || me.ID != record.Id || me.Role != identity.role { t.Fatalf("invalid me response: %d %s", res.Code, res.Body.String()) }
+		if identity.collection == "users" && identity.role == "admin" {
+			req = httptest.NewRequest(http.MethodGet, "/api/backups", nil)
+			req.Header.Set("Authorization", token)
+			res = httptest.NewRecorder()
+			mux.ServeHTTP(res, req)
+			if res.Code < 400 { t.Fatal("admin accessed backups") }
+		}
+		if identity.collection == "users" {
+			req = httptest.NewRequest(http.MethodPatch, "/api/collections/users/records/"+record.Id, strings.NewReader(`{"role":"admin"}`))
+			req.Header.Set("Authorization", token)
+			req.Header.Set("Content-Type", "application/json")
+			res = httptest.NewRecorder()
+			mux.ServeHTTP(res, req)
+			if res.Code < 400 { t.Fatalf("%s changed role: %d", identity.role, res.Code) }
 		}
 	}
 	for _, collectionName := range []string{"users", core.CollectionNameSuperusers} {
@@ -118,7 +155,7 @@ func TestInvitationAPIRestrictions(t *testing.T) {
 	authRule := users.AuthRule
 	users.AuthRule = nil
 	if err := app.Save(users); err != nil { t.Fatal(err) }
-	body := fmt.Sprintf(`{"email":"rollback@example.com","password":"valid-password-123","passwordConfirm":"valid-password-123","inviteCode":%q}`, item.Code)
+	body := fmt.Sprintf(`{"email":"rollback@example.com","password":"valid-password-123","passwordConfirm":"valid-password-123","inviteCode":%q,"role":"admin"}`, item.Code)
 	if status := request(http.MethodPost, "/api/hpahub/register", body); status < 400 { t.Fatal("registration ignored auth rule") }
 	users.AuthRule = authRule
 	if err := app.Save(users); err != nil { t.Fatal(err) }
@@ -132,6 +169,8 @@ func TestInvitationAPIRestrictions(t *testing.T) {
 	if res.Code != http.StatusOK { t.Fatalf("failed registration consumed invitation: %d", res.Code) }
 	var result struct { Token string `json:"token"`; Record struct { CollectionName string `json:"collectionName"` } `json:"record"` }
 	if err := json.Unmarshal(res.Body.Bytes(), &result); err != nil || result.Token == "" || result.Record.CollectionName != "users" { t.Fatalf("missing authenticated user: %s", res.Body.String()) }
+	registered, err := app.FindAuthRecordByEmail("users", "rollback@example.com")
+	if err != nil || registered.GetString("role") != "member" { t.Fatalf("registration role was not member: %v", err) }
 	for range 30 {
 		request(http.MethodPost, "/api/hpahub/register", `{}`)
 	}
