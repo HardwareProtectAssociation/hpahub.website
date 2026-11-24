@@ -6,9 +6,12 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/tools/security"
 )
 
 type proxyTransport func(*http.Request) (*http.Response, error)
@@ -97,6 +100,11 @@ func TestLegacyProxySecurity(t *testing.T) {
 	badCookie := *cookie
 	badCookie.Value += "x"
 	if w := request("GET", path, "", &badCookie); w.Code != 401 { t.Fatalf("tampered cookie: %d", w.Code) }
+	expiredToken, err := security.NewJWT(jwt.MapClaims{"collection": record.Collection().Name, "id": record.Id, "purpose": mediaPurpose}, mediaKey(record), -time.Minute)
+	if err != nil { t.Fatal(err) }
+	expiredCookie := &http.Cookie{Name: mediaCookieName, Value: expiredToken}
+	upstream = nil
+	if w := request("GET", path, "", expiredCookie); w.Code != http.StatusUnauthorized || upstream != nil { t.Fatalf("expired media cookie: %d", w.Code) }
 	if w := request("GET", "/api/hpahub/warehouse/media/file/项目/images/.meta.json", "", cookie); w.Code != 404 { t.Fatalf("hidden media: %d", w.Code) }
 	record.Set("role", "user")
 	if err := app.Save(record); err != nil { t.Fatal(err) }
