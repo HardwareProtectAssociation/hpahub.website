@@ -1,6 +1,7 @@
 package main
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -87,22 +88,6 @@ func warehouseTestUpload(t *testing.T, project string, originals, names []string
 	}
 	_, data := warehouseTestRequest(t, "POST", "/api/projects/"+url.PathEscape(project)+"/files", &body, map[string]string{"Content-Type": writer.FormDataContentType()}, status)
 	return data
-}
-
-func warehouseTestFile(t *testing.T, root, project, category, name string, content []byte) string {
-	t.Helper()
-	directory := filepath.Join(root, "projects", project, category)
-	if err := os.MkdirAll(directory, 0700); err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(directory, name)
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, content, 0600); err != nil {
-		t.Fatal(err)
-	}
-	return path
 }
 
 func TestWarehouseCRUDAndStorageCompatibility(t *testing.T) {
@@ -342,29 +327,17 @@ func TestWarehouseRoutePermissions(t *testing.T) {
 }
 
 func TestWarehouseMediaIsolationRangeAndHEAD(t *testing.T) {
-	root := t.TempDir()
 	warehouseTestSetup(t)
-	warehouseTestFile(t, root, "one", "docs", "same.html", []byte("first"))
-	warehouseTestFile(t, root, "two", "docs", "same.html", []byte("second"))
-	warehouseTestFile(t, root, "one", "images", "safe.png", []byte("png-content"))
-	info, err := os.Stat(filepath.Join(root, "projects", "one"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	created := warehouseTime(warehouseCreated(info))
-	if err := importWarehouse(warehouseTestApp, root); err != nil {
-		t.Fatal(err)
-	}
-	_, project := warehouseTestRequest(t, "GET", "/api/projects/one", nil, nil, 200)
-	if project["project"].(map[string]any)["created"] != created {
-		t.Fatalf("imported project creation time: %#v", project)
-	}
-	path := "/api/hpahub/media/file/one/docs/same.html"
+	warehouseTestJSON(t, "POST", "/api/projects", map[string]any{"name": "one"}, 201)
+	warehouseTestJSON(t, "POST", "/api/projects", map[string]any{"name": "two"}, 201)
+	warehouseTestUpload(t, "one", []string{"same.html", "safe.png"}, nil, [][]byte{[]byte("first"), []byte("png-content")}, 201)
+	warehouseTestUpload(t, "two", []string{"same.html"}, nil, [][]byte{[]byte("second")}, 201)
+	path := "/api/hpahub/media/file/one/others/same.html"
 	w, _ := warehouseTestRequest(t, "GET", path, nil, nil, 200)
 	if w.Body.String() != "first" || w.Header().Get("Cache-Control") != "private, no-store" || w.Header().Get("X-Content-Type-Options") != "nosniff" {
 		t.Fatalf("media headers/body: %v %q", w.Header(), w.Body.String())
 	}
-	other, _ := warehouseTestRequest(t, "GET", "/api/hpahub/media/file/two/docs/same.html", nil, nil, 200)
+	other, _ := warehouseTestRequest(t, "GET", "/api/hpahub/media/file/two/others/same.html", nil, nil, 200)
 	if other.Body.String() != "second" {
 		t.Fatalf("other project media: %q", other.Body.String())
 	}
@@ -421,43 +394,6 @@ func TestWarehouseUploadLimit(t *testing.T) {
 	}
 	warehouseTestRequest(t, "POST", "/api/projects/safe/files", warehouseLimitReader{}, map[string]string{"Content-Type": "multipart/form-data; boundary=boundary"}, 413)
 	warehouseTestRequest(t, "POST", "/api/projects/safe/files", strings.NewReader("invalid"), map[string]string{"Content-Type": "multipart/form-data; boundary=boundary"}, 400)
-}
-
-func TestWarehouseExistingDiskMetadataAndSidecars(t *testing.T) {
-	root := t.TempDir()
-	warehouseTestSetup(t)
-	warehouseTestFile(t, root, "legacy", "videos", "clip.avi", []byte("legacy-video"))
-	meta := []byte(`{"display_name":"旧显示名","created":"2024-01-02T03:04:05","creator_id":"old-id","creator_name":"旧用户","unknown":"preserved"}`)
-	if err := os.WriteFile(filepath.Join(root, "projects", "legacy", ".meta.json"), meta, 0600); err != nil {
-		t.Fatal(err)
-	}
-	for directory, name := range map[string]string{".thumbs": "clip.avi.jpg", ".web": "clip.avi", ".preview": "clip.avi"} {
-		warehouseTestFile(t, root, "legacy", "videos", filepath.Join(directory, name), []byte("cached"))
-	}
-	if err := importWarehouse(warehouseTestApp, root); err != nil {
-		t.Fatal(err)
-	}
-	_, detail := warehouseTestRequest(t, "GET", "/api/projects/legacy", nil, nil, 200)
-	project := detail["project"].(map[string]any)
-	if project["display_name"] != "旧显示名" || project["created"] != "2024-01-02T03:04:05" || project["creator_name"] != "旧用户" || project["total_files"] != float64(1) {
-		t.Fatal(project)
-	}
-	files := detail["files"].(map[string]any)["videos"].([]any)
-	entry := files[0].(map[string]any)
-	if entry["thumb"] == nil || entry["web_url"] == nil || entry["preview_url"] == nil {
-		t.Fatal("existing sidecars not discovered")
-	}
-	warehouseTestJSON(t, "PUT", "/api/projects/legacy/files/videos/clip.avi", map[string]any{"name": "renamed.mov"}, 200)
-	for _, kind := range []string{"thumb", "web", "preview"} {
-		w, _ := warehouseTestRequest(t, "GET", "/api/hpahub/media/"+kind+"/legacy/videos/renamed.mov", nil, nil, 200)
-		if w.Body.String() != "cached" || w.Header().Get("Content-Disposition") != "inline" {
-			t.Fatal("sidecar media incompatible")
-		}
-	}
-	warehouseTestRequest(t, "DELETE", "/api/projects/legacy/files/videos/renamed.mov", nil, nil, 200)
-	for _, kind := range []string{"thumb", "web", "preview"} {
-		warehouseTestRequest(t, "GET", "/api/hpahub/media/"+kind+"/legacy/videos/renamed.mov", nil, nil, 404)
-	}
 }
 
 func TestWarehouseFFmpegEndToEnd(t *testing.T) {
@@ -570,5 +506,51 @@ func TestWarehouseBackupRestoreImmediatelyAfterDelete(t *testing.T) {
 			t.Fatalf("restored file content: %q", w.Body.String())
 		}
 		time.Sleep(25 * time.Millisecond)
+	}
+}
+
+func warehouseTestExtractBackup(t *testing.T, backupPath, restoredDir string) {
+	t.Helper()
+	backup, err := zip.OpenReader(backupPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer backup.Close()
+	for _, entry := range backup.File {
+		name := filepath.FromSlash(entry.Name)
+		if filepath.IsAbs(name) || name == ".." || strings.HasPrefix(name, ".."+string(filepath.Separator)) {
+			t.Fatalf("invalid backup path %q", entry.Name)
+		}
+		target := filepath.Join(restoredDir, name)
+		if entry.FileInfo().IsDir() {
+			if err := os.MkdirAll(target, 0755); err != nil {
+				t.Fatal(err)
+			}
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+			t.Fatal(err)
+		}
+		in, err := entry.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, err := os.Create(target)
+		if err != nil {
+			in.Close()
+			t.Fatal(err)
+		}
+		_, err = io.Copy(out, in)
+		closeOut := out.Close()
+		closeIn := in.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if closeOut != nil {
+			t.Fatal(closeOut)
+		}
+		if closeIn != nil {
+			t.Fatal(closeIn)
+		}
 	}
 }

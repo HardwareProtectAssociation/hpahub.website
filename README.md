@@ -1,6 +1,6 @@
-# HPAHub 网站模板
+# HPA Hub 网站
 
-基于 Svelte 和 PocketBase 的登录制网站模板。
+基于 Svelte 和 PocketBase 的登录制网站。
 
 网站支持简体中文、繁體中文、日本語和 English。使用导航栏语言选择器切换，选择保存在当前浏览器；首次访问根据浏览器语言选择，其他语言默认简体中文。用户提交的内容不会自动翻译。
 
@@ -16,23 +16,7 @@ docker compose up -d --build --remove-orphans
 
 访问 `http://localhost:18763`。设置 `PORT` 环境变量可更改宿主机端口。PocketBase 数据保存在 Docker 卷 `pb_data` 中，更新容器不会清除数据。
 
-显卡数据、仓库项目与文件由 PocketBase 管理，保存在 `pb_data`；默认本地文件存储会随 PocketBase 备份一起保存。视频缩略图和预览依赖容器内的 FFmpeg、ffprobe。运行时 Compose 只挂载 `pb_data`，不挂载历史卷，也不执行启动兼容检查。
-
-## 从旧版本迁移
-
-先停止所有旧服务和写入，并备份和验证 `pb_data`、`gpu_data`、`warehouse_data` 三个卷。确认实际 Compose 项目卷名及新应用镜像；以下卷名和 `IMAGE` 均须替换为实际值。仅在已授权的隔离环境操作，不触碰生产数据。导入期间不能运行其他应用实例。
-
-```sh
-docker compose down --remove-orphans
-docker compose build app
-# 仅当旧显卡卷包含 gpu.db 时运行：
-docker run --rm --network none --mount type=volume,src=实际项目_pb_data,dst=/app/pb_data --mount type=volume,src=实际项目_gpu_data,dst=/source,readonly --entrypoint /app/pocketbase IMAGE hpa-import-gpu --source /source/gpu.db
-# 仅当旧仓库卷包含数据时运行：
-docker run --rm --network none --mount type=volume,src=实际项目_pb_data,dst=/app/pb_data --mount type=volume,src=实际项目_warehouse_data,dst=/source,readonly --entrypoint /app/pocketbase IMAGE hpa-import-warehouse --source /source
-docker compose up -d --build --remove-orphans
-```
-
-导入只执行一次，不保留长期兼容实现。保留旧卷，不要使用 `down -v`；失败时停止操作并保留备份和源卷。切换后检查显卡、项目、文件、预览和访问权限，并创建、验证新的 PocketBase 备份。新服务产生写入后，直接回退旧卷会丢失这些写入；恢复前先停写并确认回滚方案。若使用 PocketBase 外部对象存储，须单独备份和验证对象；不能假定 PocketBase ZIP 包含远程文件。
+显卡数据、仓库项目与文件由 PocketBase 管理，保存在 `pb_data`；默认本地文件存储会随 PocketBase 备份一起保存。视频缩略图和预览依赖容器内的 FFmpeg、ffprobe。
 
 创建 PocketBase 超级管理员（将邮箱和密码替换为自己的值）：
 
@@ -88,7 +72,7 @@ go run . superuser create admin@hpahub.local '替换为测试密码' --dir (Join
 # 在相应容器内执行：
 go test ./...
 npm ci && npm run build
-# Go 测试覆盖备份验证、数据导入与仓库文件安全。
+# Go 测试覆盖备份验证与仓库文件安全。
 ```
 
 恢复会停止测试服务，并将原数据保留在测试卷的 `backups/local-restore-*` 目录。恢复后运行启动命令。本地使用 Caddy 反向代理，仅监听本机；应用运行在隔离网络中。生产备份仍包含敏感数据和生产账户，请妥善保管。
@@ -106,4 +90,15 @@ npm ci && npm run build
 
 ## 数据安全
 
-备份包含敏感数据，请妥善保管并定期下载到独立存储。生产环境应在可信反向代理后启用 HTTPS。删除 Docker 卷会永久删除数据库及保存在卷中的备份。
+备份包含敏感数据，请妥善保管并定期下载到独立存储。生产环境应在可信反向代理后启用 HTTPS。默认的 Docker 卷 `pb_data` 被删除时，卷内数据库、文件和备份也会被删除。建议在部署前将 `/app/pb_data` 绑定挂载到受保护的宿主机外部目录，并定期将备份复制到独立存储；删除 Docker 卷不会删除该目录，但删除目录或磁盘故障仍会造成数据丢失。已有部署改用绑定挂载前，应停写、备份并验证恢复，再完整复制现有数据并核验后切换，避免启动空数据库。
+
+例如，在部署目录创建 `compose.override.yaml`（将路径替换为宿主机上已准备好且有适当权限的绝对路径）：
+
+```yaml
+services:
+  app:
+    volumes: !override
+      - /srv/hpahub/pb_data:/app/pb_data
+```
+
+此配置需要 Docker Compose 2.24.4 或更新版本。外部对象存储中的文件需要单独备份和验证。
