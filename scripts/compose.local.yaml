@@ -6,8 +6,9 @@ services:
       labels:
         org.hpahub.local-image: "true"
     ports: !override []
-    networks:
+    networks: !override
       - isolated
+      - sidecars
 
   proxy:
     image: caddy:2-alpine
