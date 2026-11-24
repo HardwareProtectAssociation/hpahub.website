@@ -12,6 +12,8 @@
   let keepImages = [];
   let files = [];
   let avatar = null;
+  let imagesInput;
+  let avatarInput;
   let removeAvatar = false;
   let previews = {};
   let uploadPreviews = [];
@@ -40,7 +42,10 @@
   async function preview(url) {
     if (!url || previews[url]) return;
     const response = await fetch(url, { headers: headers(), cache: 'no-store' });
-    if (response.ok) previews = { ...previews, [url]: URL.createObjectURL(await response.blob()) };
+    if (response.ok) {
+      const blob = await response.blob();
+      previews = { ...previews, [url]: URL.createObjectURL(blob) };
+    }
   }
   function clearPreviews() { Object.values(previews).forEach(URL.revokeObjectURL); previews = {}; }
   async function load() {
@@ -59,6 +64,7 @@
     published = record?.published || false;
     keepImages = [...(record?.images || [])];
     files = [];
+    imagesInput.value = '';
     uploadPreviews.forEach(URL.revokeObjectURL); uploadPreviews = [];
     error = ''; notice = '';
   }
@@ -70,7 +76,7 @@
       if (avatar) body.set('avatar', avatar);
       if (removeAvatar) body.set('removeAvatar', 'true');
       await request('/api/hpahub/me/profile', { method: 'PATCH', body });
-      avatar = null; if (avatarPreview) URL.revokeObjectURL(avatarPreview); avatarPreview = ''; removeAvatar = false; await load(); notice = '资料已保存。';
+      avatar = null; avatarInput.value = ''; if (avatarPreview) URL.revokeObjectURL(avatarPreview); avatarPreview = ''; removeAvatar = false; await load(); notice = '资料已保存。';
     } catch (e) { error = e.message; } finally { busy = false; }
   }
   async function saveRecord() {
@@ -100,8 +106,8 @@
       {#if avatarPreview && !removeAvatar}<img class="avatar" src={avatarPreview} alt="新头像预览" />{:else if profile.avatarUrl && previews[profile.avatarUrl] && !removeAvatar}<img class="avatar" src={previews[profile.avatarUrl]} alt="当前头像" />{/if}
       <label>昵称 <input bind:value={profile.name} maxlength="80" required={profile.profilePublic} /></label>
       <label>简介 <textarea bind:value={profile.bio} maxlength="600" rows="4"></textarea></label>
-      <label>头像（JPEG、PNG、WebP 或 GIF，最多 5 MiB） <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" on:change={selectAvatar} /></label>
-      {#if profile.avatarUrl}<label class="check-label"><input type="checkbox" bind:checked={removeAvatar} on:change={() => { if (removeAvatar) avatar = null; }} /> 删除头像</label>{/if}
+      <label>头像（JPEG、PNG、WebP 或 GIF，最多 5 MiB） <input type="file" bind:this={avatarInput} accept="image/jpeg,image/png,image/webp,image/gif" on:change={selectAvatar} /></label>
+      {#if profile.avatarUrl}<label class="check-label"><input type="checkbox" bind:checked={removeAvatar} on:change={() => { if (removeAvatar) { avatar = null; avatarInput.value = ''; } }} /> 删除头像</label>{/if}
       <label class="check-label"><input type="checkbox" bind:checked={profile.profilePublic} /> 公开我的资料和卡片</label>
       <button class="primary" disabled={busy}>保存资料</button>
     </form></section>
@@ -111,7 +117,7 @@
     <h2>{current ? '编辑' : '新建'}{manage ? '项目' : '卡片'}</h2><form class="editor-form" on:submit|preventDefault={saveRecord}>
       <label>标题 <input bind:value={title} maxlength="80" required /></label><label>文字 <textarea bind:value={text} maxlength="280" rows="4"></textarea></label>
       {#if current?.images?.length}<fieldset><legend>保留图片</legend>{#each current.images as image, index}<label class="check-label"><input type="checkbox" value={image} bind:group={keepImages} /> {#if previews[current.imageUrls[index]]}<img class="editor-thumb" src={previews[current.imageUrls[index]]} alt="" />{/if} {image}</label>{/each}</fieldset>{/if}
-      <label>添加图片（最多 4 张，每张最多 5 MiB） <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple on:change={selectFiles} /></label>
+      <label>添加图片（最多 4 张，每张最多 5 MiB） <input type="file" bind:this={imagesInput} accept="image/jpeg,image/png,image/webp,image/gif" multiple on:change={selectFiles} /></label>
       {#if uploadPreviews.length}<div class="image-grid">{#each uploadPreviews as url}<img src={url} alt="待上传图片预览" />{/each}</div>{/if}
       {#if manage}<label class="check-label"><input type="checkbox" bind:checked={published} /> 发布项目</label>{/if}
       <div class="editor-actions"><button class="primary" disabled={busy}>保存</button>{#if current}<button type="button" on:click={() => edit()}>取消编辑</button>{/if}</div>
