@@ -7,15 +7,15 @@
 开发前先根据此索引定位相关代码，再按需阅读具体实现；本节是导航而非完整文件清单，实际代码为准。项目结构或职责发生变化时，agent 应在同一改动中更新本节，保持路径和说明准确；新增迁移目录或调整迁移方式时，也要同步更新下方数据库变更约束。
 
 - `frontend/`：Svelte 和 Vite 前端。`src/main.js` 为入口，`App.svelte` 管理应用和导航；`Gpu.svelte`、`Warehouse.svelte`、`PublicPages.svelte`、`Editors.svelte` 分别实现显卡、仓库、公共页面和编辑功能；`style.css` 为样式，`i18n*.js` 为多语言及对应测试。
-- `backend/`：Go 和 PocketBase 后端。`main.go` 注册应用、路由及备份策略；`invitations.go`、`roles.go`、`legacy_accounts.go` 处理邀请码、权限和旧账号；`gpu*.go`、`warehouse*.go`、`public_content.go` 分别处理显卡、仓库和公共内容；`import_data.go` 及相关 `*_import.go` 负责导入，`maintenance*.go` 负责维护操作，`*_test.go` 为测试。
+- `backend/`：Go 和 PocketBase 后端。`main.go` 注册应用、路由及备份策略；`invitations.go`、`roles.go` 处理邀请码、权限和旧账号登录；`gpu*.go`、`warehouse*.go`、`public_content.go` 分别处理显卡、仓库和公共内容；`maintenance*.go` 负责维护操作，`*_test.go` 为测试。
 - `backend/migrations/`：版本化 PocketBase 迁移，由后端启动时注册；保留已部署版本的升级路径。
 - `scripts/`：隔离本地环境的 Compose 配置、启动、恢复和重置脚本，以及 Windows 开发服务器脚本。
-- `Dockerfile`、`compose.yaml`：应用镜像和部署配置；`README.md`：部署、本地测试、迁移和备份说明。
+- `dev.ps1`：Windows 前后端开发服务器启动脚本；`Dockerfile`、`compose.yaml`：应用镜像和部署配置；`README.md`：部署、本地测试和备份说明。
 
 ## 开发流程
 
 1. 开发前阅读本索引、相关代码和 `README.md`，确认需求、当前分支和工作区状态。不要覆盖或提交他人的未提交改动。
-2. 不直接在 `main` 上开发。创建本地功能或修复分支时先获取最新 `main`，并检查已有工作和提交关系：通常从最新 `main` 创建独立分支；若已有尚未合并且需要延续的本地工作，则从其最新 commit 顺序创建后续分支，避免从同一旧基点并行分叉造成冲突。不要擅自改写、丢弃或合并他人的工作；遇到无法安全衔接的情况先说明。
+2. 不直接在 `main` 上开发。开发新需求或修复前先获取远端 `main`，确认本地 `main` 是否最新；落后且可安全快进时自动同步，若存在分叉或未提交改动阻碍安全同步则先说明，不覆盖现有工作。创建本地功能或修复分支时检查已有工作和提交关系：通常从最新 `main` 创建独立分支；若已有尚未合并且需要延续的本地工作，则从其最新 commit 顺序创建后续分支，避免从同一旧基点并行分叉造成冲突。不要擅自改写、丢弃或合并他人的工作；遇到无法安全衔接的情况先说明。
 3. 线性推进本地开发，及时提交：每完成一个可独立提交的最小改动就创建 commit，不必吝惜 commit。提交应描述实际变更，不要将不相关改动混入同一 commit。
 4. 功能完成后运行相关测试并更新必要说明，报告测试结果、限制和未完成事项；不要声称未执行的检查通过。仅当人类明确表示要合并到主分支时，才从功能分支最新 commit 创建面向 `main` 的 PR；确保 PR 包含预期提交。
    **禁止 agent 自主合并 PR 到 `main`。** 需要合并时，先告知人类合并意愿，询问该 PR 是否已充分测试并确认；仅在人类明确确认后才能执行合并。未确认时保持 PR 未合并，不得启用自动合并。获得确认后默认使用 squash merge，除非人类明确要求其他合并方式。
@@ -27,7 +27,7 @@
 - Linux 开发和测试只使用 Docker；安装 Docker、Docker Compose 2.24.4 或更新版本，不在宿主机启动开发服务器或运行测试。
 - 在仓库根目录运行 `sh scripts/local-up.sh` 构建并启动隔离的本地测试环境，默认访问 `http://localhost:18764`。新建测试数据库的账号为 `admin`，密码为 `admin123`；已有数据库不会重置管理员。
 - 需要时运行 `sh scripts/local-restore.sh /path/backup.zip` 导入备份；确认后运行 `sh scripts/local-reset.sh` 清除本地测试数据。恢复和清除前确认目标和数据影响。
-- 根据改动在隔离容器中运行适当检查，例如 `go test ./...` 和 `npm ci && npm run build`。Go 测试覆盖备份验证、数据导入与仓库文件安全。界面改动还要在浏览器检查实际页面。
+- 根据改动在隔离容器中运行适当检查，例如 `go test ./...` 和 `npm ci && npm run build`。Go 测试覆盖备份验证与仓库文件安全。界面改动还要在浏览器检查实际页面。
 - 生产部署仅使用经过合并和验证的 `main`：在部署环境检出目标 `main` 版本后，按照 `README.md` 执行 `docker compose up -d --build`。先备份并确认恢复方案；不使用本地测试脚本部署生产。
 
 ## Windows：测试与部署

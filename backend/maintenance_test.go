@@ -5,7 +5,7 @@ import (
 )
 
 func TestMaintenanceCommandDispatch(t *testing.T) {
-	for _, args := range [][]string{nil, {"serve"}, {"hpa-import-accounts"}} {
+	for _, args := range [][]string{nil, {"serve"}} {
 		if handled, err := maintenanceCommand(args); handled || err != nil {
 			t.Fatalf("unexpected maintenance dispatch: %v %v %v", args, handled, err)
 		}
