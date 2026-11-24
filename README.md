@@ -50,14 +50,13 @@ npm ci
 cd ..
 ```
 
-分别在两个 PowerShell 窗口中运行：
+在仓库根目录的 PowerShell 中运行：
 
 ```powershell
-.\scripts\dev-backend.ps1
-.\scripts\dev-frontend.ps1
+.\dev.ps1
 ```
 
-访问 `http://127.0.0.1:5173`，前端将 `/api` 请求代理到 `127.0.0.1:8090`。两个服务均只监听本机；按 Ctrl+C 停止各自的服务。后端数据保存在独立的 `backend/pb_data`，不与 Docker 数据卷共享，也不会自动创建测试管理员。需要管理员时，在第三个 PowerShell 窗口运行：
+访问 `http://127.0.0.1:5173`，前端将 `/api` 请求代理到 `127.0.0.1:8090`。两个服务均只监听本机；按 Ctrl+C 或关闭该窗口即可停止两个服务及其子进程；任一服务意外退出时，脚本也会停止另一个服务。后端数据保存在独立的 `backend/pb_data`，不与 Docker 数据卷共享，也不会自动创建测试管理员。需要管理员时，在第三个 PowerShell 窗口运行：
 
 ```powershell
 cd backend

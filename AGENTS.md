@@ -10,7 +10,7 @@
 - `backend/`：Go 和 PocketBase 后端。`main.go` 注册应用、路由及备份策略；`invitations.go`、`roles.go` 处理邀请码、权限和旧账号登录；`gpu*.go`、`warehouse*.go`、`public_content.go` 分别处理显卡、仓库和公共内容；`maintenance*.go` 负责维护操作，`*_test.go` 为测试。
 - `backend/migrations/`：版本化 PocketBase 迁移，由后端启动时注册；保留已部署版本的升级路径。
 - `scripts/`：隔离本地环境的 Compose 配置、启动、恢复和重置脚本，以及 Windows 开发服务器脚本。
-- `Dockerfile`、`compose.yaml`：应用镜像和部署配置；`README.md`：部署、本地测试和备份说明。
+- `dev.ps1`：Windows 前后端开发服务器启动脚本；`Dockerfile`、`compose.yaml`：应用镜像和部署配置；`README.md`：部署、本地测试和备份说明。
 
 ## 开发流程
 
