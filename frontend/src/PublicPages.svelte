@@ -10,6 +10,8 @@
   let applyError = '';
   let applyNotice = '';
   let applying = false;
+  let followBusy = false;
+  let followError = '';
   let activeTab = 'completed';
   let loading = true;
   let errorParams = {};
@@ -90,6 +92,25 @@
       applyError = err.message || '申请失败，请重试。';
     } finally {
       applying = false;
+    }
+  }
+
+  async function toggleFollow() {
+    if (!token || !data?.canFollow) return;
+    followBusy = true;
+    followError = '';
+    try {
+      const response = await fetch(`/api/hpahub/projects/${encodeURIComponent(data.id)}/follow`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.message || '关注失败，请重试。');
+      data = { ...data, following: result.following };
+    } catch (err) {
+      followError = err.message || '关注失败，请重试。';
+    } finally {
+      followBusy = false;
     }
   }
 </script>
@@ -213,6 +234,15 @@
         {#if data.description && data.description !== data.summary}<p class="project-description">{data.description}</p>{/if}
         {#if data.estimatedDurationDays}<p class="project-owner">{$t('预计周期')}：{data.estimatedDurationDays} {$t('天')}</p>{/if}
       </header>
+      {#if data.canFollow}
+        <div class="follow-row">
+          <button type="button" class:following={data.following} class="follow-button" on:click={toggleFollow} disabled={followBusy}>
+            <span aria-hidden="true">{data.following ? '♥' : '♡'}</span>
+            {data.following ? $t('已关注') : $t('关注项目')}
+          </button>
+          {#if followError}<span class="follow-error">{$t(followError)}</span>{/if}
+        </div>
+      {/if}
       {#if data.canApply}
         <section class="project-apply" aria-labelledby="project-apply-title">
           <h2 id="project-apply-title">{$t('申请加入')}</h2>
@@ -282,6 +312,10 @@
   .project-apply textarea { width: 100%; padding: 9px; border: 1px solid #b9c3b3; background: #fff; color: #252b26; font: inherit; resize: vertical; }
   .project-apply .message { margin: 8px 0; }
   .project-apply-hint { color: #6f7b6d; font-size: 13px; }
+  .follow-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: -8px 0 18px; }
+  .follow-button { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border: 1px solid #b9c3b3; border-radius: 999px; background: #fff; color: #34553a; font-size: 13px; }
+  .follow-button.following { border-color: #e3bcc4; background: #fff4f6; color: #a84358; }
+  .follow-error { color: #9b402c; font-size: 12px; }
   .difficulty-D { color: #6b6f66; background: #f1f2ed; }
   .difficulty-C { color: #3f5d3a; background: #eef3e8; border-color: #c8d4c0; }
   .difficulty-B { color: #285a78; background: #e8f4fb; border-color: #a9cde4; }

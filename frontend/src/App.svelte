@@ -5,6 +5,7 @@
   import PersonalCenter from './PersonalCenter.svelte';
   import SkillEditor from './SkillEditor.svelte';
   import AdminDirectory from './AdminDirectory.svelte';
+  import MyProjects from './MyProjects.svelte';
   import PublicPages from './PublicPages.svelte';
   import Editors from './Editors.svelte';
 
@@ -265,9 +266,10 @@
       <a class="text-button" href="/showcase">{$t('项目大厅')}</a>
       {#if token && !checking}
         <a class="text-button" href="/me">{$t('个人中心')}</a>
+        {#if ['member', 'admin', 'octopus'].includes(role)}<a class="text-button" href="/my-projects">{$t('我的项目')}</a>{/if}
         {#if ['member', 'admin'].includes(role)}<a class="text-button" href="/settings">{$t('个人设置')}</a>{/if}
         {#if isAdmin}
-          <a class="text-button" href="/manage/showcase">{$t('项目管理')}</a>
+          <a class="text-button" href="/manage/showcase">{$t('项目大厅管理')}</a>
           {#if pathname === '/'}<button class="text-button" on:click={openConsole}>{$t('管理控制台')}</button>
           {:else}<a class="text-button" href="/?console=1">{$t('管理控制台')}</a>{/if}
         {/if}
@@ -295,6 +297,12 @@
       <SkillEditor {token} />
     {:else}
       <main class="dashboard"><h1>{$t('技能管理')}</h1><p>{$t('请先登录后管理技能。')}</p><a href="/sign-in">{$t('登录')}</a></main>
+    {/if}
+  {:else if pathname === '/my-projects'}
+    {#if token}
+      <MyProjects {token} />
+    {:else}
+      <main class="dashboard"><h1>{$t('我的项目')}</h1><p>{$t('请先登录后查看我的项目。')}</p><a href="/sign-in">{$t('登录')}</a></main>
     {/if}
   {:else if pathname === '/me'}
     {#if token}

@@ -77,6 +77,7 @@ func main() {
 		bindPublicRoutes(e)
 		bindPublicProjectRoutes(e)
 		bindAdminConsoleRoutes(e)
+		bindMyProjectRoutes(e)
 		bindPersonalCenterRoutes(e)
 		_, err := app.DB().NewQuery(`CREATE TABLE IF NOT EXISTS hpahub_backup_policy (
 			id INTEGER PRIMARY KEY CHECK (id = 1), interval_hours INTEGER NOT NULL,

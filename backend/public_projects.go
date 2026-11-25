@@ -50,6 +50,8 @@ type publicProjectDetail struct {
 	Members               []publicProjectMember `json:"members"`
 	CanApply              bool                  `json:"canApply"`
 	ApplicationPending    bool                  `json:"applicationPending"`
+	CanFollow             bool                  `json:"canFollow"`
+	Following             bool                  `json:"following"`
 }
 
 type managedProject struct {
@@ -135,6 +137,10 @@ func bindPublicProjectRoutes(e *core.ServeEvent) {
 		}
 		if e.Auth != nil {
 			if viewer, member, err := personalCenterOwner(e.App, e.Auth); err == nil && member && viewer.Id != project.GetString("owner_user_id") {
+				detail.CanFollow = true
+				if follow, err := e.App.FindFirstRecordByFilter("project_follows", "project_id = {:project} && user_id = {:user}", dbx.Params{"project": project.Id, "user": viewer.Id}); err == nil {
+					detail.Following = follow.GetBool("is_active")
+				}
 				if _, err := e.App.FindFirstRecordByFilter("project_members", `project_id = {:project} && user_id = {:user} && status = "active"`, dbx.Params{"project": project.Id, "user": viewer.Id}); errors.Is(err, sql.ErrNoRows) {
 					detail.CanApply = true
 				}
