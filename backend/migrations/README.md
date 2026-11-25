@@ -53,7 +53,7 @@ go run . migrate up --dir <临时数据目录>        # 在空库或已有库上
 14. **健康评估**：`users.current_status` 为 `busy`/`free`；`users.daily_health_enabled` 控制每日健康评估开关，现有账号回填为开启；`health_checkins` 按用户和日期唯一记录心情、休息、锻炼、按时吃饭和备注；入口在个人中心，不再自动弹窗。
 15. **已完成项目改进**：`project_join_requests.source` 增加 `improvement`；已完成项目的详情页只提供改进申请，普通加入申请会返回 400；管理控制台按来源显示“申请改进”或“申请加入”。
 16. **硬件新闻**：`hardware_news` 保存成员发布的标题、正文和原文链接；`hardware_news_reactions` 每个成员对每条新闻最多一个反应，取值为 `like` 或 `useless`，作者不能给自己投票。
-17. **成员互动关系**：`member_relations` 保存有向关系 `admire`（敬仰）/`watch`（监视）/`investigate`（调查），同一对成员只能有一条关系；公开成员页显示被敬仰、被监视、被调查数量及当前访问者的关系。
+17. **成员互动关系**：`member_relations` 保存有向关系 `admire`（关注）/`watch`（监视）/`investigate`（调查），同一对成员只能有一条关系；公开成员页显示被关注、被监视、被调查数量及当前访问者的关系。
 12. **0 与未知**：`weekly_hours`、`expected_weekly_hours`、`estimated_duration_days`、`people_needed`、`quantity_limit`、`target_amount_cents`、`target_quantity`、`pledged_*`、`delivered_*`、`allocation_basis_points`、`eligible_count`、`valid_vote_count`、`final_xp` 的 0 都按“未填写”解释。`task_xp_votes.xp_value` 为 0 且有 `voted_at` 时表示投了 0 经验；`task_xp_ballots.final_xp` 为 0 且 `closed_at` 非空时表示有效结果为 0；贡献份额 0 且状态为 `confirmed` 表示确认的 0 份额。`career_level_thresholds.minimum_total_xp` 的 0 是等级 1 的合法门槛，`eligible_count` 为 0 表示合法但无人具备资格的边界；两者因 NumberField 不能表达 NULL 而保持可选。这样不额外增加可空标记字段。
 
 ## 唯一约束与部分唯一索引

@@ -48,7 +48,7 @@
   $: items = Array.isArray(data) ? data : data?.items || [];
   const statusLabels = { ongoing: '进行中', paused: '暂停', terminated: '已中止', completed: '已完成' };
   const currentStatusLabels = { busy: '忙碌', free: '空闲' };
-  const relationLabels = { admire: '敬仰', watch: '监视', investigate: '调查' };
+  const relationLabels = { admire: '关注', watch: '监视', investigate: '调查' };
   const relationOptions = Object.entries(relationLabels);
   function statusLabel(status) { return $t(statusLabels[status] || status); }
   function formatDate(value) {
@@ -183,7 +183,7 @@
       {#if data.relations}
         <div class="relation-panel">
           <div class="relation-counts">
-            <span>{$t('被敬仰')} <strong>{data.relations.admireCount}</strong></span>
+            <span>{$t('被关注')} <strong>{data.relations.admireCount}</strong></span>
             <span>{$t('被监视')} <strong>{data.relations.watchCount}</strong></span>
             <span>{$t('被调查')} <strong>{data.relations.investigateCount}</strong></span>
           </div>
