@@ -75,6 +75,7 @@ func main() {
 		bindInvitationRoutes(e)
 		bindHardwareRoutes(e)
 		bindPublicRoutes(e)
+		bindPersonalCenterRoutes(e)
 		_, err := app.DB().NewQuery(`CREATE TABLE IF NOT EXISTS hpahub_backup_policy (
 			id INTEGER PRIMARY KEY CHECK (id = 1), interval_hours INTEGER NOT NULL,
 			retain_count INTEGER NOT NULL, last_run INTEGER NOT NULL

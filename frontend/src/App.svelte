@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { locale, languages, t } from './i18n.js';
   import Hardware from './Hardware.svelte';
+  import PersonalCenter from './PersonalCenter.svelte';
   import PublicPages from './PublicPages.svelte';
   import Editors from './Editors.svelte';
 
@@ -288,6 +289,7 @@
       <a class="text-button" href="/community">{$t('成员')}</a>
       <a class="text-button" href="/showcase">{$t('项目展示')}</a>
       {#if token && !checking}
+        <a class="text-button" href="/me">{$t('个人中心')}</a>
         {#if ['member', 'admin'].includes(role)}<a class="text-button" href="/settings">{$t('个人设置')}</a>{/if}
         {#if isAdmin}
           <a class="text-button" href="/manage/showcase">{$t('项目管理')}</a>
@@ -309,6 +311,12 @@
     <main class="dashboard"><p role="status">{$t('正在验证登录状态…')}</p></main>
   {:else if pathname === '/hardware'}
     <Hardware {token} {role} />
+  {:else if pathname === '/me'}
+    {#if token}
+      <PersonalCenter {token} />
+    {:else}
+      <main class="dashboard"><h1>{$t('个人中心')}</h1><p>{$t('请先登录后查看个人中心。')}</p><a href="/sign-in">{$t('登录')}</a></main>
+    {/if}
   {:else if pathname === '/settings' || pathname === '/manage/showcase'}
     {#if token && (pathname === '/settings' ? ['member', 'admin'].includes(role) : isAdmin)}
       <Editors {token} {role} manage={pathname === '/manage/showcase'} />
