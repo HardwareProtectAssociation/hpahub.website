@@ -2,7 +2,6 @@
   import { onMount } from 'svelte';
   import { locale, languages, t } from './i18n.js';
   import Hardware from './Hardware.svelte';
-  import Warehouse from './Warehouse.svelte';
   import PublicPages from './PublicPages.svelte';
   import Editors from './Editors.svelte';
 
@@ -175,10 +174,6 @@
 
   function logout() {
     menuOpen = false;
-    fetch('/api/hpahub/warehouse/media-session', {
-      method: 'DELETE',
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    }).catch(() => {});
     clearTimeout(expiryTimer);
     token = '';
     collection = '';
@@ -290,7 +285,6 @@
     <nav id="main-navigation" class="topbar-right" aria-label={$t('主导航')}>
       <a class="text-button" href="/" aria-current={pathname === '/' && page === 'home' ? 'page' : undefined}>{$t('首页')}</a>
       <a class="text-button" href="/hardware">{$t('硬件数据库')}</a>
-      <a class="text-button" href="/warehouse">{$t('仓库')}</a>
       <a class="text-button" href="/community">{$t('成员')}</a>
       <a class="text-button" href="/showcase">{$t('项目展示')}</a>
       {#if token && !checking}
@@ -315,12 +309,6 @@
     <main class="dashboard"><p role="status">{$t('正在验证登录状态…')}</p></main>
   {:else if pathname === '/hardware'}
     <Hardware {token} {role} />
-  {:else if pathname === '/warehouse'}
-    {#if token && ['member', 'admin', 'octopus'].includes(role)}
-      <Warehouse {token} {role} />
-    {:else}
-      <main class="dashboard"><h1>{$t('仓库')}</h1><p>{$t('仓库仅供内部成员访问。')}</p><a href="/sign-in">{$t('登录账户')}</a></main>
-    {/if}
   {:else if pathname === '/settings' || pathname === '/manage/showcase'}
     {#if token && (pathname === '/settings' ? ['member', 'admin'].includes(role) : isAdmin)}
       <Editors {token} {role} manage={pathname === '/manage/showcase'} />

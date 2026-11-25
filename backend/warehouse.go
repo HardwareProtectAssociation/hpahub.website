@@ -21,14 +21,10 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tools/filesystem"
-	"github.com/pocketbase/pocketbase/tools/hook"
-	"github.com/pocketbase/pocketbase/tools/router"
-	"github.com/pocketbase/pocketbase/tools/security"
 )
 
 const warehouseBodyLimit int64 = 500 << 20
@@ -360,145 +356,6 @@ func warehouseRequestJSON(r *http.Request) (map[string]any, error) {
 		data = map[string]any{}
 	}
 	return data, nil
-}
-
-const mediaCookieName = "hpa_warehouse_media"
-const mediaCookiePath = "/api/hpahub/warehouse/media/"
-const mediaPurpose = "hpahub-warehouse-media"
-
-func mediaKey(record *core.Record) string {
-	return record.TokenKey() + record.Collection().AuthToken.Secret + ":" + mediaPurpose
-}
-
-func mediaCookie(e *core.RequestEvent, value string, expires time.Time, maxAge int) {
-	secure := os.Getenv("HPA_LOCAL_TEST") != "1" || e.Request.TLS != nil
-	http.SetCookie(e.Response, &http.Cookie{Name: mediaCookieName, Value: value, Path: mediaCookiePath, HttpOnly: true, Secure: secure, SameSite: http.SameSiteStrictMode, Expires: expires, MaxAge: maxAge})
-}
-
-func mediaSession(e *core.RequestEvent) error {
-	if e.Request.Method == http.MethodDelete {
-		mediaCookie(e, "", time.Unix(1, 0), -1)
-		return e.NoContent(http.StatusNoContent)
-	}
-	if e.Auth == nil {
-		return e.UnauthorizedError("Authentication required.", nil)
-	}
-	if !internalRole(e.Auth) {
-		return e.ForbiddenError("Insufficient permissions.", nil)
-	}
-	authorization := e.Request.Header.Get("Authorization")
-	if !strings.HasPrefix(authorization, "Bearer ") {
-		return e.UnauthorizedError("Authentication required.", nil)
-	}
-	claims, err := security.ParseUnverifiedJWT(strings.TrimPrefix(authorization, "Bearer "))
-	if err != nil {
-		return e.UnauthorizedError("Authentication required.", nil)
-	}
-	exp, err := claims.GetExpirationTime()
-	if err != nil || exp == nil {
-		return e.UnauthorizedError("Authentication required.", nil)
-	}
-	deadline := time.Now().Add(15 * time.Minute)
-	if exp.Time.Before(deadline) {
-		deadline = exp.Time
-	}
-	if !deadline.After(time.Now()) {
-		return e.UnauthorizedError("Authentication required.", nil)
-	}
-	payload := jwt.MapClaims{"collection": e.Auth.Collection().Name, "id": e.Auth.Id, "purpose": mediaPurpose, "exp": deadline.Unix()}
-	value, err := security.NewJWT(payload, mediaKey(e.Auth), time.Until(deadline))
-	if err != nil {
-		return e.InternalServerError("Unable to create media session.", err)
-	}
-	mediaCookie(e, value, deadline, int(time.Until(deadline).Seconds()))
-	return e.NoContent(http.StatusNoContent)
-}
-
-func mediaIdentity(e *core.RequestEvent) *core.Record {
-	cookie, err := e.Request.Cookie(mediaCookieName)
-	if err != nil {
-		return nil
-	}
-	claims, err := security.ParseUnverifiedJWT(cookie.Value)
-	if err != nil {
-		return nil
-	}
-	collection, _ := claims["collection"].(string)
-	id, _ := claims["id"].(string)
-	if collection != "users" && collection != core.CollectionNameSuperusers {
-		return nil
-	}
-	record, err := e.App.FindRecordById(collection, id)
-	if err != nil || !internalRole(record) {
-		return nil
-	}
-	claims, err = security.ParseJWT(cookie.Value, mediaKey(record))
-	if err != nil || claims["purpose"] != mediaPurpose {
-		return nil
-	}
-	exp, err := claims.GetExpirationTime()
-	if err != nil || exp == nil || !exp.After(time.Now()) {
-		return nil
-	}
-	return record
-}
-
-func bindWarehouseRoutes(e *core.ServeEvent) {
-	e.Router.POST("/api/hpahub/warehouse/media-session", mediaSession)
-	e.Router.DELETE("/api/hpahub/warehouse/media-session", mediaSession)
-	handler := func(e *core.RequestEvent) error {
-		const prefix = "/api/hpahub/warehouse/"
-		escaped := strings.TrimPrefix(e.Request.URL.EscapedPath(), prefix)
-		parts := strings.Split(escaped, "/")
-		for i, part := range parts {
-			value, err := url.PathUnescape(part)
-			if err != nil || value == "" || value == "." || value == ".." || strings.ContainsAny(value, "/\\\x00") {
-				return e.NotFoundError("Not found.", nil)
-			}
-			parts[i] = value
-		}
-		media := len(parts) == 5 && parts[0] == "media" && (e.Request.Method == "GET" || e.Request.Method == "HEAD")
-		auth := e.Auth
-		if media {
-			auth = mediaIdentity(e)
-		}
-		if auth == nil {
-			return e.UnauthorizedError("Authentication required.", nil)
-		}
-		if !internalRole(auth) || (len(parts) == 1 && parts[0] == "storage" && (e.Request.Method == "PUT" || e.Request.Method == "PATCH") && siteRole(auth) != "octopus") {
-			return e.ForbiddenError("Insufficient permissions.", nil)
-		}
-		r := e.Request.Clone(e.Request.Context())
-		r.Header.Del("X-User-Id")
-		r.Header.Del("X-User-Name")
-		r.Header.Set("X-User-Id", auth.Id)
-		name := auth.GetString("name")
-		if name == "" {
-			name = auth.Email()
-		}
-		if name == "" {
-			name = auth.Id
-		}
-		r.Header.Set("X-User-Name", url.PathEscape(name))
-		if media {
-			r.URL.Path = "/api/hpahub/media/" + strings.Join(parts[1:], "/")
-		} else {
-			r.URL.Path = "/api/" + strings.Join(parts, "/")
-		}
-		serveWarehouse(e.App, e.Response, r)
-		return nil
-	}
-	for _, method := range []string{"GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"} {
-		e.Router.Route(method, "/api/hpahub/warehouse/{path...}", handler).Bind(&hook.Handler[*core.RequestEvent]{
-			Priority: apis.DefaultBodyLimitMiddlewarePriority - 1,
-			Func: func(e *core.RequestEvent) error {
-				if body, ok := e.Request.Body.(*router.RereadableReadCloser); ok {
-					e.Request.Body = body.ReadCloser
-				}
-				return e.Next()
-			},
-		}, apis.BodyLimit(warehouseBodyLimit))
-	}
 }
 
 func serveWarehouse(app core.App, w http.ResponseWriter, r *http.Request) {
