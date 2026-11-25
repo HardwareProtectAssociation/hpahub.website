@@ -1,9 +1,7 @@
 package main
 
 import (
-	"database/sql"
 	"encoding/json"
-	"errors"
 	"strings"
 
 	"github.com/pocketbase/dbx"
@@ -50,6 +48,8 @@ type publicProjectDetail struct {
 	Members               []publicProjectMember `json:"members"`
 	CanApply              bool                  `json:"canApply"`
 	ApplicationPending    bool                  `json:"applicationPending"`
+	CanRequestImprovement bool                  `json:"canRequestImprovement"`
+	ImprovementPending    bool                  `json:"improvementPending"`
 	CanFollow             bool                  `json:"canFollow"`
 	Following             bool                  `json:"following"`
 }
@@ -141,12 +141,25 @@ func bindPublicProjectRoutes(e *core.ServeEvent) {
 				if follow, err := e.App.FindFirstRecordByFilter("project_follows", "project_id = {:project} && user_id = {:user}", dbx.Params{"project": project.Id, "user": viewer.Id}); err == nil {
 					detail.Following = follow.GetBool("is_active")
 				}
-				if _, err := e.App.FindFirstRecordByFilter("project_members", `project_id = {:project} && user_id = {:user} && status = "active"`, dbx.Params{"project": project.Id, "user": viewer.Id}); errors.Is(err, sql.ErrNoRows) {
-					detail.CanApply = true
+				activeMember := false
+				if _, err := e.App.FindFirstRecordByFilter("project_members", `project_id = {:project} && user_id = {:user} && status = "active"`, dbx.Params{"project": project.Id, "user": viewer.Id}); err == nil {
+					activeMember = true
 				}
-				if _, err := e.App.FindFirstRecordByFilter("project_join_requests", `project_id = {:project} && user_id = {:user} && status = "pending"`, dbx.Params{"project": project.Id, "user": viewer.Id}); err == nil {
-					detail.ApplicationPending = true
-					detail.CanApply = false
+				hasPending := false
+				if pending, err := e.App.FindFirstRecordByFilter("project_join_requests", `project_id = {:project} && user_id = {:user} && status = "pending"`, dbx.Params{"project": project.Id, "user": viewer.Id}); err == nil {
+					hasPending = true
+					if pending.GetString("source") == "improvement" {
+						detail.ImprovementPending = true
+					} else {
+						detail.ApplicationPending = true
+					}
+				}
+				if !activeMember && !hasPending {
+					if project.GetString("execution_status") == "completed" {
+						detail.CanRequestImprovement = true
+					} else {
+						detail.CanApply = true
+					}
 				}
 			}
 		}
@@ -170,6 +183,9 @@ func bindPublicProjectRoutes(e *core.ServeEvent) {
 		}
 		if project.GetString("owner_user_id") == viewer.Id {
 			return e.BadRequestError("You already own this project.", nil)
+		}
+		if project.GetString("execution_status") == "completed" {
+			return e.BadRequestError("Completed projects accept improvement requests instead.", nil)
 		}
 		if _, err := e.App.FindFirstRecordByFilter("project_members", `project_id = {:project} && user_id = {:user} && status = "active"`, dbx.Params{"project": project.Id, "user": viewer.Id}); err == nil {
 			return e.BadRequestError("You are already a project member.", nil)
@@ -195,6 +211,55 @@ func bindPublicProjectRoutes(e *core.ServeEvent) {
 		request.Set("status", "pending")
 		if err := e.App.Save(request); err != nil {
 			return e.InternalServerError("Unable to submit application.", err)
+		}
+		return e.JSON(200, map[string]any{"ok": true})
+	})
+	e.Router.POST("/api/hpahub/projects/{id}/improvement", func(e *core.RequestEvent) error {
+		noCache(e)
+		if e.Auth == nil {
+			return e.UnauthorizedError("Authentication required.", nil)
+		}
+		viewer, member, err := personalCenterOwner(e.App, e.Auth)
+		if err != nil {
+			return e.InternalServerError("Unable to load project.", err)
+		}
+		if !member {
+			return e.ForbiddenError("No member profile is linked to this account.", nil)
+		}
+		project, err := e.App.FindRecordById("projects", e.Request.PathValue("id"))
+		if err != nil || project.GetString("review_status") != "approved" || project.GetString("deleted_at") != "" {
+			return e.NotFoundError("Not found.", nil)
+		}
+		if project.GetString("execution_status") != "completed" {
+			return e.BadRequestError("Only completed projects accept improvement requests.", nil)
+		}
+		if project.GetString("owner_user_id") == viewer.Id {
+			return e.BadRequestError("You already own this project.", nil)
+		}
+		if _, err := e.App.FindFirstRecordByFilter("project_members", `project_id = {:project} && user_id = {:user} && status = "active"`, dbx.Params{"project": project.Id, "user": viewer.Id}); err == nil {
+			return e.BadRequestError("You are already a project member.", nil)
+		}
+		if _, err := e.App.FindFirstRecordByFilter("project_join_requests", `project_id = {:project} && user_id = {:user} && status = "pending"`, dbx.Params{"project": project.Id, "user": viewer.Id}); err == nil {
+			return e.BadRequestError("You already have a pending request.", nil)
+		}
+		var input struct {
+			Message string `json:"message"`
+		}
+		if err := e.BindBody(&input); err != nil || len([]rune(strings.TrimSpace(input.Message))) > 500 {
+			return e.BadRequestError("Invalid improvement request.", nil)
+		}
+		collection, err := e.App.FindCollectionByNameOrId("project_join_requests")
+		if err != nil {
+			return e.InternalServerError("Unable to submit improvement request.", err)
+		}
+		request := core.NewRecord(collection)
+		request.Set("project_id", project.Id)
+		request.Set("user_id", viewer.Id)
+		request.Set("source", "improvement")
+		request.Set("message", strings.TrimSpace(input.Message))
+		request.Set("status", "pending")
+		if err := e.App.Save(request); err != nil {
+			return e.InternalServerError("Unable to submit improvement request.", err)
 		}
 		return e.JSON(200, map[string]any{"ok": true})
 	})

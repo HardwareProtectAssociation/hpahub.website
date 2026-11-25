@@ -305,4 +305,11 @@ export default {
   '今天还没有填写健康评估。': ['今天還沒有填寫健康評估。', '今日の健康チェックはまだです。', 'No health check-in yet today.'],
   '每日健康询问已关闭。': ['每日健康詢問已關閉。', '毎日の健康確認はオフです。', 'Daily health prompt is off.'],
   '每日健康询问已开启。': ['每日健康詢問已開啟。', '毎日の健康確認をオンにしました。', 'Daily health prompt is on.'],
+  '申请改进': ['申請改進', '改善を申請', 'Request improvement'],
+  '这个项目已经完成，你可以提出改进方向或补充方案。': ['這個專案已經完成，你可以提出改進方向或補充方案。', 'このプロジェクトは完了しています。改善案や補足案を提出できます。', 'This project is complete; you can propose improvements or additions.'],
+  '例如：我想改进外壳结构，降低装配难度。': ['例如：我想改進外殼結構，降低裝配難度。', '例：外装構造を改善し、組み立てを簡単にしたい。', 'e.g. I want to improve the enclosure to simplify assembly.'],
+  '提交改进申请': ['提交改進申請', '改善申請を送信', 'Submit improvement request'],
+  '改进申请已提交，等待管理员审批。': ['改進申請已提交，等待管理員審批。', '改善申請を送信しました。管理者の承認をお待ちください。', 'Improvement request submitted; waiting for admin approval.'],
+  '改进申请失败，请重试。': ['改進申請失敗，請重試。', '改善申請に失敗しました。もう一度お試しください。', 'Improvement request failed; please try again.'],
+  '登录后可申请加入或改进。': ['登入後可申請加入或改進。', 'ログインすると参加申請や改善申請ができます。', 'Sign in to apply to join or request improvements.'],
 };

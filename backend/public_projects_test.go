@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tests"
@@ -170,6 +171,67 @@ func TestProjectDifficultyAdmin(t *testing.T) {
 	}
 	if len(listed.Items) != 1 || listed.Items[0].Difficulty != "S" {
 		t.Fatalf("unexpected public difficulty: %+v", listed.Items)
+	}
+}
+
+func TestCompletedProjectImprovement(t *testing.T) {
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+
+	owner := publicProjectTestUser(t, app, "improve-owner@example.com", "负责人")
+	member := publicProjectTestUser(t, app, "improve-member@example.com", "改进者")
+	project := publicProjectTestProject(t, app, owner, "已完成项目", "approved", "")
+	project.Set("execution_status", "completed")
+	publicProjectTestSave(t, app, project)
+
+	router, err := apis.NewRouter(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bindPublicProjectRoutes(&core.ServeEvent{App: app, Router: router})
+	mux, err := router.BuildMux()
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := member.NewAuthToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	call := func(method, path, body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, path, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+token)
+		response := httptest.NewRecorder()
+		mux.ServeHTTP(response, req)
+		return response
+	}
+	response := call("GET", "/api/hpahub/projects/"+project.Id, "")
+	if response.Code != http.StatusOK {
+		t.Fatalf("detail status = %d: %s", response.Code, response.Body.String())
+	}
+	var detail publicProjectDetail
+	if err := json.Unmarshal(response.Body.Bytes(), &detail); err != nil {
+		t.Fatal(err)
+	}
+	if !detail.CanRequestImprovement || detail.CanApply {
+		t.Fatalf("unexpected flags: %+v", detail)
+	}
+	if response := call("POST", "/api/hpahub/projects/"+project.Id+"/apply", `{"message":"join"}`); response.Code != http.StatusBadRequest {
+		t.Fatalf("join completed project status = %d, want 400", response.Code)
+	}
+	if response := call("POST", "/api/hpahub/projects/"+project.Id+"/improvement", `{"message":"improve"}`); response.Code != http.StatusOK {
+		t.Fatalf("improvement status = %d: %s", response.Code, response.Body.String())
+	}
+	request, err := app.FindFirstRecordByFilter("project_join_requests", "project_id = {:project} && user_id = {:user}", dbx.Params{"project": project.Id, "user": member.Id})
+	if err != nil || request.GetString("source") != "improvement" || request.GetString("status") != "pending" {
+		t.Fatalf("request = %+v, %v", request, err)
+	}
+	response = call("GET", "/api/hpahub/projects/"+project.Id, "")
+	if err := json.Unmarshal(response.Body.Bytes(), &detail); err != nil || !detail.ImprovementPending {
+		t.Fatalf("pending detail = %+v, %v", detail, err)
 	}
 }
 

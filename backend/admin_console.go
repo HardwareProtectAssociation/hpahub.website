@@ -30,6 +30,7 @@ type managedApplication struct {
 	UserName     string `json:"userName"`
 	UserEmail    string `json:"userEmail"`
 	Message      string `json:"message"`
+	Source       string `json:"source"`
 	Created      string `json:"created"`
 }
 
@@ -102,6 +103,7 @@ func bindAdminConsoleRoutes(e *core.ServeEvent) {
 				ID:        request.Id,
 				ProjectID: request.GetString("project_id"),
 				Message:   request.GetString("message"),
+				Source:    request.GetString("source"),
 				Created:   request.GetString("created"),
 			}
 			if project != nil {

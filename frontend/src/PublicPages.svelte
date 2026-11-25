@@ -12,6 +12,10 @@
   let applying = false;
   let followBusy = false;
   let followError = '';
+  let improvementMessage = '';
+  let improvementError = '';
+  let improvementNotice = '';
+  let improving = false;
   let activeTab = 'completed';
   let loading = true;
   let errorParams = {};
@@ -112,6 +116,28 @@
       followError = err.message || '关注失败，请重试。';
     } finally {
       followBusy = false;
+    }
+  }
+
+  async function requestImprovement() {
+    if (!token || !data?.canRequestImprovement) return;
+    improving = true;
+    improvementError = '';
+    improvementNotice = '';
+    try {
+      const response = await fetch(`/api/hpahub/projects/${encodeURIComponent(data.id)}/improvement`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: improvementMessage }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.message || '改进申请失败，请重试。');
+      data = { ...data, canRequestImprovement: false, improvementPending: true };
+      improvementNotice = '改进申请已提交，等待管理员审批。';
+    } catch (err) {
+      improvementError = err.message || '改进申请失败，请重试。';
+    } finally {
+      improving = false;
     }
   }
 </script>
@@ -252,10 +278,20 @@
           {#if applyError}<p class="message error" role="alert">{$t(applyError)}</p>{/if}
           <button type="button" class="primary" on:click={applyToProject} disabled={applying}>{applying ? $t('正在提交…') : $t('提交申请')}</button>
         </section>
+      {:else if data.canRequestImprovement}
+        <section class="project-apply" aria-labelledby="project-improvement-title">
+          <h2 id="project-improvement-title">{$t('申请改进')}</h2>
+          <p>{$t('这个项目已经完成，你可以提出改进方向或补充方案。')}</p>
+          <textarea bind:value={improvementMessage} maxlength="500" rows="3" placeholder={$t('例如：我想改进外壳结构，降低装配难度。')}></textarea>
+          {#if improvementError}<p class="message error" role="alert">{$t(improvementError)}</p>{/if}
+          <button type="button" class="primary" on:click={requestImprovement} disabled={improving}>{improving ? $t('正在提交…') : $t('提交改进申请')}</button>
+        </section>
+      {:else if data.improvementPending}
+        <p class="message success" role="status">{$t(improvementNotice || '改进申请已提交，等待管理员审批。')}</p>
       {:else if data.applicationPending}
         <p class="message success" role="status">{$t(applyNotice || '申请已提交，等待管理员审批。')}</p>
       {:else if !token}
-        <p class="project-apply-hint"><a href="/sign-in">{$t('登录')}</a>{$t('后可申请加入。')}</p>
+        <p class="project-apply-hint"><a href="/sign-in">{$t('登录')}</a>{$t('后可申请加入或改进。')}</p>
       {/if}
       {#if data.stages?.length}
         <section class="project-section">

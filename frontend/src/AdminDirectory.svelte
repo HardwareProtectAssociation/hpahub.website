@@ -126,7 +126,7 @@
             <div class="application-head">
               <div>
                 <strong>{application.userName || application.userEmail || '—'}</strong>
-                <span class="muted">{$t('申请加入')} · {application.projectTitle || application.projectId}</span>
+                <span class="muted">{$t(application.source === 'improvement' ? '申请改进' : '申请加入')} · {application.projectTitle || application.projectId}</span>
               </div>
               <time>{formatDate(application.created)}</time>
             </div>
@@ -172,6 +172,7 @@
 <style>
   .admin-directory { margin: 28px 0; }
   .admin-directory .section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+  .admin-directory .section-head .secondary { width: auto; min-height: 42px; padding: 0 16px; justify-content: center; gap: 0; white-space: nowrap; }
   .admin-directory h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; }
   .count { display: inline-flex; min-width: 22px; height: 22px; align-items: center; justify-content: center; padding: 0 7px; border-radius: 999px; background: #e9eee4; color: #4d6448; font-size: 12px; }
   .admin-block { margin-top: 26px; padding-top: 18px; border-top: 1px solid #e1e5dc; }
