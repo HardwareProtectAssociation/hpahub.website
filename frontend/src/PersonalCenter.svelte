@@ -54,7 +54,9 @@
       {/if}
       <div class="profile-copy">
         <h1 id="center-name">{data.profile.name || data.profile.email}</h1>
-        <p class="center-email">{data.profile.email}</p>
+        {#if data.profile.name && data.profile.email && data.profile.email !== data.profile.name}
+          <p class="center-email">{data.profile.email}</p>
+        {/if}
         {#if data.profile.bio}<p class="center-bio">{data.profile.bio}</p>{/if}
         {#if data.identities.length}
           <div class="chips">
