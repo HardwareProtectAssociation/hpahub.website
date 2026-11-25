@@ -18,10 +18,13 @@
 @media (min-width: 801px) {
   .app-shell { padding-left: 220px; }
   .topbar { position: fixed; inset: 0 auto 0 0; z-index: 10; width: 220px; height: 100vh; padding: 36px 24px; border-right: 1px solid #dcded4; border-bottom: 0; flex-direction: column; align-items: stretch; justify-content: flex-start; overflow-y: auto; }
-  .topbar-right { margin-top: 44px; flex-direction: column; align-items: stretch; gap: 2px; }
+  .topbar-right { margin-top: 44px; flex-direction: column; align-items: stretch; gap: 2px; flex: 1; min-height: 0; }
 }
 .topbar-right .text-button { width: 100%; padding: 12px 14px; text-align: left; border-radius: 4px; }
 .topbar-right .text-button:hover, .topbar-right .text-button[aria-current="page"] { background: #e6eee0; color: #274732; }
+.sidebar-footer { display: grid; gap: 8px; margin-top: auto; padding-top: 14px; border-top: 1px solid #e2e6dd; }
+.sidebar-footer label { display: block; }
+.sidebar-footer select { width: 100%; }
 .menu-toggle, .menu-backdrop { display: none; }
 @media (max-width: 800px) {
   .topbar { position: fixed; z-index: 21; right: 20px; bottom: calc(86px + env(safe-area-inset-bottom)); width: min(260px, calc(100vw - 40px)); height: auto; max-height: calc(100dvh - 110px); overflow-y: auto; padding: 22px; border: 1px solid #dcded4; border-radius: 8px; box-shadow: 0 12px 32px #263a2c24; display: none; }
@@ -29,6 +32,7 @@
   .topbar .brand { margin: 0 0 16px; }
   .topbar-right { display: flex; flex-direction: column; align-items: stretch; flex-wrap: nowrap; gap: 2px; }
   .topbar-right .text-button { font-size: 14px; }
+  .sidebar-footer { margin-top: 16px; }
   .menu-toggle { display: grid; place-items: center; position: fixed; z-index: 22; right: 20px; bottom: calc(20px + env(safe-area-inset-bottom)); width: 52px; height: 52px; padding: 0; border: 0; border-radius: 50%; background: #274732; color: white; font-size: 25px; line-height: 1; box-shadow: 0 4px 16px #263a2c40; }
   .menu-backdrop { display: block; position: fixed; inset: 0; z-index: 20; width: 100%; height: 100%; border: 0; background: #1c30223b; }
   .site-footer { padding-right: 86px; }

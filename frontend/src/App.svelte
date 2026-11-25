@@ -271,11 +271,15 @@
           {#if pathname === '/'}<button class="text-button" on:click={openConsole}>{$t('管理控制台')}</button>
           {:else}<a class="text-button" href="/?console=1">{$t('管理控制台')}</a>{/if}
         {/if}
-        <button class="text-button" on:click={logout}>{$t('退出登录')}</button>
-      {:else if !checking}
-        <a class="text-button" href="/sign-in">{$t('登录')}</a>
       {/if}
-      <label><span class="sr-only">{$t('语言')}</span><select bind:value={$locale} aria-label={$t('语言')}>{#each Object.entries(languages) as [code, name]}<option value={code} lang={code}>{name}</option>{/each}</select></label>
+      <div class="sidebar-footer">
+        {#if token && !checking}
+          <button class="text-button" on:click={logout}>{$t('退出登录')}</button>
+        {:else if !checking}
+          <a class="text-button" href="/sign-in">{$t('登录')}</a>
+        {/if}
+        <label><span class="sr-only">{$t('语言')}</span><select bind:value={$locale} aria-label={$t('语言')}>{#each Object.entries(languages) as [code, name]}<option value={code} lang={code}>{name}</option>{/each}</select></label>
+      </div>
     </nav>
   </header>
   <button class="menu-toggle" aria-label={menuOpen ? $t('关闭导航菜单') : $t('打开导航菜单')} aria-expanded={menuOpen} aria-controls="main-navigation" on:click={() => menuOpen = !menuOpen}>
