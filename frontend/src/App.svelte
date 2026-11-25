@@ -7,7 +7,6 @@
   import SkillEditor from './SkillEditor.svelte';
   import AdminDirectory from './AdminDirectory.svelte';
   import MyProjects from './MyProjects.svelte';
-  import HealthCheck from './HealthCheck.svelte';
   import PublicPages from './PublicPages.svelte';
   import Editors from './Editors.svelte';
 
@@ -394,5 +393,4 @@
     </main>
   {/if}
   <footer class="site-footer"><span>HPA HUB</span><span>{$t('欢迎来到 HPA Hub。')}</span></footer>
-  {#if token && !checking}{#key token}<HealthCheck {token} />{/key}{/if}
 </div>

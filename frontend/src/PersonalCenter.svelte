@@ -35,11 +35,17 @@
   let health = null;
   let healthError = '';
   let healthSaving = false;
+  let healthMood = 'good';
+  let healthRested = false;
+  let healthExercised = false;
+  let healthAteOnTime = false;
+  let healthChecking = false;
 
   const genderLabels = { male: '男', female: '女', nonbinary: '非二元', private: '不愿透露' };
   const genderOptions = Object.entries(genderLabels);
   const currentStatusLabels = { busy: '忙碌', free: '空闲' };
   const moodLabels = { great: '很好', good: '不错', okay: '一般', low: '低落', bad: '很差' };
+  const moodOptions = Object.entries(moodLabels);
   const contactTypes = [
     { value: 'email', label: '邮箱' },
     { value: 'wechat', label: '微信' },
@@ -329,14 +335,39 @@
     }
   }
 
+  async function submitHealth() {
+    healthChecking = true;
+    healthError = '';
+    notice = '';
+    try {
+      const response = await fetch('/api/hpahub/me/health/checkin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({
+          mood: healthMood,
+          rested: healthRested,
+          exercised: healthExercised,
+          ateOnTime: healthAteOnTime,
+          note: '',
+        }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.message || '保存失败，请重试。');
+      health = { ...health, checkedInToday: true, today: body };
+      notice = '健康评估已记录。';
+    } catch (err) {
+      healthError = err.message || String(err);
+    } finally {
+      healthChecking = false;
+    }
+  }
+
   onMount(async () => {
-    window.addEventListener('hpahub:health-updated', loadHealth);
     await load();
     await loadInvitations();
     await loadHealth();
   });
   onDestroy(() => {
-    window.removeEventListener('hpahub:health-updated', loadHealth);
     if (avatarSrc) URL.revokeObjectURL(avatarSrc);
     if (avatarPreview) URL.revokeObjectURL(avatarPreview);
   });
@@ -484,7 +515,7 @@
     {#if data.profile.member && health}
       <section class="center-section wide health-summary" aria-labelledby="center-health">
         <div class="section-head">
-          <div><h2 id="center-health">{$t('每日健康评估')}</h2><p>{$t('每天询问一次，可以随时关闭。')}</p></div>
+          <div><h2 id="center-health">{$t('每日健康评估')}</h2><p>{$t('记录今天的心情、休息和锻炼情况。')}</p></div>
           <button type="button" class="link-button" on:click={toggleHealth} disabled={healthSaving}>{health.enabled ? $t('关闭每日询问') : $t('开启每日询问')}</button>
         </div>
         {#if healthError}<p class="message error" role="alert">{$t(healthError)}</p>{/if}
@@ -498,7 +529,13 @@
             </div>
             {#if health.today.note}<p class="health-note-text">{health.today.note}</p>{/if}
           {:else}
-            <p class="health-status">{$t('今天还没有填写健康评估。')}</p>
+            <div class="health-inline">
+              <label>{$t('今日心情')}<select bind:value={healthMood}>{#each moodOptions as [value, label]}<option value={value}>{$t(label)}</option>{/each}</select></label>
+              <label class="health-check"><input type="checkbox" bind:checked={healthRested} />{$t('休息够了')}</label>
+              <label class="health-check"><input type="checkbox" bind:checked={healthExercised} />{$t('今天锻炼了')}</label>
+              <label class="health-check"><input type="checkbox" bind:checked={healthAteOnTime} />{$t('按时吃饭')}</label>
+              <button type="button" class="primary" on:click={submitHealth} disabled={healthChecking}>{healthChecking ? $t('正在保存…') : $t('提交评估')}</button>
+            </div>
           {/if}
         {:else}
           <p class="health-status">{$t('每日健康询问已关闭。')}</p>
@@ -702,6 +739,11 @@
   .health-summary { margin-bottom: 20px; }
   .health-today { display: flex; flex-wrap: wrap; gap: 8px 16px; color: #52695a; font-size: 13px; }
   .health-status { margin: 0; color: #818b7f; font-size: 13px; }
+  .health-inline { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
+  .health-inline label { display: grid; gap: 4px; color: #52695a; font-size: 12px; }
+  .health-inline select { padding: 7px; border: 1px solid #b9c3b3; background: #fff; color: #252b26; }
+  .health-inline .health-check { display: flex; align-items: center; gap: 6px; }
+  .health-inline .primary { min-height: 40px; }
   .health-note-text { margin: 10px 0 0; color: #6f7b6d; font-size: 13px; }
   .chips { display: flex; flex-wrap: wrap; gap: 8px; }
   .chip { display: inline-block; padding: 4px 10px; border: 1px solid #c8d4c0; border-radius: 999px; background: #eef3e8; color: #3f5d3a; font-size: 12px; }
