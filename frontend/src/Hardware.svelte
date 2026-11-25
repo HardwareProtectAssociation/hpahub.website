@@ -8,7 +8,7 @@
   const suggestions = {game:['三角洲大坝','死亡搁浅2','CS2','LOL大乱斗','永劫无间','2077','红色沙漠','绝区零'],resolution:['1080P','2K','4K','1080P60','4K60','8K','8K60'],quality:['最低','非常低','低','中','中等','高','超高','极高','最高','超级','极致','影视级','电影级','原画','性能','均衡','流畅','便携'],ray_tracing:['开启','无','中','超级','变态'],upscale_tech:['DLSS','FSR','XeSS'],upscale_quality:['性能','平衡'],frame_gen:['X2','X3','X4','X5'],codec:['H.264','H.265/HEVC','HEVC','AV1','VP9','VP8','MPEG-2','MPEG-4','VC-1','MJPEG','剪映H264','剪映HEVC','剪映AV1']};
   let types = [], records = [], gameOptions = [], error = '', notice = '', loading = false, busy = false;
   let view = 'list', kind = 'gpu', detail = null, id = null, editing = false, search = '', filter = 'all', brandFilter = '';
-  let gameFilter = '', resolutionFilter = '', qualityFilter = '', media = [], mediaPath = '', newGame = '';
+  let gameFilter = '', resolutionFilter = '', qualityFilter = '', media = [], mediaPath = '', newGame = '', submitKind = 'gpu';
   let selected = [], compareDetails = [], metric = '', compareGame = '', compareResolution = '', compareField = 'avg_fps';
   const typeOf = k => types.find(x => x.key === k);
   const typeLabel = k => typeOf(k)?.label || k;
@@ -22,7 +22,7 @@
   }
   async function load() {
     loading = true; error = '';
-    try { const [schema,data,options] = await Promise.all([request('/schema'),request('/records'),request('/options/games')]); types = schema.types || []; records = data.map(enrich); gameOptions = options; }
+    try { const [schema,data,options] = await Promise.all([request('/schema'),request('/records'),request('/options/games')]); types = schema.types || []; if (!types.some(x => x.key === submitKind) && types.length) submitKind = types[0].key; records = data.map(enrich); gameOptions = options; }
     catch (e) { error = e.message; } finally { loading = false; }
   }
   onMount(load);
@@ -133,7 +133,7 @@
   {#if view === 'list'}
     <div class="summary">{summary}</div>
     <nav class="tabs" aria-label={$t('硬件分类')}><button class:active={filter === 'all'} on:click={() => filter = 'all'}>{$t('全部')}</button>{#each types as item}<button class:active={filter === item.key} on:click={() => filter = item.key}>{$t(item.label)}</button>{/each}</nav>
-    <div class="toolbar"><label class="search">{$t('搜索')}<input type="search" bind:value={search} placeholder={$t('型号、品牌或参数')} /></label><label>{$t('品牌')}<select bind:value={brandFilter}><option value="">{$t('全部')}</option>{#each brands as b}<option value={b}>{b}</option>{/each}</select></label><span>{$t('{count} 条记录', {count:shown.length})}</span><button on:click={compare}>{$t('对比所选记录（{count}）', {count:selected.length})}</button>{#if canEdit}{#each types as item}<button on:click={() => open(item.key,null,true)}>{$t('新增{type}', {type:$t(item.label)})}</button>{/each}{/if}</div>
+    <div class="toolbar"><label class="search">{$t('搜索')}<input type="search" bind:value={search} placeholder={$t('型号、品牌或参数')} /></label><label>{$t('品牌')}<select bind:value={brandFilter}><option value="">{$t('全部')}</option>{#each brands as b}<option value={b}>{b}</option>{/each}</select></label><span>{$t('{count} 条记录', {count:shown.length})}</span><button on:click={compare}>{$t('对比所选记录（{count}）', {count:selected.length})}</button>{#if canEdit}<label>{$t('硬件类型')}<select bind:value={submitKind}>{#each types as item}<option value={item.key}>{$t(item.label)}</option>{/each}</select></label><button class="primary" on:click={() => open(submitKind,null,true)}>{$t('提交硬件')}</button>{/if}</div>
     {#if !loading && !shown.length}<p class="empty">{$t('没有匹配的记录。')}</p>{/if}
     <div class="list">{#each shown as data (data.id)}<article class="record"><div><span class="badge">{$t(typeLabel(data.kind))}</span><button class="record-title" on:click={() => open(data.kind,data.id)}>{recordName(data, data.kind) || $t('未命名{type}', {type:$t(typeLabel(data.kind))})}</button><p>{data.subtitle || ''}</p></div><div class="record-actions"><label><input type="checkbox" value={data.id} bind:group={selected} /> {$t('对比')}</label>{#if canEdit}<button aria-label={$t('上移')} on:click={() => reorder(data.id,-1)}>{$t('上移')}</button><button aria-label={$t('下移')} on:click={() => reorder(data.id,1)}>{$t('下移')}</button>{/if}</div></article>{/each}</div>
   {:else if view === 'compare'}

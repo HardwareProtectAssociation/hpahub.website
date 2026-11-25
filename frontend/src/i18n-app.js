@@ -340,4 +340,6 @@ export default {
   '你正在{relation}此人': ['你正在{relation}此人', 'この人を{relation}しています', 'You are {relation}ing this member'],
   '登录后可设置互动关系。': ['登入後可設定互動關係。', 'ログインすると関係を設定できます。', 'Sign in to set a relationship.'],
   '保存关系失败，请重试。': ['儲存關係失敗，請重試。', '関係の保存に失敗しました。もう一度お試しください。', 'Failed to save relationship; please try again.'],
+  '硬件类型': ['硬體類型', 'ハードウェアの種類', 'Hardware type'],
+  '提交硬件': ['提交硬體', 'ハードウェアを投稿', 'Submit hardware'],
 };
