@@ -8,7 +8,7 @@
 
 - `frontend/`：Svelte 和 Vite 前端。`src/main.js` 为入口，`App.svelte` 管理应用和导航；`Hardware.svelte`、`Warehouse.svelte`、`PublicPages.svelte`、`Editors.svelte` 分别实现硬件数据库、仓库、公共页面和编辑功能；`style.css` 为样式，`i18n*.js` 为多语言及对应测试。
 - `backend/`：Go 和 PocketBase 后端。`main.go` 注册应用、路由及备份策略；`invitations.go`、`roles.go` 处理邀请码和权限；`hardware*.go`、`warehouse*.go`、`public_content.go` 分别处理硬件、仓库和公共内容；`maintenance*.go` 负责维护操作，`*_test.go` 为测试。
-- `backend/migrations/`：版本化 PocketBase 迁移，由后端启动时注册；保留已部署版本的升级路径。
+- `backend/migrations/`：版本化 PocketBase 迁移，由后端启动时注册；保留已部署版本的升级路径；`README.md` 记录共创平台表结构、PocketBase 适配和待服务层补齐的规则。
 - `scripts/`：隔离本地环境的 Compose 配置、启动、恢复和重置脚本，以及 Windows 开发服务器脚本。
 - `dev.ps1`：Windows 前后端开发服务器启动脚本；`Dockerfile`、`compose.yaml`：应用镜像和部署配置；`README.md`：部署、本地测试和备份说明。
 
