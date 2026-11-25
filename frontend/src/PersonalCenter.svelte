@@ -25,6 +25,10 @@
   let removeAvatar = false;
   let avatarFile = null;
   let avatarPreview = '';
+  let invitations = [];
+  let invitationError = '';
+  let invitationNotice = '';
+  let generatingInvitation = false;
 
   const genderLabels = { male: '男', female: '女', nonbinary: '非二元', private: '不愿透露' };
   const genderOptions = Object.entries(genderLabels);
@@ -199,7 +203,53 @@
     }
   }
 
-  onMount(load);
+  async function loadInvitations() {
+    try {
+      const response = await fetch('/api/hpahub/invitations', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.message || `请求失败（${response.status}）`);
+      invitations = body.items || [];
+    } catch (err) {
+      invitationError = err.message || String(err);
+    }
+  }
+
+  async function generateInvitation() {
+    generatingInvitation = true;
+    invitationError = '';
+    invitationNotice = '';
+    try {
+      const response = await fetch('/api/hpahub/invitations', {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.message || '生成失败，请重试。');
+      await loadInvitations();
+      invitationNotice = '邀请码已生成，有效期为 24 小时。';
+    } catch (err) {
+      invitationError = err.message || String(err);
+    } finally {
+      generatingInvitation = false;
+    }
+  }
+
+  function invitationStatus(invitation) {
+    if (invitation.used) return '已使用';
+    if (invitation.expires * 1000 <= Date.now()) return '已过期';
+    return '未使用';
+  }
+
+  function invitationDate(value) {
+    return value ? new Date(value * 1000).toLocaleString() : '—';
+  }
+
+  onMount(async () => {
+    await load();
+    await loadInvitations();
+  });
   onDestroy(() => {
     if (avatarSrc) URL.revokeObjectURL(avatarSrc);
     if (avatarPreview) URL.revokeObjectURL(avatarPreview);
@@ -469,6 +519,30 @@
         {/if}
       </section>
 
+      {#if data.profile.member}
+        <section class="center-section wide" aria-labelledby="center-invitations">
+          <div class="section-head">
+            <div><h2 id="center-invitations">{$t('我的邀请码')}</h2><p>{$t('邀请码有效 24 小时，仅可使用一次。')}</p></div>
+            <button type="button" class="link-button" on:click={generateInvitation} disabled={generatingInvitation}>{generatingInvitation ? $t('正在生成…') : $t('生成邀请码')}</button>
+          </div>
+          {#if invitationError}<p class="message error" role="alert">{$t(invitationError)}</p>{/if}
+          {#if invitationNotice}<p class="message success" role="status">{$t(invitationNotice)}</p>{/if}
+          {#if invitations.length}
+            <div class="invitation-list">
+              {#each invitations as invitation (invitation.code)}
+                <article class="invitation-card">
+                  <div class="invitation-head"><strong>{invitation.code}</strong><span class:used={invitation.used} class="invitation-status">{$t(invitationStatus(invitation))}</span></div>
+                  <small>{$t('到期时间')}：{invitationDate(invitation.expires)}</small>
+                  {#if invitation.used}<small>{$t('使用者')}：{invitation.usedBy || '—'} · {invitationDate(invitation.used)}</small>{/if}
+                </article>
+              {/each}
+            </div>
+          {:else}
+            <div class="center-empty"><p>{$t('还没有邀请码')}</p></div>
+          {/if}
+        </section>
+      {/if}
+
       <section class="center-section wide" aria-labelledby="center-rewards">
         <div class="section-head">
           <div><h2 id="center-rewards">{$t('希望得到什么')}</h2><p>{$t('你在合作中期望获得的回报。')}</p></div>
@@ -571,6 +645,12 @@
   .skill-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
   .skill-hint { margin: 6px 0 0 !important; font-size: 12px !important; color: #8b9587 !important; }
   .like-count { color: #a84358; font-size: 12px; }
+  .invitation-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+  .invitation-card { display: grid; gap: 4px; padding: 12px; border: 1px solid #dce3d6; background: #fff; }
+  .invitation-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .invitation-status { color: #4d6448; font-size: 12px; }
+  .invitation-status.used { color: #8b9587; }
+  .invitation-card small { color: #6f7b6d; }
   .recognized { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border: 1px solid transparent; border-radius: 999px; font-size: 11px; font-weight: 600; letter-spacing: 0.02em; }
   .recognized::before { content: '✦'; }
   .tier-1 { color: #4d6b3f; background: #e8f0e0; border-color: #c4d8b4; }

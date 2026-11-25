@@ -6,6 +6,10 @@
   let data = null;
   let error = '';
   let skillError = '';
+  let applyMessage = '';
+  let applyError = '';
+  let applyNotice = '';
+  let applying = false;
   let loading = true;
   let errorParams = {};
   const parts = pathname.split('/').filter(Boolean);
@@ -49,6 +53,28 @@
       };
     } catch (err) {
       skillError = err.message || '点赞失败，请重试。';
+    }
+  }
+
+  async function applyToProject() {
+    if (!token || !data?.canApply) return;
+    applying = true;
+    applyError = '';
+    applyNotice = '';
+    try {
+      const response = await fetch(`/api/hpahub/projects/${encodeURIComponent(data.id)}/apply`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: applyMessage }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.message || '申请失败，请重试。');
+      data = { ...data, canApply: false, applicationPending: true };
+      applyNotice = '申请已提交，等待管理员审批。';
+    } catch (err) {
+      applyError = err.message || '申请失败，请重试。';
+    } finally {
+      applying = false;
     }
   }
 </script>
@@ -120,6 +146,19 @@
         {#if data.description && data.description !== data.summary}<p class="project-description">{data.description}</p>{/if}
         {#if data.estimatedDurationDays}<p class="project-owner">{$t('预计周期')}：{data.estimatedDurationDays} {$t('天')}</p>{/if}
       </header>
+      {#if data.canApply}
+        <section class="project-apply" aria-labelledby="project-apply-title">
+          <h2 id="project-apply-title">{$t('申请加入')}</h2>
+          <p>{$t('简单说明你能承担的工作或加入理由。')}</p>
+          <textarea bind:value={applyMessage} maxlength="500" rows="3" placeholder={$t('例如：我可以负责结构设计与打样。')}></textarea>
+          {#if applyError}<p class="message error" role="alert">{$t(applyError)}</p>{/if}
+          <button type="button" class="primary" on:click={applyToProject} disabled={applying}>{applying ? $t('正在提交…') : $t('提交申请')}</button>
+        </section>
+      {:else if data.applicationPending}
+        <p class="message success" role="status">{$t(applyNotice || '申请已提交，等待管理员审批。')}</p>
+      {:else if !token}
+        <p class="project-apply-hint"><a href="/sign-in">{$t('登录')}</a>{$t('后可申请加入。')}</p>
+      {/if}
       {#if data.stages?.length}
         <section class="project-section">
           <h2>{$t('项目阶段')}</h2>
@@ -170,6 +209,12 @@
   .project-status { display: inline-block; padding: 3px 9px; border: 1px solid #c8d4c0; border-radius: 999px; color: #3f5d3a; font-size: 12px; }
   .project-status.done { background: #e3eddd; }
   .project-difficulty { display: inline-block; padding: 3px 9px; border: 1px solid #d7d9cf; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .project-apply { max-width: 620px; margin: 18px 0; padding: 16px; border: 1px solid #dcded4; background: #fafbf7; }
+  .project-apply h2 { margin: 0 0 6px; font-size: 16px; }
+  .project-apply p { margin: 0 0 8px; color: #6f7b6d; font-size: 13px; }
+  .project-apply textarea { width: 100%; padding: 9px; border: 1px solid #b9c3b3; background: #fff; color: #252b26; font: inherit; resize: vertical; }
+  .project-apply .message { margin: 8px 0; }
+  .project-apply-hint { color: #6f7b6d; font-size: 13px; }
   .difficulty-D { color: #6b6f66; background: #f1f2ed; }
   .difficulty-C { color: #3f5d3a; background: #eef3e8; border-color: #c8d4c0; }
   .difficulty-B { color: #285a78; background: #e8f4fb; border-color: #a9cde4; }

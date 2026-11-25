@@ -4,6 +4,7 @@
   import Hardware from './Hardware.svelte';
   import PersonalCenter from './PersonalCenter.svelte';
   import SkillEditor from './SkillEditor.svelte';
+  import AdminDirectory from './AdminDirectory.svelte';
   import PublicPages from './PublicPages.svelte';
   import Editors from './Editors.svelte';
 
@@ -18,8 +19,6 @@
   let mode = pathname === '/join' ? 'register' : 'login';
   let inviteCode = '';
   let passwordConfirm = '';
-  let invitations = [];
-  let generating = false;
   let identity = '';
   let password = '';
   let role = 'guest';
@@ -147,31 +146,7 @@
     menuOpen = false;
     page = 'console';
     error = '';
-    await Promise.all([loadInvitations(), ...(role === 'octopus' ? [refresh()] : [])]);
-  }
-
-  async function loadInvitations() {
-    try {
-      const result = await request('/api/hpahub/invitations');
-      invitations = result.items;
-    } catch (err) {
-      error = err.message;
-    }
-  }
-
-  async function generateInvitation() {
-    generating = true;
-    error = '';
-    notice = '';
-    try {
-      await request('/api/hpahub/invitations', { method: 'POST' });
-      await loadInvitations();
-      if (!error) notice = $t('邀请码已生成，有效期为 24 小时。');
-    } catch (err) {
-      error = err.message;
-    } finally {
-      generating = false;
-    }
+    if (role === 'octopus') await refresh();
   }
 
   function logout() {
@@ -184,7 +159,6 @@
     sessionStorage.removeItem('authCollection');
     sessionStorage.removeItem('adminToken');
     backups = [];
-    invitations = [];
     password = '';
     page = 'home';
     error = '';
@@ -366,11 +340,11 @@
     <PublicPages {pathname} {token} />
   {:else}
     <main class="dashboard">
-      <div class="breadcrumb">{$t('管理控制台')} <span>/</span> {isOctopus ? $t('备份管理') : $t('邀请码')}</div>
+      <div class="breadcrumb">{$t('管理控制台')} <span>/</span> {isOctopus ? $t('备份管理') : $t('成员与项目')}</div>
       {#if isOctopus}
         <div class="page-heading"><div><h1>{$t('备份管理')}<span class="heading-dot">.</span></h1><p>{$t('管理自动备份策略，或随时创建一份备份。')}</p></div><button class="primary" on:click={createBackup} disabled={creating || loading}><span class="plus" aria-hidden="true">＋</span> {creating ? $t('正在创建…') : $t('立即备份')}</button></div>
       {:else}
-        <div class="page-heading"><div><h1>{$t('邀请码')}<span class="heading-dot">.</span></h1><p>{$t('生成邀请码并查看使用记录。')}</p></div></div>
+        <div class="page-heading"><div><h1>{$t('管理控制台')}<span class="heading-dot">.</span></h1><p>{$t('查看成员信息、审批加入申请和项目状态。')}</p></div></div>
       {/if}
       {#if error}<div class="message error" role="alert">{$t(error)}</div>{/if}
       {#if notice}<div class="message success" role="status">{notice}</div>{/if}
@@ -399,18 +373,7 @@
         </section>
       </div>
       {/if}
-      <section class="archive-section invitations" aria-labelledby="invitations-title">
-        <div class="archive-head">
-          <div><h2 id="invitations-title">{$t('邀请码')}</h2><p>{$t('邀请码有效 24 小时，仅可使用一次。')}</p></div>
-          <button class="primary" on:click={generateInvitation} disabled={generating}>{generating ? $t('正在生成…') : $t('生成邀请码')}</button>
-        </div>
-        <div class="table-wrap"><table><thead><tr><th>{$t('邀请码')}</th><th>{$t('创建时间')}</th><th>{$t('到期时间')}</th><th>{$t('状态')}</th><th>{$t('使用者')}</th><th>{$t('使用时间')}</th></tr></thead><tbody>
-          {#each invitations as invitation (invitation.code)}
-            <tr><td>{invitation.code}</td><td>{formatDate(invitation.created * 1000, $locale)}</td><td>{formatDate(invitation.expires * 1000, $locale)}</td><td>{invitation.used ? $t('已使用') : invitation.expires * 1000 <= Date.now() ? $t('已过期') : $t('未使用')}</td><td>{invitation.usedBy || '—'}</td><td>{invitation.used ? formatDate(invitation.used * 1000, $locale) : '—'}</td></tr>
-          {/each}
-        </tbody></table></div>
-        {#if !invitations.length}<div class="empty"><h3>{$t('还没有邀请码')}</h3><p>{$t('生成邀请码后，可在这里查看使用记录。')}</p></div>{/if}
-      </section>
+      <AdminDirectory {token} />
     </main>
   {/if}
   <footer class="site-footer"><span>HPA HUB</span><span>{$t('欢迎来到 HPA Hub。')}</span></footer>

@@ -1,7 +1,9 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"strings"
 
 	"github.com/pocketbase/dbx"
@@ -46,15 +48,19 @@ type publicProjectDetail struct {
 	CurrentStage          string                `json:"currentStage"`
 	Stages                []publicProjectStage  `json:"stages"`
 	Members               []publicProjectMember `json:"members"`
+	CanApply              bool                  `json:"canApply"`
+	ApplicationPending    bool                  `json:"applicationPending"`
 }
 
 type managedProject struct {
 	ID           string `json:"id"`
 	Title        string `json:"title"`
+	Summary      string `json:"summary"`
 	Status       string `json:"status"`
 	Difficulty   string `json:"difficulty"`
 	ReviewStatus string `json:"reviewStatus"`
 	OwnerName    string `json:"ownerName"`
+	Created      string `json:"created"`
 	Updated      string `json:"updated"`
 }
 
@@ -127,7 +133,64 @@ func bindPublicProjectRoutes(e *core.ServeEvent) {
 				Duties: membership.GetString("duties"),
 			})
 		}
+		if e.Auth != nil {
+			if viewer, member, err := personalCenterOwner(e.App, e.Auth); err == nil && member && viewer.Id != project.GetString("owner_user_id") {
+				if _, err := e.App.FindFirstRecordByFilter("project_members", `project_id = {:project} && user_id = {:user} && status = "active"`, dbx.Params{"project": project.Id, "user": viewer.Id}); errors.Is(err, sql.ErrNoRows) {
+					detail.CanApply = true
+				}
+				if _, err := e.App.FindFirstRecordByFilter("project_join_requests", `project_id = {:project} && user_id = {:user} && status = "pending"`, dbx.Params{"project": project.Id, "user": viewer.Id}); err == nil {
+					detail.ApplicationPending = true
+					detail.CanApply = false
+				}
+			}
+		}
 		return e.JSON(200, detail)
+	})
+	e.Router.POST("/api/hpahub/projects/{id}/apply", func(e *core.RequestEvent) error {
+		noCache(e)
+		if e.Auth == nil {
+			return e.UnauthorizedError("Authentication required.", nil)
+		}
+		viewer, member, err := personalCenterOwner(e.App, e.Auth)
+		if err != nil {
+			return e.InternalServerError("Unable to load project.", err)
+		}
+		if !member {
+			return e.ForbiddenError("No member profile is linked to this account.", nil)
+		}
+		project, err := e.App.FindRecordById("projects", e.Request.PathValue("id"))
+		if err != nil || project.GetString("review_status") != "approved" || project.GetString("deleted_at") != "" {
+			return e.NotFoundError("Not found.", nil)
+		}
+		if project.GetString("owner_user_id") == viewer.Id {
+			return e.BadRequestError("You already own this project.", nil)
+		}
+		if _, err := e.App.FindFirstRecordByFilter("project_members", `project_id = {:project} && user_id = {:user} && status = "active"`, dbx.Params{"project": project.Id, "user": viewer.Id}); err == nil {
+			return e.BadRequestError("You are already a project member.", nil)
+		}
+		if _, err := e.App.FindFirstRecordByFilter("project_join_requests", `project_id = {:project} && user_id = {:user} && status = "pending"`, dbx.Params{"project": project.Id, "user": viewer.Id}); err == nil {
+			return e.BadRequestError("You already have a pending application.", nil)
+		}
+		var input struct {
+			Message string `json:"message"`
+		}
+		if err := e.BindBody(&input); err != nil || len([]rune(strings.TrimSpace(input.Message))) > 500 {
+			return e.BadRequestError("Invalid application.", nil)
+		}
+		collection, err := e.App.FindCollectionByNameOrId("project_join_requests")
+		if err != nil {
+			return e.InternalServerError("Unable to submit application.", err)
+		}
+		request := core.NewRecord(collection)
+		request.Set("project_id", project.Id)
+		request.Set("user_id", viewer.Id)
+		request.Set("source", "application")
+		request.Set("message", strings.TrimSpace(input.Message))
+		request.Set("status", "pending")
+		if err := e.App.Save(request); err != nil {
+			return e.InternalServerError("Unable to submit application.", err)
+		}
+		return e.JSON(200, map[string]any{"ok": true})
 	})
 	e.Router.GET("/api/hpahub/manage/projects", func(e *core.RequestEvent) error {
 		noCache(e)
@@ -158,10 +221,12 @@ func bindPublicProjectRoutes(e *core.ServeEvent) {
 			items = append(items, managedProject{
 				ID:           project.Id,
 				Title:        project.GetString("title"),
+				Summary:      project.GetString("summary"),
 				Status:       project.GetString("execution_status"),
 				Difficulty:   project.GetString("difficulty"),
 				ReviewStatus: project.GetString("review_status"),
 				OwnerName:    ownerName,
+				Created:      project.GetString("created"),
 				Updated:      project.GetString("updated"),
 			})
 		}

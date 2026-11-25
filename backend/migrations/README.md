@@ -49,6 +49,7 @@ go run . migrate up --dir <临时数据目录>        # 在空库或已有库上
 10. **平台角色**：复用现有 `users.role`（`member`/`user` 视为普通会员，`admin` 为平台管理员），超级管理员为 PocketBase `_superusers`，即文档中的 `super_admin`。没有新增 `platform_role` 字段，避免两套角色双写。`display_name` 为新增可选字段，现存量账号未自动生成昵称，服务层应在完善资料时要求填写。
 11. **`users` 其他映射**：`avatar` 文件字段对应 `avatar_url`，`bio` 沿用现有字段，`display_name` 为昵称；`gender`、`personality`、`age`、`contacts`、`activity_areas` 为个人资料扩展字段；`user_identities.featured` 标记“想要展示的职业”，服务层限制最多 3 个；`email`/`password` 由 PocketBase 认证管理；`users.createRule/updateRule/deleteRule` 仍为空（仅超级管理员），未在本次迁移放宽。
 12. **项目难度**：`projects.difficulty` 取值为 `D`、`C`、`B`、`A`、`S`，由管理员在“项目管理”页判定；`1760000013` 为已有项目回填 `C`，公开项目接口返回该等级。
+13. **管理控制台与邀请码**：管理控制台显示成员目录、待审批项目加入申请和全部项目；项目成员申请通过后写入 `project_members`。邀请码从控制台移到个人中心，普通成员只能查看和生成自己的邀请码；`hpahub_invitations` 增加 `created_by`，启动时对旧表自动补列。
 12. **0 与未知**：`weekly_hours`、`expected_weekly_hours`、`estimated_duration_days`、`people_needed`、`quantity_limit`、`target_amount_cents`、`target_quantity`、`pledged_*`、`delivered_*`、`allocation_basis_points`、`eligible_count`、`valid_vote_count`、`final_xp` 的 0 都按“未填写”解释。`task_xp_votes.xp_value` 为 0 且有 `voted_at` 时表示投了 0 经验；`task_xp_ballots.final_xp` 为 0 且 `closed_at` 非空时表示有效结果为 0；贡献份额 0 且状态为 `confirmed` 表示确认的 0 份额。`career_level_thresholds.minimum_total_xp` 的 0 是等级 1 的合法门槛，`eligible_count` 为 0 表示合法但无人具备资格的边界；两者因 NumberField 不能表达 NULL 而保持可选。这样不额外增加可空标记字段。
 
 ## 唯一约束与部分唯一索引

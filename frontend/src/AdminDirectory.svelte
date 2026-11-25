@@ -1,0 +1,196 @@
+<script>
+  import { onMount } from 'svelte';
+  import { t } from './i18n.js';
+
+  export let token;
+
+  let members = [];
+  let applications = [];
+  let projects = [];
+  let loading = true;
+  let error = '';
+  let notice = '';
+  let applicationBusy = '';
+
+  const roleLabels = { admin: '管理员', member: '成员' };
+  const statusLabels = { active: '正常', suspended: '已暂停' };
+  const projectStatusLabels = { ongoing: '进行中', paused: '暂停', terminated: '已中止', completed: '已完成' };
+  const reviewLabels = { pending: '待审核', approved: '已通过', rejected: '已拒绝' };
+  const sourceLabels = { invitation: '邀请注册', seed: '种子账号' };
+
+  function formatDate(value) {
+    if (!value) return '—';
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString();
+  }
+
+  async function request(path, options = {}) {
+    const response = await fetch(path, {
+      ...options,
+      headers: { Authorization: `Bearer ${token}`, ...(options.headers || {}) },
+      cache: 'no-store',
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body.message || `请求失败（${response.status}）`);
+    }
+    return response.status === 204 ? null : response.json();
+  }
+
+  async function load() {
+    loading = true;
+    error = '';
+    try {
+      const [memberData, applicationData, projectData] = await Promise.all([
+        request('/api/hpahub/manage/members'),
+        request('/api/hpahub/manage/applications'),
+        request('/api/hpahub/manage/projects'),
+      ]);
+      members = memberData.items || [];
+      applications = applicationData.items || [];
+      projects = projectData.items || [];
+    } catch (err) {
+      error = err.message || String(err);
+    } finally {
+      loading = false;
+    }
+  }
+
+  async function handleApplication(application, status) {
+    applicationBusy = application.id;
+    error = '';
+    notice = '';
+    try {
+      await request(`/api/hpahub/manage/applications/${encodeURIComponent(application.id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+      notice = status === 'accepted' ? '申请已通过。' : '申请已拒绝。';
+      await load();
+    } catch (err) {
+      error = err.message || String(err);
+    } finally {
+      applicationBusy = '';
+    }
+  }
+
+  onMount(load);
+</script>
+
+<section class="admin-directory">
+  <div class="section-head">
+    <div>
+      <h2>{$t('成员与项目')}</h2>
+      <p>{$t('查看全部成员资料、待审批申请和项目状态。')}</p>
+    </div>
+    <button type="button" class="secondary" on:click={load} disabled={loading}>{loading ? $t('正在加载…') : $t('刷新')}</button>
+  </div>
+
+  {#if error}<p class="message error" role="alert">{$t(error)}</p>{/if}
+  {#if notice}<p class="message success" role="status">{$t(notice)}</p>{/if}
+
+  <section class="admin-block">
+    <h3>{$t('成员信息')} <span class="count">{members.length}</span></h3>
+    {#if members.length}
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>{$t('昵称')}</th><th>{$t('邮箱')}</th><th>{$t('角色')}</th><th>{$t('账号状态')}</th><th>{$t('注册来源')}</th><th>{$t('活动范围')}</th><th>{$t('展示职业')}</th><th>{$t('加入时间')}</th></tr></thead>
+          <tbody>
+            {#each members as member}
+              <tr>
+                <td><strong>{member.name || '—'}</strong>{#if member.profilePublic}<span class="tag">{$t('公开')}</span>{/if}</td>
+                <td>{member.email || '—'}</td>
+                <td>{$t(roleLabels[member.role] || member.role)}</td>
+                <td>{$t(statusLabels[member.accountStatus] || member.accountStatus || '正常')}</td>
+                <td>{$t(sourceLabels[member.registrationSource] || member.registrationSource || '—')}</td>
+                <td>{member.activityAreas?.join('、') || '—'}</td>
+                <td>{member.professions?.join('、') || '—'}</td>
+                <td>{formatDate(member.created)}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+    {:else}
+      <p>{$t('暂无成员。')}</p>
+    {/if}
+  </section>
+
+  <section class="admin-block">
+    <h3>{$t('待审批申请')} <span class="count">{applications.length}</span></h3>
+    {#if applications.length}
+      <div class="application-list">
+        {#each applications as application}
+          <article class="application-card">
+            <div class="application-head">
+              <div>
+                <strong>{application.userName || application.userEmail || '—'}</strong>
+                <span class="muted">{$t('申请加入')} · {application.projectTitle || application.projectId}</span>
+              </div>
+              <time>{formatDate(application.created)}</time>
+            </div>
+            {#if application.message}<p>{application.message}</p>{/if}
+            <div class="application-actions">
+              <button type="button" class="primary" on:click={() => handleApplication(application, 'accepted')} disabled={applicationBusy === application.id}>{$t('通过')}</button>
+              <button type="button" class="danger" on:click={() => handleApplication(application, 'rejected')} disabled={applicationBusy === application.id}>{$t('拒绝')}</button>
+            </div>
+          </article>
+        {/each}
+      </div>
+    {:else}
+      <p>{$t('暂无待审批申请。')}</p>
+    {/if}
+  </section>
+
+  <section class="admin-block">
+    <h3>{$t('全部项目')} <span class="count">{projects.length}</span></h3>
+    {#if projects.length}
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>{$t('项目')}</th><th>{$t('负责人')}</th><th>{$t('执行状态')}</th><th>{$t('审核状态')}</th><th>{$t('难度')}</th><th>{$t('更新时间')}</th></tr></thead>
+          <tbody>
+            {#each projects as project}
+              <tr>
+                <td><strong>{project.title}</strong>{#if project.summary}<div class="muted">{project.summary}</div>{/if}</td>
+                <td>{project.ownerName || '—'}</td>
+                <td>{$t(projectStatusLabels[project.status] || project.status || '—')}</td>
+                <td>{$t(reviewLabels[project.reviewStatus] || project.reviewStatus || '—')}</td>
+                <td>{#if project.difficulty}<span class={`difficulty difficulty-${project.difficulty}`}>{project.difficulty}</span>{:else}—{/if}</td>
+                <td>{formatDate(project.updated)}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+    {:else}
+      <p>{$t('暂无项目。')}</p>
+    {/if}
+  </section>
+</section>
+
+<style>
+  .admin-directory { margin: 28px 0; }
+  .admin-directory .section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+  .admin-directory h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; }
+  .count { display: inline-flex; min-width: 22px; height: 22px; align-items: center; justify-content: center; padding: 0 7px; border-radius: 999px; background: #e9eee4; color: #4d6448; font-size: 12px; }
+  .admin-block { margin-top: 26px; padding-top: 18px; border-top: 1px solid #e1e5dc; }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; min-width: 760px; }
+  th, td { padding: 8px 10px; border-bottom: 1px solid #e6e9df; text-align: left; vertical-align: top; font-size: 13px; }
+  th { color: #6b7867; font-weight: 600; white-space: nowrap; }
+  .muted { color: #818b7f; font-size: 12px; }
+  .tag { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 999px; background: #eef3e8; color: #4d6448; font-size: 11px; }
+  .application-list { display: grid; gap: 10px; }
+  .application-card { padding: 14px; border: 1px solid #dcded4; background: #fafbf7; }
+  .application-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .application-head span { margin-left: 8px; }
+  .application-card p { margin: 8px 0; }
+  .application-actions { display: flex; gap: 8px; }
+  .difficulty { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .difficulty-D { color: #6b6f66; background: #f1f2ed; }
+  .difficulty-C { color: #3f5d3a; background: #eef3e8; }
+  .difficulty-B { color: #285a78; background: #e8f4fb; }
+  .difficulty-A { color: #7a4b12; background: #fff3df; }
+  .difficulty-S { color: #7b2340; background: #fbe9ef; }
+</style>
