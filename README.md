@@ -50,13 +50,23 @@ npm ci
 cd ..
 ```
 
+如果 PowerShell 提示「禁止运行脚本」，先设置执行策略以允许直接运行 `.ps1`（`Bypass` 会无提示执行所有脚本，仅建议开发机使用）：
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser -Force Bypass
+# 对所有用户生效时，在管理员 PowerShell 中运行：
+Set-ExecutionPolicy -Scope LocalMachine -Force Bypass
+```
+
+注意 `CurrentUser` 优先级高于 `LocalMachine`，已有 `CurrentUser` 设置的账户需一并更改。
+
 在仓库根目录的 PowerShell 中运行：
 
 ```powershell
 .\dev.ps1
 ```
 
-访问 `http://127.0.0.1:5173`，前端将 `/api` 请求代理到 `127.0.0.1:8090`。两个服务均只监听本机；按 Ctrl+C 或关闭该窗口即可停止两个服务及其子进程；任一服务意外退出时，脚本也会停止另一个服务。后端数据保存在独立的 `backend/pb_data`，不与 Docker 数据卷共享，也不会自动创建测试管理员。需要管理员时，在第三个 PowerShell 窗口运行：
+开发服务器就绪后会自动在浏览器打开前端页面 `http://127.0.0.1:5173`，前端将 `/api` 请求代理到 `127.0.0.1:8090`。两个服务均只监听本机；按 Ctrl+C 或关闭该窗口即可停止两个服务及其子进程；任一服务意外退出时，脚本也会停止另一个服务。后端数据保存在独立的 `backend/pb_data`，不与 Docker 数据卷共享，也不会自动创建测试管理员。需要管理员时，在第三个 PowerShell 窗口运行：
 
 ```powershell
 cd backend
