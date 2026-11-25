@@ -1,32 +1,18 @@
 <script>
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import { get } from 'svelte/store';
   import { t } from './i18n.js';
   export let token = '';
   export let role = 'guest';
   $: canEdit = !!token && ['member', 'admin', 'octopus'].includes(role);
-
-  const basic = [['model','显卡型号'],['brand','品牌'],['vram_size','显存容量'],['vram_type','显存类型'],['vram_clock','显存频率'],['gpu_clock','核心频率'],['tgp','TGP (W)'],['actual_power','实测功耗 (W)'],['driver_version','驱动版本'],['test_date','测试日期'],['test_platform','测试平台'],['ambient_temp','环境温度']];
-  const cooling = [['default_fan_temp','默认转速满载温度'],['max_fan_temp','满转速满载温度'],['temp_45db','45分贝满载温度'],['core_temp','满载核心温度'],['hotspot_temp','热点温度'],['vram_temp','显存温度'],['default_fan_rpm','默认转速 (RPM)'],['max_fan_rpm','满转速 (RPM)'],['rpm_45db','45分贝转速'],['full_load_power','满载功耗 (W)'],['power_45db','45分贝功耗 (W)'],['temp_limit','温度墙'],['power_limit','功耗墙'],['throttling','降频情况']];
-  const mark = [['solar_bay','Solar Bay'],['steel_nomad','Steel Nomad'],['steel_nomad_light','Steel Nomad Light'],['speed_way','Speed Way'],['port_royal','Port Royal'],['time_spy','Time Spy'],['fire_strike','Fire Strike'],['dx_raytracing','DX 光追 (FPS)'],['pcie_bandwidth','PCIE 带宽 (GB/s)']];
-  const blender = [['monster','Monster'],['junkshop','Junkshop'],['classroom','Classroom']];
-  const games = [['game','游戏'],['resolution','分辨率'],['quality','画质'],['ray_tracing','光线追踪'],['render_mode','渲染模式'],['upscale_tech','超分技术'],['upscale_quality','超分档位'],['frame_gen','帧生成'],['avg_fps','平均帧'],['one_percent_low','1% Low'],['min_fps','最低帧数'],['gpu_temp','显卡温度'],['gpu_usage','GPU占用 (%)'],['cpu_usage','CPU占用 (%)'],['ram_usage','内存占用'],['vram_usage','显存占用'],['power','功耗'],['note','备注']];
-  const itemGames = games.filter(([k]) => !['render_mode','upscale_tech','upscale_quality','frame_gen','min_fps','cpu_usage','power'].includes(k));
-  const sw = [['graphics','图形'],['processor','处理器'],['io','输入/输出'],['realview','RealView 性能'],['simulation','模拟']];
-  const codec = [['codec','编码器'],['resolution','分辨率'],['time_sec','耗时'],['power','功耗'],['gpu_usage','GPU占用'],['cpu_usage','CPU占用'],['note','备注']];
-  const gpuGroups = [ ['basic','基本参数',basic], ['cooling','散热与功耗',cooling], ['mark3d','3DMark',mark], ['sw','SolidWorks (SW)',sw], ['blender','Blender',blender] ];
-  const gpuRows = [['productivity','生产力测试',[['name','项目'],['score','得分'],['unit','单位'],['note','备注']]],['games','游戏测试',games],['encoding','编码测试',codec],['decoding','解码测试',codec]];
-  const schemas = {
-    cpu: {name:'model', subtitle:['cores','boost_clock'], groups:[['基本参数',[['model','型号'],['brand','品牌'],['socket','插槽'],['cores','核心数'],['threads','线程数'],['p_cores','大核数'],['e_cores','小核数'],['base_clock','基础频率'],['boost_clock','加速频率'],['l3_cache','L3 缓存'],['tdp','TDP (W)'],['process','制程'],['igpu','核显'],['memory','内存支持'],['test_platform','测试平台'],['bios','BIOS / 微码'],['test_date','测试日期'],['ambient_temp','环境温度']]],['跑分',[['cpuz_single','CPU-Z 单核'],['cpuz_multi','CPU-Z 多核'],['cb23_single','Cinebench R23 单核'],['cb23_multi','Cinebench R23 多核'],['cb24_single','Cinebench 2024 单核'],['cb24_multi','Cinebench 2024 多核'],['geekbench_single','Geekbench 单核'],['geekbench_multi','Geekbench 多核'],['timespy_cpu','3DMark CPU Profile'],['cpu_profile_1t','CPU Profile 1T'],['passmark','PassMark'],['ycruncher','y-cruncher']]],['功耗与温度',[['idle_power','待机功耗 (W)'],['full_power','满载功耗 (W)'],['package_power','封装功耗 (W)'],['temp_idle','待机温度 (℃)'],['temp_full','满载温度 (℃)'],['temp_45db','45分贝温度 (℃)'],['temp_limit','温度墙'],['power_limit','功耗墙'],['throttling','降频情况']]],['备注',[['note','备注']]]], rows:[['power_steps','功耗档位测试',[['power','功耗 (W)'],['multi','多核分数'],['single','单核分数'],['temp','温度'],['note','说明']]],['games','游戏测试',itemGames]] },
-    device: {name:'name', subtitle:['type','cpu','gpu'], groups:[['基本信息',[['name','设备名称'],['type','类型'],['brand','品牌'],['model','型号'],['cpu','CPU'],['gpu','显卡'],['ram','内存'],['storage','存储'],['os','系统']]],['性能测试',[...mark.filter(([k]) => k !== 'pcie_bandwidth'),['cinebench_multi','Cinebench 多核'],['cinebench_single','Cinebench 单核'],['geekbench_multi','Geekbench 多核'],['pcmark','PCMark']]],['功耗、温度与续航',[['idle_power','待机功耗 (W)'],['full_power','满载功耗 (W)'],['temp_idle','待机温度 (℃)'],['temp_full','满载温度 (℃)'],['fan_noise','满载噪音 (dB)'],['battery_life','续航 (小时)']]],['备注',[['note','备注']]]], rows:[['games','游戏测试',itemGames]] }
-  };
   const suggestions = {game:['三角洲大坝','死亡搁浅2','CS2','LOL大乱斗','永劫无间','2077','红色沙漠','绝区零'],resolution:['1080P','2K','4K','1080P60','4K60','8K','8K60'],quality:['最低','非常低','低','中','中等','高','超高','极高','最高','超级','极致','影视级','电影级','原画','性能','均衡','流畅','便携'],ray_tracing:['开启','无','中','超级','变态'],upscale_tech:['DLSS','FSR','XeSS'],upscale_quality:['性能','平衡'],frame_gen:['X2','X3','X4','X5'],codec:['H.264','H.265/HEVC','HEVC','AV1','VP9','VP8','MPEG-2','MPEG-4','VC-1','MJPEG','剪映H264','剪映HEVC','剪映AV1']};
-  let gpus = [], items = [], stats = {}, gameOptions = [], error = '', notice = '', loading = false, busy = false;
-  let view = 'list', kind = 'gpu', detail = null, id = null, editing = false, search = '', filter = 'all';
+  let types = [], records = [], gameOptions = [], error = '', notice = '', loading = false, busy = false;
+  let view = 'list', kind = 'gpu', detail = null, id = null, editing = false, search = '', filter = 'all', brandFilter = '';
   let gameFilter = '', resolutionFilter = '', qualityFilter = '', media = [], mediaPath = '', newGame = '';
-  let selected = [], compareDetails = [], metric = 'mark3d.time_spy', compareGame = '', compareResolution = '', compareField = 'avg_fps';
-  const labels = {gpu:'显卡',cpu:'CPU',device:'设备'};
-  const tabs = [['all','全部'],['gpu-amd','AMD显卡'],['cpu-amd','AMD CPU'],['gpu-intel','英特尔显卡'],['cpu-intel','英特尔 CPU'],['gpu-nvidia','英伟达显卡'],['device','设备']];
+  let selected = [], compareDetails = [], metric = '', compareGame = '', compareResolution = '', compareField = 'avg_fps';
+  const typeOf = k => types.find(x => x.key === k);
+  const typeLabel = k => typeOf(k)?.label || k;
+  const recordName = (d, k) => d.fields?.[typeOf(k)?.name_field] || d.name || '';
   async function request(path, method = 'GET', body) {
     const res = await fetch('/api/hpahub/hardware' + path, {method, headers:{...(token ? {Authorization:`Bearer ${token}`} : {}), ...(body !== undefined ? {'Content-Type':'application/json'} : {})}, ...(body !== undefined ? {body:JSON.stringify(body)} : {})});
     const text = await res.text(); let data;
@@ -36,49 +22,40 @@
   }
   async function load() {
     loading = true; error = '';
-    try { const [records,options] = await Promise.all([request('/records'),request('/options/games')]); gameOptions = options; gpus = records.filter(r => r.kind === 'gpu').map(r => ({...r.data.fields,...r,model:r.data.fields?.model || r.name})); items = records.filter(r => r.kind !== 'gpu').map(r => ({...r,fields:r.data.fields})); stats = {games:records.reduce((n,r) => n + (r.data.rows?.games?.length || 0),0)}; }
+    try { const [schema,data,options] = await Promise.all([request('/schema'),request('/records'),request('/options/games')]); types = schema.types || []; records = data.map(enrich); gameOptions = options; }
     catch (e) { error = e.message; } finally { loading = false; }
   }
   onMount(load);
-  function vendor(type, d) {
-    const s = [d.model,d.name,d.brand,d.fields?.model].filter(Boolean).join(' ').toLowerCase();
-    if (type === 'cpu') return /amd|ryzen|锐龙|threadripper|epyc/.test(s) ? 'amd' : /intel|酷睿|core\s*(i[3579]|ultra)|xeon|至强|奔腾|赛扬/.test(s) ? 'intel' : '';
-    if (/arc|锐炫|(^|[^a-z0-9])[ab]\d{3}([^0-9]|$)/.test(s)) return 'intel';
-    if (/rtx|gtx|quadro|tesla|geforce|(^|[^0-9])(20|30|40|50)\d{2}([^0-9]|$)|(^|[^a-z0-9])a(\d{2}|\d{4})([^0-9]|$)/.test(s)) return 'nvidia';
-    return /radeon|vega|rx\s?\d|(^|[^a-z0-9])w\d{4}|(^|[^0-9])7\d{3}m?([^0-9]|$)/.test(s) ? 'amd' : '';
-  }
-  $: all = [...gpus.map(data => ({type:'gpu',data})), ...items.map(data => ({type:data.kind,data}))];
-  $: shown = all.filter(({type,data}) => (filter === 'all' || filter === type || filter === `${type}-${vendor(type,data)}`) && JSON.stringify(data).toLowerCase().includes(search.trim().toLowerCase()));
-  function blank(k) {
-    return normalize({kind:k,name:'',brand:'',subtitle:'',sort_order:0,data:{fields:{},sections:{},rows:{},custom:{}}},k);
-  }
-  function normalize(record,k) {
-    const data = record.data || {};
-    const d = {...record,fields:data.fields || {},rows:data.rows || {}};
-    if (k === 'gpu') {
-      d.gpu = d.fields;
-      for (const [key] of gpuGroups) if (key !== 'basic') d[key] = data.sections?.[key] || {};
-      d.custom = data.custom || {}; for (const key of ['basic','cooling','mark3d']) { d.custom[key] ||= {}; d.custom[key].hidden ||= []; d.custom[key].extra ||= []; }
-      for (const [key] of gpuRows) d[key] = d.rows[key] || [];
-    } else { for (const [key] of schemas[k].rows) d.rows[key] ||= []; }
+  function enrich(record) { return {...record, fields: record.data?.fields || {}, rows: record.data?.rows || {}, custom: record.data?.custom || {}}; }
+  function blank(k) { return normalize({kind:k, name:'', brand:'', subtitle:'', sort_order:0, data:{fields:{},rows:{},custom:{}}}, k); }
+  function normalize(record, k) {
+    const d = enrich(record);
+    for (const group of typeOf(k)?.groups || []) d.custom[group.key] ||= {hidden: [], extra: []};
+    for (const table of typeOf(k)?.tables || []) d.rows[table.key] ||= [];
     return d;
   }
+  $: gameCount = records.reduce((n, r) => n + (r.rows?.games?.length || 0), 0);
+  $: summary = [...types.map(x => $t(x.label) + ' ' + records.filter(r => r.kind === x.key).length), $t('游戏记录') + ' ' + gameCount].join('　·　');
+  $: brands = unique(records.map(r => r.brand)).filter(Boolean);
+  $: shown = records.filter(r => (filter === 'all' || filter === r.kind) && (!brandFilter || r.brand === brandFilter) && JSON.stringify(r).toLowerCase().includes(search.trim().toLowerCase()));
+  $: hasGames = (typeOf(kind)?.tables || []).some(x => x.key === 'games');
   async function open(k, recordId, edit = false) {
     kind = k; id = recordId; editing = edit; error = ''; notice = ''; loading = true; gameFilter = resolutionFilter = qualityFilter = ''; media = [];
     try {
-      detail = recordId ? normalize(await request(`/records/${recordId}`),k) : blank(k);
+      detail = recordId ? normalize(await request('/records/' + recordId), k) : blank(k);
       view = 'detail';
-      if (recordId && canEdit) media = (await request(`/records/${recordId}/media`)).paths || [];
+      if (recordId && canEdit) media = (await request('/records/' + recordId + '/media')).paths || [];
     } catch (e) { error = e.message; } finally { loading = false; }
   }
   async function save() {
     if (!canEdit || busy) return; busy = true; error = ''; notice = '';
     try {
-      if (kind !== 'gpu') { const sc = schemas[kind]; detail.name = detail.fields[sc.name] || ''; detail.brand = detail.fields.brand || ''; detail.subtitle = sc.subtitle.map(k => detail.fields[k]).filter(Boolean).join(' · '); }
-      else { detail.name = detail.gpu.model || ''; detail.brand = detail.gpu.brand || ''; }
-      const data = {...detail.data,fields:detail.fields,rows:kind === 'gpu' ? {...detail.rows,...Object.fromEntries(gpuRows.map(([key]) => [key,detail[key]]))} : detail.rows};
-      if (kind === 'gpu') { data.sections = {...data.sections,...Object.fromEntries(gpuGroups.filter(([key]) => key !== 'basic').map(([key]) => [key,detail[key]]))}; data.custom = detail.custom; }
-      const result = await request(`/records${id ? '/'+id : ''}`, id ? 'PUT' : 'POST', {kind,name:detail.name,brand:detail.brand,subtitle:detail.subtitle,sort_order:detail.sort_order,data});
+      const sc = typeOf(kind);
+      detail.name = detail.fields[sc?.name_field] || '';
+      detail.brand = detail.fields.brand || '';
+      detail.subtitle = (sc?.subtitle_fields || '').split(',').map(key => detail.fields[key.trim()]).filter(Boolean).join(' · ');
+      const data = {fields: detail.fields, rows: detail.rows, custom: detail.custom};
+      const result = await request('/records' + (id ? '/' + id : ''), id ? 'PUT' : 'POST', {kind, name:detail.name, brand:detail.brand, subtitle:detail.subtitle, sort_order:detail.sort_order, data});
       id = result.id || id; notice = '已保存';
     } catch (e) { error = e.message; } finally { busy = false; }
   }
@@ -87,40 +64,65 @@
     if (actionName === 'delete' && !confirm(get(t)('确定删除此记录？此操作无法撤销。'))) return;
     busy = true; error = '';
     try {
-      const path = `/records/${id}`;
+      const path = '/records/' + id;
       if (actionName === 'delete') { await request(path,'DELETE'); view = 'list'; await load(); }
       else { const result = await request(path + '/copy','POST'); await open(kind,result.id); }
     } catch (e) { error = e.message; } finally { busy = false; }
   }
-  async function reorder(gpuId, delta) {
-    const next = [...gpus], index = next.findIndex(x => x.id === gpuId), target = index + delta;
+  async function reorder(recordId, delta) {
+    const next = [...records], index = next.findIndex(x => x.id === recordId), target = index + delta;
     if (index < 0 || target < 0 || target >= next.length) return;
     [next[index],next[target]] = [next[target],next[index]];
-    try { await request('/reorder','POST',{ids:next.map(x => x.id)}); gpus = next; } catch (e) { error = e.message; }
+    try { await request('/reorder','POST',{ids:next.map(x => x.id)}); records = next; } catch (e) { error = e.message; }
   }
   function addRow(container,key) { container[key] = [...container[key],{}]; detail = detail; }
   function removeRow(container,key,index) { container[key] = container[key].filter((_,i) => i !== index); detail = detail; }
-  function addCustom(key) { const label = prompt(get(t)('项目名称')); if (label?.trim()) { detail.custom[key].extra = [...detail.custom[key].extra,{key:'c_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),label:label.trim(),value:''}]; detail = detail; } }
-  function hideField(group,key) { detail[group === 'basic' ? 'gpu' : group][key] = ''; detail.custom[group].hidden = [...detail.custom[group].hidden,key]; detail = detail; }
+  function addCustom(groupKey) { const label = prompt(get(t)('项目名称')); if (label?.trim()) { detail.custom[groupKey].extra = [...detail.custom[groupKey].extra,{key:'c_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),label:label.trim(),value:''}]; detail = detail; } }
+  function hideField(groupKey, key) { detail.fields[key] = ''; detail.custom[groupKey].hidden = [...detail.custom[groupKey].hidden, key]; detail = detail; }
   async function addGame() { if (!newGame.trim()) return; try { await request('/options/games','POST',{value:newGame.trim()}); gameOptions = await request('/options/games'); newGame = ''; notice = '游戏选项已添加'; } catch (e) { error = e.message; } }
-  async function changeMedia(actionName,path) { if (!id || (actionName === 'add' && !path.trim())) return; try { const paths = actionName === 'add' ? (media.includes(path.trim()) ? media : [...media,path.trim()]) : media.filter(p => p !== path); media = (await request(`/records/${id}/media`,'PUT',{paths})).paths; mediaPath = ''; } catch (e) { error = e.message; } }
+  async function changeMedia(actionName,path) { if (!id || (actionName === 'add' && !path.trim())) return; try { const paths = actionName === 'add' ? (media.includes(path.trim()) ? media : [...media,path.trim()]) : media.filter(p => p !== path); media = (await request('/records/' + id + '/media','PUT',{paths})).paths; mediaPath = ''; } catch (e) { error = e.message; } }
   function mediaUrl(path) { if (typeof path !== 'string') return ''; try { const url = new URL(path, location.origin); return ['http:','https:'].includes(url.protocol) ? url.href : ''; } catch { return ''; } }
   const unique = values => [...new Set(values.map(v => String(v ?? '')))];
-  $: gameRows = detail ? (kind === 'gpu' ? detail.games : detail.rows?.games) || [] : [];
+  $: gameRows = detail ? detail.rows?.games || [] : [];
   $: resolutions = unique(gameRows.filter(r => !gameFilter || r.game === gameFilter).map(r => r.resolution));
   $: qualities = unique(gameRows.filter(r => (!gameFilter || r.game === gameFilter) && (!resolutionFilter || r.resolution === resolutionFilter)).map(r => r.quality));
   $: filteredGames = gameRows.filter(r => (!gameFilter || r.game === gameFilter) && (!resolutionFilter || r.resolution === resolutionFilter) && (!qualityFilter || r.quality === qualityFilter));
-  async function compare() { if (selected.length < 2) { error = '至少选择两张显卡'; return; } loading = true; error = ''; try { compareDetails = (await Promise.all(selected.map(i => request(`/records/${i}`)))).map(d => normalize(d,'gpu')); view = 'compare'; } catch (e) { error = e.message; } finally { loading = false; } }
-  $: compareGames = unique(compareDetails.flatMap(d => (d.games || []).map(r => r.game))).filter(Boolean);
-  $: compareResolutions = unique(compareDetails.flatMap(d => (d.games || []).filter(r => r.game === compareGame).map(r => r.resolution)));
+  async function compare() {
+    if (selected.length < 2) { error = '至少选择两条记录'; return; }
+    loading = true; error = '';
+    try {
+      compareDetails = (await Promise.all(selected.map(i => request('/records/' + i)))).map(d => normalize(d, d.kind));
+      await tick();
+      if (!metricOptions.some(([value]) => value === metric)) metric = metricOptions[0]?.[0] || '';
+      view = 'compare';
+    } catch (e) { error = e.message; } finally { loading = false; }
+  }
+  $: compareGames = unique(compareDetails.flatMap(d => (d.rows?.games || []).map(r => r.game))).filter(Boolean);
+  $: compareResolutions = unique(compareDetails.flatMap(d => (d.rows?.games || []).filter(r => r.game === compareGame).map(r => r.resolution)));
+  $: compareFieldOptions = (typeOf(compareDetails[0]?.kind)?.tables || []).find(x => x.key === 'games')?.columns?.filter(c => !['game','resolution','quality','note'].includes(c.key)) || [];
   function numeric(v) { const m = String(v ?? '').match(/\d+(?:\.\d+)?/g); return !m ? null : m.length > 1 && /[-~～]/.test(v) ? (Number(m[0])+Number(m[1]))/2 : Number(m[0]); }
   function compareValue(d) {
-    if (metric === 'games') { const rows = (d.games || []).filter(r => r.game === compareGame && String(r.resolution || '') === compareResolution && numeric(r[compareField]) !== null); rows.sort((a,b) => numeric(b[compareField])-numeric(a[compareField])); return rows[0]?.[compareField] ?? ''; }
-    if (metric.startsWith('productivity.')) return (d.productivity || []).find(r => r.name === metric.slice(13))?.score ?? '';
-    if (metric.startsWith('extra.')) return d.custom?.mark3d?.extra?.find(r => r.label === metric.slice(6))?.value ?? '';
-    const [group,key] = metric.split('.'); return d[group]?.[key] ?? '';
+    if (metric === 'games') { const rows = (d.rows?.games || []).filter(r => r.game === compareGame && String(r.resolution || '') === compareResolution && numeric(r[compareField]) !== null); rows.sort((a,b) => numeric(b[compareField])-numeric(a[compareField])); return rows[0]?.[compareField] ?? ''; }
+    if (metric.startsWith('fields.')) return d.fields[metric.slice(7)] ?? '';
+    if (metric.startsWith('row.')) { const parts = metric.split('.'); return (d.rows[parts[1]] || []).find(r => r.name === parts.slice(2).join('.'))?.score ?? ''; }
+    if (metric.startsWith('extra.')) { const label = metric.slice(6); for (const custom of Object.values(d.custom || {})) { const hit = (custom.extra || []).find(x => x.label === label); if (hit) return hit.value ?? ''; } }
+    return '';
   }
-  $: metricOptions = [...gpuGroups.flatMap(([group,title,fields]) => fields.map(([key,label]) => [`${group === 'basic' ? 'gpu' : group}.${key}`,`${$t(title)} · ${$t(label)}`])), ...unique(compareDetails.flatMap(d => (d.productivity || []).map(r => r.name))).filter(Boolean).map(n => ['productivity.'+n,$t('生产力 · {name}', {name:n})]), ...unique(compareDetails.flatMap(d => (d.custom?.mark3d?.extra || []).map(r => r.label))).filter(Boolean).map(n => ['extra.'+n,'3DMark · '+n]), ['games',$t('游戏帧数')]];
+  function metricOptionsFor(details, tr) {
+    const options = [], seen = new Set();
+    const add = (value, label) => { if (!seen.has(value)) { seen.add(value); options.push([value, label]); } };
+    for (const d of details) {
+      for (const group of typeOf(d.kind)?.groups || []) for (const field of group.fields) add('fields.' + field.key, tr(group.key) + ' · ' + tr(field.label));
+      for (const table of typeOf(d.kind)?.tables || []) {
+        const keys = (table.columns || []).map(c => c.key);
+        if (keys.includes('name') && keys.includes('score')) for (const row of d.rows[table.key] || []) if (row.name) add('row.' + table.key + '.' + row.name, tr(table.title) + ' · ' + row.name);
+      }
+      for (const custom of Object.values(d.custom || {})) for (const extra of custom.extra || []) if (extra.label) add('extra.' + extra.label, extra.label);
+    }
+    if (details.some(d => (d.rows?.games || []).length)) add('games', tr('游戏帧数'));
+    return options;
+  }
+  $: metricOptions = metricOptionsFor(compareDetails, $t);
 </script>
 
 <div class="gpu-page">
@@ -129,33 +131,27 @@
   {#if notice}<div class="message" role="status">{$t(notice)}</div>{/if}
   {#if loading}<p role="status">{$t('正在加载…')}</p>{/if}
   {#if view === 'list'}
-    <div class="summary">{$t('显卡')} {gpus.length}　·　CPU {items.filter(x => x.kind === 'cpu').length}　·　{$t('设备')} {items.filter(x => x.kind === 'device').length}　·　{$t('游戏记录')} {stats.games || 0}</div>
-    <nav class="tabs" aria-label={$t('硬件分类')}>{#each tabs as [key,label]}<button class:active={filter === key} on:click={() => filter = key}>{$t(label)}</button>{/each}</nav>
-    <div class="toolbar"><label class="search">{$t('搜索')}<input type="search" bind:value={search} placeholder={$t('型号、品牌或参数')} /></label><span>{$t('{count} 条记录', {count:shown.length})}</span><button on:click={compare}>{$t('对比所选显卡（{count}）', {count:selected.length})}</button>{#if canEdit}{#each ['gpu','cpu','device'] as k}<button on:click={() => open(k,null,true)}>{$t('新增{type}', {type:$t(labels[k])})}</button>{/each}{/if}</div>
+    <div class="summary">{summary}</div>
+    <nav class="tabs" aria-label={$t('硬件分类')}><button class:active={filter === 'all'} on:click={() => filter = 'all'}>{$t('全部')}</button>{#each types as item}<button class:active={filter === item.key} on:click={() => filter = item.key}>{$t(item.label)}</button>{/each}</nav>
+    <div class="toolbar"><label class="search">{$t('搜索')}<input type="search" bind:value={search} placeholder={$t('型号、品牌或参数')} /></label><label>{$t('品牌')}<select bind:value={brandFilter}><option value="">{$t('全部')}</option>{#each brands as b}<option value={b}>{b}</option>{/each}</select></label><span>{$t('{count} 条记录', {count:shown.length})}</span><button on:click={compare}>{$t('对比所选记录（{count}）', {count:selected.length})}</button>{#if canEdit}{#each types as item}<button on:click={() => open(item.key,null,true)}>{$t('新增{type}', {type:$t(item.label)})}</button>{/each}{/if}</div>
     {#if !loading && !shown.length}<p class="empty">{$t('没有匹配的记录。')}</p>{/if}
-    <div class="list">{#each shown as {type,data} (type + '-' + data.id)}<article class="record"><div><span class="badge">{$t(labels[type] || type)}</span><button class="record-title" on:click={() => open(type,data.id)}>{type === 'gpu' ? data.model || $t('未命名显卡') : data.name || $t('未命名{type}', {type:$t(labels[type])})}</button><p>{type === 'gpu' ? [data.brand,data.vram_size].filter(Boolean).join(' · ') : data.subtitle || ''}</p></div><div class="record-actions">{#if type === 'gpu'}<label><input type="checkbox" value={data.id} bind:group={selected} /> {$t('对比')}</label>{#if canEdit}<button aria-label={$t('上移显卡')} on:click={() => reorder(data.id,-1)}>{$t('上移')}</button><button aria-label={$t('下移显卡')} on:click={() => reorder(data.id,1)}>{$t('下移')}</button>{/if}{/if}</div></article>{/each}</div>
+    <div class="list">{#each shown as data (data.id)}<article class="record"><div><span class="badge">{$t(typeLabel(data.kind))}</span><button class="record-title" on:click={() => open(data.kind,data.id)}>{recordName(data, data.kind) || $t('未命名{type}', {type:$t(typeLabel(data.kind))})}</button><p>{data.subtitle || ''}</p></div><div class="record-actions"><label><input type="checkbox" value={data.id} bind:group={selected} /> {$t('对比')}</label>{#if canEdit}<button aria-label={$t('上移')} on:click={() => reorder(data.id,-1)}>{$t('上移')}</button><button aria-label={$t('下移')} on:click={() => reorder(data.id,1)}>{$t('下移')}</button>{/if}</div></article>{/each}</div>
   {:else if view === 'compare'}
-    <section class="panel"><h2>{$t('显卡数据对比')}</h2><div class="toolbar"><label>{$t('对比项目')}<select bind:value={metric}>{#each metricOptions as [value,label]}<option {value}>{label}</option>{/each}</select></label>{#if metric === 'games'}<label>{$t('游戏')}<select bind:value={compareGame} on:change={() => compareResolution = ''}><option value="">{$t('选择游戏')}</option>{#each compareGames as g}<option value={g}>{g}</option>{/each}</select></label><label>{$t('分辨率')}<select bind:value={compareResolution}>{#each compareResolutions as r}<option value={r}>{r || $t('未填')}</option>{/each}</select></label><label>{$t('帧数指标')}<select bind:value={compareField}><option value="avg_fps">{$t('平均帧')}</option><option value="one_percent_low">1% Low</option><option value="min_fps">{$t('最低帧数')}</option></select></label>{/if}</div><div class="comparison">{#each compareDetails as d}<div><strong>{d.gpu?.model || $t('未命名显卡')}</strong><span>{compareValue(d) || '—'}</span></div>{/each}</div><p class="hint">{$t('同一游戏和分辨率有多组设置时，显示所选指标的最高值。')}</p></section>
+    <section class="panel"><h2>{$t('数据对比')}</h2><div class="toolbar"><label>{$t('对比项目')}<select bind:value={metric}>{#each metricOptions as [value,label]}<option {value}>{label}</option>{/each}</select></label>{#if metric === 'games'}<label>{$t('游戏')}<select bind:value={compareGame} on:change={() => compareResolution = ''}><option value="">{$t('选择游戏')}</option>{#each compareGames as g}<option value={g}>{g}</option>{/each}</select></label><label>{$t('分辨率')}<select bind:value={compareResolution}>{#each compareResolutions as r}<option value={r}>{r || $t('未填')}</option>{/each}</select></label><label>{$t('帧数指标')}<select bind:value={compareField}>{#each compareFieldOptions as c}<option value={c.key}>{$t(c.label)}</option>{/each}</select></label>{/if}</div><div class="comparison">{#each compareDetails as d}<div><strong>{recordName(d, d.kind) || $t('未命名')}</strong><span>{compareValue(d) || '—'}</span></div>{/each}</div><p class="hint">{$t('同一游戏和分辨率有多组设置时，显示所选指标的最高值。')}</p></section>
   {:else if detail}
-    <div class="toolbar detail-actions"><h2>{editing ? $t(id ? '编辑' : '新增') : ''}{$t(labels[kind])} · {kind === 'gpu' ? detail.gpu.model || $t('未命名') : detail.fields[schemas[kind].name] || detail.name || $t('未命名')}</h2>{#if canEdit}{#if editing}<button class="primary" disabled={busy} on:click={save}>{$t('保存')}</button><button on:click={() => id ? open(kind,id) : (view = 'list')}>{$t('取消')}</button>{:else}<button class="primary" on:click={() => editing = true}>{$t('编辑')}</button><button disabled={busy} on:click={() => action('copy')}>{$t('复制一份')}</button><button class="danger" disabled={busy} on:click={() => action('delete')}>{$t('删除')}</button>{/if}{/if}</div>
-    {#if kind === 'gpu'}
-      {#each gpuGroups as [group,title,fields]}
-        {@const obj = detail[group === 'basic' ? 'gpu' : group]}
-        {@const custom = detail.custom[group]}
-        <section class="panel"><h3>{$t(title)}</h3><div class="fields">{#each fields as [key,label]}{#if !custom?.hidden?.includes(key)}<div class="field"><label>{$t(label)}{#if editing}<input bind:value={detail[group === 'basic' ? 'gpu' : group][key]} />{:else}<span>{obj[key] || '—'}</span>{/if}</label>{#if editing && custom}<button class="small" aria-label={$t('删除{label}', {label:$t(label)})} on:click={() => hideField(group,key)}>{$t('删除')}</button>{/if}</div>{/if}{/each}{#each custom?.extra || [] as extra, index}<div class="field"><label>{extra.label || extra.key}{#if editing}<input value={extra.value} on:input={(event) => { detail.custom[group].extra[index].value = event.currentTarget.value; }} />{:else}<span>{extra.value || '—'}</span>{/if}</label>{#if editing}<button class="small" on:click={() => { detail.custom[group].extra = custom.extra.filter((_,i) => i !== index); }}>{$t('删除')}</button>{/if}</div>{/each}</div>{#if editing && custom}<div class="toolbar"><button on:click={() => addCustom(group)}>{$t('添加项目')}</button>{#if custom.hidden.length}<button on:click={() => { detail.custom[group].hidden = []; }}>{$t('恢复内置项目')}</button>{/if}</div>{/if}{#if group === 'basic'}<label class="note">{$t('备注')}{#if editing}<textarea bind:value={detail.gpu.note}></textarea>{:else}<span>{detail.gpu.note || '—'}</span>{/if}</label>{/if}</section>
-      {/each}
-    {:else}
-      {#each schemas[kind].groups as [title,fields]}<section class="panel"><h3>{$t(title)}</h3><div class="fields">{#each fields as [key,label]}<label>{$t(label)}{#if editing}<input bind:value={detail.fields[key]} />{:else}<span>{detail.fields[key] || '—'}</span>{/if}</label>{/each}</div></section>{/each}
-    {/if}
-    {#each kind === 'gpu' ? gpuRows : schemas[kind].rows as [key,title,columns]}
-      {@const container = kind === 'gpu' ? detail : detail.rows}
-      {@const rows = key === 'games' && !editing ? filteredGames : container[key]}
-      <section class="panel"><h3>{$t(title)} <small>{$t('{count} 条', {count:rows.length})}</small></h3>
-        {#if key === 'games' && !editing}<div class="toolbar"><label>{$t('游戏')}<select bind:value={gameFilter} on:change={() => { resolutionFilter = ''; qualityFilter = ''; }}><option value="">{$t('全部')}</option>{#each unique(gameRows.map(r => r.game)).filter(Boolean) as g}<option value={g}>{g}</option>{/each}</select></label><label>{$t('分辨率')}<select bind:value={resolutionFilter} on:change={() => qualityFilter = ''}><option value="">{$t('全部')}</option>{#each resolutions.filter(Boolean) as r}<option value={r}>{r}</option>{/each}</select></label><label>{$t('画质')}<select bind:value={qualityFilter}><option value="">{$t('全部')}</option>{#each qualities.filter(Boolean) as q}<option value={q}>{q}</option>{/each}</select></label></div>{/if}
-        <div class="table-wrap"><table><thead><tr>{#each columns as [,label]}<th>{$t(label)}</th>{/each}{#if editing}<th>{$t('操作')}</th>{/if}</tr></thead><tbody>{#each rows as row,index}<tr>{#each columns as [column,label]}<td>{#if editing}<input aria-label={$t(label)} list={suggestions[column] ? 'gpu-option-'+column : undefined} value={row[column]} on:input={(event) => { (kind === 'gpu' ? detail : detail.rows)[key][index][column] = event.currentTarget.value; detail = detail; }} />{:else}{row[column] || '—'}{/if}</td>{/each}{#if editing}<td><button on:click={() => removeRow(container,key,index)}>{$t('删除')}</button></td>{/if}</tr>{/each}</tbody></table></div>{#if !rows.length}<p class="empty">{$t('暂无数据')}</p>{/if}{#if editing}<button on:click={() => addRow(container,key)}>{$t('添加一行')}</button>{/if}
+    <div class="toolbar detail-actions"><h2>{editing ? $t(id ? '编辑' : '新增') : ''}{$t(typeLabel(kind))} · {recordName(detail, kind) || $t('未命名')}</h2>{#if canEdit}{#if editing}<button class="primary" disabled={busy} on:click={save}>{$t('保存')}</button><button on:click={() => id ? open(kind,id) : (view = 'list')}>{$t('取消')}</button>{:else}<button class="primary" on:click={() => editing = true}>{$t('编辑')}</button><button disabled={busy} on:click={() => action('copy')}>{$t('复制一份')}</button><button class="danger" disabled={busy} on:click={() => action('delete')}>{$t('删除')}</button>{/if}{/if}</div>
+    {#each typeOf(kind)?.groups || [] as group}
+      {@const custom = detail.custom[group.key]}
+      <section class="panel"><h3>{$t(group.key)}</h3><div class="fields">{#each group.fields as field}{#if !custom?.hidden?.includes(field.key)}<div class="field"><label>{$t(field.label)}{#if editing}{#if field.key === 'note'}<textarea bind:value={detail.fields[field.key]}></textarea>{:else}<input bind:value={detail.fields[field.key]} />{/if}{:else}<span>{detail.fields[field.key] || '—'}</span>{/if}</label>{#if editing && custom}<button class="small" aria-label={$t('删除{label}', {label:$t(field.label)})} on:click={() => hideField(group.key,field.key)}>{$t('删除')}</button>{/if}</div>{/if}{/each}{#each custom?.extra || [] as extra, index}<div class="field"><label>{extra.label || extra.key}{#if editing}<input value={extra.value} on:input={(event) => { detail.custom[group.key].extra[index].value = event.currentTarget.value; }} />{:else}<span>{extra.value || '—'}</span>{/if}</label>{#if editing}<button class="small" on:click={() => { detail.custom[group.key].extra = custom.extra.filter((_,i) => i !== index); }}>{$t('删除')}</button>{/if}</div>{/each}</div>{#if editing && custom}<div class="toolbar"><button on:click={() => addCustom(group.key)}>{$t('添加项目')}</button>{#if custom.hidden.length}<button on:click={() => { detail.custom[group.key].hidden = []; }}>{$t('恢复内置项目')}</button>{/if}</div>{/if}</section>
+    {/each}
+    {#each typeOf(kind)?.tables || [] as table}
+      {@const rows = table.key === 'games' && !editing ? filteredGames : detail.rows[table.key] || []}
+      <section class="panel"><h3>{$t(table.title)} <small>{$t('{count} 条', {count:rows.length})}</small></h3>
+        {#if table.key === 'games' && !editing}<div class="toolbar"><label>{$t('游戏')}<select bind:value={gameFilter} on:change={() => { resolutionFilter = ''; qualityFilter = ''; }}><option value="">{$t('全部')}</option>{#each unique(gameRows.map(r => r.game)).filter(Boolean) as g}<option value={g}>{g}</option>{/each}</select></label><label>{$t('分辨率')}<select bind:value={resolutionFilter} on:change={() => qualityFilter = ''}><option value="">{$t('全部')}</option>{#each resolutions.filter(Boolean) as r}<option value={r}>{r}</option>{/each}</select></label><label>{$t('画质')}<select bind:value={qualityFilter}><option value="">{$t('全部')}</option>{#each qualities.filter(Boolean) as q}<option value={q}>{q}</option>{/each}</select></label></div>{/if}
+        <div class="table-wrap"><table><thead><tr>{#each table.columns as column}<th>{$t(column.label)}</th>{/each}{#if editing}<th>{$t('操作')}</th>{/if}</tr></thead><tbody>{#each rows as row,index}<tr>{#each table.columns as column}<td>{#if editing}<input aria-label={$t(column.label)} list={suggestions[column.key] ? 'gpu-option-'+column.key : undefined} value={row[column.key]} on:input={(event) => { detail.rows[table.key][index][column.key] = event.currentTarget.value; detail = detail; }} />{:else}{row[column.key] || '—'}{/if}</td>{/each}{#if editing}<td><button on:click={() => removeRow(detail.rows,table.key,index)}>{$t('删除')}</button></td>{/if}</tr>{/each}</tbody></table></div>{#if !rows.length}<p class="empty">{$t('暂无数据')}</p>{/if}{#if editing}<button on:click={() => addRow(detail.rows,table.key)}>{$t('添加一行')}</button>{/if}
       </section>
     {/each}
-    {#if editing}<section class="panel"><h3>{$t('游戏选项')}</h3><div class="toolbar"><label>{$t('新游戏名称')}<input bind:value={newGame} /></label><button on:click={addGame}>{$t('添加游戏选项')}</button></div></section>{/if}
+    {#if editing && hasGames}<section class="panel"><h3>{$t('游戏选项')}</h3><div class="toolbar"><label>{$t('新游戏名称')}<input bind:value={newGame} /></label><button on:click={addGame}>{$t('添加游戏选项')}</button></div></section>{/if}
     {#if id && canEdit}<section class="panel"><h3>{$t('相关媒体')}</h3>{#if media.length}<ul>{#each media as path}<li>{#if mediaUrl(path)}<a href={mediaUrl(path)} target="_blank" rel="noopener noreferrer">{path}</a>{:else}{typeof path === 'string' ? path : JSON.stringify(path)}{/if}<button class="small" on:click={() => changeMedia('remove',path)}>{$t('移除')}</button></li>{/each}</ul>{:else}<p class="empty">{$t('暂无相关媒体')}</p>{/if}<div class="toolbar"><label>{$t('媒体路径或链接')}<input bind:value={mediaPath} /></label><button on:click={() => changeMedia('add',mediaPath)}>{$t('添加媒体')}</button></div></section>{/if}
     {#if editing}<button class="primary" disabled={busy} on:click={save}>{$t('保存所有更改')}</button>{/if}
   {/if}
