@@ -207,4 +207,9 @@ export default {
   '想要展示的职业（最多 3 个）': ['想要展示的職業（最多 3 個）', '表示する職業（最大3つ）', 'Professions to display (up to 3)'],
   '最多选择 2 个活动范围。': ['最多選擇 2 個活動範圍。', '活動範囲は最大2つです。', 'Choose up to 2 activity areas.'],
   '最多选择 3 个职业。': ['最多選擇 3 個職業。', '職業は最大3つです。', 'Choose up to 3 professions.'],
+  '难度': ['難度', '難易度', 'Difficulty'],
+  '项目难度': ['專案難度', 'プロジェクト難易度', 'Project difficulty'],
+  '由管理员判定，等级从 D（最低）到 S（最高）。': ['由管理員判定，等級從 D（最低）到 S（最高）。', '管理者が D（最低）から S（最高）で判定します。', 'Assigned by an administrator, from D (lowest) to S (highest).'],
+  '难度已保存。': ['難度已儲存。', '難易度を保存しました。', 'Difficulty saved.'],
+  '暂无项目。': ['暫無專案。', 'プロジェクトはありません。', 'No projects.'],
 };

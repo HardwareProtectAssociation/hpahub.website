@@ -113,7 +113,7 @@
     {#if id}
       <a href="/showcase">{$t('返回项目列表')}</a>
       <header class="project-detail-head">
-        <div class="project-meta"><span class:done={data.status === 'completed'} class="project-status">{statusLabel(data.status)}</span>{#if data.currentStage}<span class="project-stage">{$t('当前阶段')}：{data.currentStage}</span>{/if}</div>
+        <div class="project-meta"><span class:done={data.status === 'completed'} class="project-status">{statusLabel(data.status)}</span>{#if data.difficulty}<span class={`project-difficulty difficulty-${data.difficulty}`}>{$t('难度')} {data.difficulty}</span>{/if}{#if data.currentStage}<span class="project-stage">{$t('当前阶段')}：{data.currentStage}</span>{/if}</div>
         <h1>{data.title}</h1>
         <p>{data.summary}</p>
         <p class="project-owner">{$t('负责人')}：{data.ownerName || '—'}{#if data.updated} · {$t('更新于')} {formatDate(data.updated)}{/if}</p>
@@ -153,7 +153,7 @@
         <div class="public-grid">
           {#each items as project}
             <article class="public-card project-card">
-              <div class="project-meta"><span class:done={project.status === 'completed'} class="project-status">{statusLabel(project.status)}</span></div>
+              <div class="project-meta"><span class:done={project.status === 'completed'} class="project-status">{statusLabel(project.status)}</span>{#if project.difficulty}<span class={`project-difficulty difficulty-${project.difficulty}`}>{$t('难度')} {project.difficulty}</span>{/if}</div>
               <h2><a href={'/showcase/' + encodeURIComponent(project.id)}>{project.title}</a></h2>
               <p>{project.summary}</p>
               <p class="project-owner">{$t('负责人')}：{project.ownerName || '—'}{#if project.updated} · {$t('更新于')} {formatDate(project.updated)}{/if}</p>
@@ -169,6 +169,12 @@
   .project-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
   .project-status { display: inline-block; padding: 3px 9px; border: 1px solid #c8d4c0; border-radius: 999px; color: #3f5d3a; font-size: 12px; }
   .project-status.done { background: #e3eddd; }
+  .project-difficulty { display: inline-block; padding: 3px 9px; border: 1px solid #d7d9cf; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .difficulty-D { color: #6b6f66; background: #f1f2ed; }
+  .difficulty-C { color: #3f5d3a; background: #eef3e8; border-color: #c8d4c0; }
+  .difficulty-B { color: #285a78; background: #e8f4fb; border-color: #a9cde4; }
+  .difficulty-A { color: #7a4b12; background: #fff3df; border-color: #e5c68e; }
+  .difficulty-S { color: #7b2340; background: #fbe9ef; border-color: #e3b3c2; box-shadow: 0 0 8px rgba(170, 50, 90, 0.16); }
   .project-stage { color: #818b7f; font-size: 12px; }
   .project-owner { margin: 0 0 10px; color: #818b7f; font-size: 13px; }
   .project-card p { margin: 0 0 10px; }

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -93,6 +94,82 @@ func TestPublicProjectRoutes(t *testing.T) {
 		if response.Code != http.StatusNotFound {
 			t.Fatalf("project %s status = %d, want 404", id, response.Code)
 		}
+	}
+}
+
+func TestProjectDifficultyAdmin(t *testing.T) {
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+
+	owner := publicProjectTestUser(t, app, "difficulty-owner@example.com", "负责人")
+	admin := publicProjectTestUser(t, app, "difficulty-admin@example.com", "管理员")
+	admin.Set("role", "admin")
+	publicProjectTestSave(t, app, admin)
+	member := publicProjectTestUser(t, app, "difficulty-member@example.com", "成员")
+	project := publicProjectTestProject(t, app, owner, "难度项目", "approved", "")
+
+	router, err := apis.NewRouter(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bindPublicProjectRoutes(&core.ServeEvent{App: app, Router: router})
+	mux, err := router.BuildMux()
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := func(method, path, token, body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, path, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		if token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+		response := httptest.NewRecorder()
+		mux.ServeHTTP(response, req)
+		return response
+	}
+	adminToken, err := admin.NewAuthToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	memberToken, err := member.NewAuthToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response := request("GET", "/api/hpahub/manage/projects", memberToken, ""); response.Code != http.StatusForbidden {
+		t.Fatalf("member list status = %d, want 403", response.Code)
+	}
+	if response := request("GET", "/api/hpahub/manage/projects", adminToken, ""); response.Code != http.StatusOK {
+		t.Fatalf("admin list status = %d: %s", response.Code, response.Body.String())
+	}
+	path := "/api/hpahub/manage/projects/" + project.Id
+	if response := request("PATCH", path, memberToken, `{"difficulty":"S"}`); response.Code != http.StatusForbidden {
+		t.Fatalf("member patch status = %d, want 403", response.Code)
+	}
+	if response := request("PATCH", path, adminToken, `{"difficulty":"Z"}`); response.Code != http.StatusBadRequest {
+		t.Fatalf("invalid patch status = %d, want 400", response.Code)
+	}
+	if response := request("PATCH", path, adminToken, `{"difficulty":"S"}`); response.Code != http.StatusOK {
+		t.Fatalf("admin patch status = %d: %s", response.Code, response.Body.String())
+	}
+	saved, err := app.FindRecordById("projects", project.Id)
+	if err != nil || saved.GetString("difficulty") != "S" {
+		t.Fatalf("saved difficulty = %q, %v", saved.GetString("difficulty"), err)
+	}
+	list := request("GET", "/api/hpahub/projects", "", "")
+	if list.Code != http.StatusOK {
+		t.Fatalf("public list status = %d", list.Code)
+	}
+	var listed struct {
+		Items []publicProject `json:"items"`
+	}
+	if err := json.Unmarshal(list.Body.Bytes(), &listed); err != nil {
+		t.Fatal(err)
+	}
+	if len(listed.Items) != 1 || listed.Items[0].Difficulty != "S" {
+		t.Fatalf("unexpected public difficulty: %+v", listed.Items)
 	}
 }
 

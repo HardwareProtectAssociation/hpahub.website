@@ -14,6 +14,7 @@ type publicProject struct {
 	Title          string `json:"title"`
 	Summary        string `json:"summary"`
 	Status         string `json:"status"`
+	Difficulty     string `json:"difficulty"`
 	AdventureStyle string `json:"adventureStyle"`
 	OwnerID        string `json:"ownerId"`
 	OwnerName      string `json:"ownerName"`
@@ -45,6 +46,16 @@ type publicProjectDetail struct {
 	CurrentStage          string                `json:"currentStage"`
 	Stages                []publicProjectStage  `json:"stages"`
 	Members               []publicProjectMember `json:"members"`
+}
+
+type managedProject struct {
+	ID           string `json:"id"`
+	Title        string `json:"title"`
+	Status       string `json:"status"`
+	Difficulty   string `json:"difficulty"`
+	ReviewStatus string `json:"reviewStatus"`
+	OwnerName    string `json:"ownerName"`
+	Updated      string `json:"updated"`
 }
 
 // bindPublicProjectRoutes exposes only approved, non-deleted projects. Draft,
@@ -118,6 +129,78 @@ func bindPublicProjectRoutes(e *core.ServeEvent) {
 		}
 		return e.JSON(200, detail)
 	})
+	e.Router.GET("/api/hpahub/manage/projects", func(e *core.RequestEvent) error {
+		noCache(e)
+		if e.Auth == nil {
+			return e.UnauthorizedError("Authentication required.", nil)
+		}
+		role := siteRole(e.Auth)
+		if role != "admin" && role != "octopus" {
+			return e.ForbiddenError("Insufficient permissions.", nil)
+		}
+		rows, err := e.App.FindRecordsByFilter("projects", `deleted_at = ""`, "-updated", 500, 0)
+		if err != nil {
+			return e.InternalServerError("Unable to load projects.", err)
+		}
+		owners := map[string]*core.Record{}
+		items := make([]managedProject, 0, len(rows))
+		for _, project := range rows {
+			ownerID := project.GetString("owner_user_id")
+			owner := owners[ownerID]
+			if owner == nil {
+				owner, _ = e.App.FindRecordById("users", ownerID)
+				owners[ownerID] = owner
+			}
+			ownerName := ""
+			if owner != nil {
+				ownerName = publicPersonName(owner)
+			}
+			items = append(items, managedProject{
+				ID:           project.Id,
+				Title:        project.GetString("title"),
+				Status:       project.GetString("execution_status"),
+				Difficulty:   project.GetString("difficulty"),
+				ReviewStatus: project.GetString("review_status"),
+				OwnerName:    ownerName,
+				Updated:      project.GetString("updated"),
+			})
+		}
+		return e.JSON(200, map[string]any{"items": items})
+	})
+	e.Router.PATCH("/api/hpahub/manage/projects/{id}", func(e *core.RequestEvent) error {
+		noCache(e)
+		if e.Auth == nil {
+			return e.UnauthorizedError("Authentication required.", nil)
+		}
+		role := siteRole(e.Auth)
+		if role != "admin" && role != "octopus" {
+			return e.ForbiddenError("Insufficient permissions.", nil)
+		}
+		var input struct {
+			Difficulty string `json:"difficulty"`
+		}
+		if err := e.BindBody(&input); err != nil || !validProjectDifficulty(input.Difficulty) {
+			return e.BadRequestError("Invalid difficulty.", nil)
+		}
+		project, err := e.App.FindRecordById("projects", e.Request.PathValue("id"))
+		if err != nil {
+			return e.NotFoundError("Not found.", nil)
+		}
+		project.Set("difficulty", input.Difficulty)
+		if err := e.App.Save(project); err != nil {
+			return e.InternalServerError("Unable to save difficulty.", err)
+		}
+		return e.JSON(200, map[string]any{"ok": true, "difficulty": input.Difficulty})
+	})
+}
+
+func validProjectDifficulty(value string) bool {
+	for _, option := range []string{"D", "C", "B", "A", "S"} {
+		if value == option {
+			return true
+		}
+	}
+	return false
 }
 
 func projectSummary(e *core.RequestEvent, project *core.Record, owners map[string]*core.Record) publicProject {
@@ -136,6 +219,7 @@ func projectSummary(e *core.RequestEvent, project *core.Record, owners map[strin
 		Title:          project.GetString("title"),
 		Summary:        project.GetString("summary"),
 		Status:         project.GetString("execution_status"),
+		Difficulty:     project.GetString("difficulty"),
 		AdventureStyle: project.GetString("adventure_style"),
 		OwnerID:        ownerID,
 		OwnerName:      ownerName,

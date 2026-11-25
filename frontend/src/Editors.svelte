@@ -35,6 +35,12 @@
   let notice = '';
   let errorParams = {};
   let busy = false;
+  let projects = [];
+  let difficultyError = '';
+  let difficultyNotice = '';
+  let savingDifficulty = '';
+  const difficultyLevels = ['D', 'C', 'B', 'A', 'S'];
+  const projectStatusLabels = { ongoing: '进行中', paused: '暂停', terminated: '已中止', completed: '已完成' };
   const base = manage ? '/api/hpahub/manage/showcase' : '/api/hpahub/me/cards';
   const headers = () => ({ Authorization: `Bearer ${token}` });
   async function request(url, options = {}) {
@@ -53,9 +59,14 @@
   function clearPreviews() { Object.values(previews).forEach(URL.revokeObjectURL); previews = {}; }
   async function load() {
     clearPreviews();
-    const [list, nextProfile] = await Promise.all([request(base), manage ? null : request('/api/hpahub/me/profile')]);
+    const [list, nextProfile, managed] = await Promise.all([
+      request(base),
+      manage ? null : request('/api/hpahub/me/profile'),
+      manage ? request('/api/hpahub/manage/projects') : null,
+    ]);
     records = list.items;
     if (nextProfile) profile = nextProfile;
+    if (managed) projects = managed.items;
     await Promise.all([...(profile.avatarUrl && !manage ? [preview(profile.avatarUrl)] : []), ...records.flatMap(record => (record.imageUrls || []).map(preview))]);
   }
   onMount(async () => { try { await load(); } catch (e) { error = e.message; errorParams = e.params || {}; } });
@@ -93,6 +104,27 @@
       edit(); await load(); notice = '保存成功。';
     } catch (e) { error = e.message; errorParams = e.params || {}; } finally { busy = false; }
   }
+  async function saveDifficulty(project) {
+    savingDifficulty = project.id;
+    difficultyError = '';
+    difficultyNotice = '';
+    try {
+      const response = await fetch(`/api/hpahub/manage/projects/${encodeURIComponent(project.id)}`, {
+        method: 'PATCH',
+        headers: { ...headers(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ difficulty: project.difficulty }),
+      });
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}));
+        throw new Error(result.message || '保存失败，请重试。');
+      }
+      difficultyNotice = '难度已保存。';
+    } catch (e) {
+      difficultyError = e.message || String(e);
+    } finally {
+      savingDifficulty = '';
+    }
+  }
   async function remove(record) {
     if (!confirm(get(t)('确定删除“{title}”吗？', { title: record.title }))) return;
     busy = true; error = ''; notice = '';
@@ -104,6 +136,28 @@
 <main class="dashboard public-page editor-page">
   <h1>{manage ? $t('项目展示管理') : $t('个人设置')}</h1>
   {#if error}<p class="message error" role="alert">{$t(error, errorParams)}</p>{/if}{#if notice}<p class="message success" role="status">{$t(notice)}</p>{/if}
+  {#if manage}
+    <section class="difficulty-section">
+      <h2>{$t('项目难度')}</h2>
+      <p>{$t('由管理员判定，等级从 D（最低）到 S（最高）。')}</p>
+      {#if difficultyError}<p class="message error" role="alert">{$t(difficultyError)}</p>{/if}
+      {#if difficultyNotice}<p class="message success" role="status">{$t(difficultyNotice)}</p>{/if}
+      {#if projects.length}
+        <div class="difficulty-list">
+          {#each projects as project}
+            <div class="difficulty-row">
+              <div class="difficulty-info"><strong>{project.title}</strong><small>{$t(projectStatusLabels[project.status] || project.status)} · {project.ownerName || '—'}</small></div>
+              <select bind:value={project.difficulty} on:change={() => saveDifficulty(project)} disabled={savingDifficulty === project.id} aria-label={`${project.title} ${$t('难度')}`}>
+                {#each difficultyLevels as level}<option value={level}>{level}</option>{/each}
+              </select>
+            </div>
+          {/each}
+        </div>
+      {:else}
+        <p>{$t('暂无项目。')}</p>
+      {/if}
+    </section>
+  {/if}
   {#if !manage}
     <section><h2>{$t('成员资料')}</h2><form class="editor-form" on:submit|preventDefault={saveProfile}>
       {#if avatarPreview && !removeAvatar}<img class="avatar" src={avatarPreview} alt={$t('新头像预览')} />{:else if profile.avatarUrl && previews[profile.avatarUrl] && !removeAvatar}<img class="avatar" src={previews[profile.avatarUrl]} alt={$t('当前头像')} />{/if}
@@ -127,3 +181,12 @@
     </form>
   </section>
 </main>
+
+<style>
+  .difficulty-section { margin: 26px 0; }
+  .difficulty-list { display: grid; gap: 8px; max-width: 900px; }
+  .difficulty-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 12px; border: 1px solid #dcded4; background: #fafbf7; }
+  .difficulty-info { display: grid; gap: 2px; }
+  .difficulty-info small { color: #818b7f; }
+  .difficulty-row select { min-width: 80px; padding: 6px 8px; border: 1px solid #b9c3b3; background: #fff; }
+</style>
