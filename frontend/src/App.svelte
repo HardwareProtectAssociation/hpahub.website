@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { locale, languages, t } from './i18n.js';
   import Hardware from './Hardware.svelte';
+  import News from './News.svelte';
   import PersonalCenter from './PersonalCenter.svelte';
   import SkillEditor from './SkillEditor.svelte';
   import AdminDirectory from './AdminDirectory.svelte';
@@ -263,6 +264,7 @@
     <nav id="main-navigation" class="topbar-right" aria-label={$t('主导航')}>
       <a class="text-button" href="/" aria-current={pathname === '/' && page === 'home' ? 'page' : undefined}>{$t('首页')}</a>
       <a class="text-button" href="/hardware">{$t('硬件数据库')}</a>
+      <a class="text-button" href="/news">{$t('硬件新闻')}</a>
       <a class="text-button" href="/community">{$t('成员')}</a>
       <a class="text-button" href="/showcase">{$t('项目大厅')}</a>
       {#if token && !checking}
@@ -293,6 +295,8 @@
     <main class="dashboard"><p role="status">{$t('正在验证登录状态…')}</p></main>
   {:else if pathname === '/hardware'}
     <Hardware {token} {role} />
+  {:else if pathname === '/news'}
+    <News {token} />
   {:else if pathname === '/me/skills'}
     {#if token}
       <SkillEditor {token} />

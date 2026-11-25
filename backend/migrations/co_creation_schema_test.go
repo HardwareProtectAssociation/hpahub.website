@@ -54,6 +54,8 @@ var coCollections = []string{
 	"project_participant_roles",
 	"user_skill_likes",
 	"health_checkins",
+	"hardware_news",
+	"hardware_news_reactions",
 }
 
 func TestCoCreationSchemaCollections(t *testing.T) {
