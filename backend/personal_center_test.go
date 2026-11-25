@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tests"
@@ -117,7 +118,7 @@ func TestPersonalCenterData(t *testing.T) {
 	if len(data.Identities) != 1 || data.Identities[0].Name != identity.GetString("name") {
 		t.Fatalf("unexpected identities: %+v", data.Identities)
 	}
-	if len(data.Skills) != 1 || data.Skills[0].Name != skill.GetString("name") || data.Skills[0].Proficiency != "熟练" {
+	if len(data.Skills) != 1 || data.Skills[0].Name != skill.GetString("name") || data.Skills[0].Proficiency != "比较熟练" {
 		t.Fatalf("unexpected skills: %+v", data.Skills)
 	}
 	if data.Preferences == nil || len(data.Preferences.ExpectedRewardTypes) != 2 {
@@ -293,6 +294,96 @@ func TestPersonalCenterProfileUpdate(t *testing.T) {
 	}
 	if savedLinked.GetString("display_name") != "管理员昵称" {
 		t.Fatalf("linked member not updated: %q", savedLinked.GetString("display_name"))
+	}
+}
+
+func TestPersonalCenterSkillsUpdate(t *testing.T) {
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+
+	member := centerTestUser(t, app, "skills@example.com", "member")
+	router, err := apis.NewRouter(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bindPersonalCenterRoutes(&core.ServeEvent{App: app, Router: router})
+	mux, err := router.BuildMux()
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := func(method, token, body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, "/api/hpahub/me/center/skills", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		if token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+		response := httptest.NewRecorder()
+		mux.ServeHTTP(response, req)
+		return response
+	}
+
+	if response := request("PUT", "", `{"skills":[]}`); response.Code != http.StatusUnauthorized {
+		t.Fatalf("anonymous status = %d, want 401", response.Code)
+	}
+	memberToken, err := member.NewAuthToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := `{"skills":[
+		{"name":"我的自定义技能","proficiency":"我是这个领域的神！","abilityNote":"自己练出来的。"},
+		{"name":"PCB 设计","proficiency":"比较熟练","abilityNote":"做过键盘 PCB。"}
+	]}`
+	response := request("PUT", memberToken, body)
+	if response.Code != http.StatusOK {
+		t.Fatalf("skills update status = %d: %s", response.Code, response.Body.String())
+	}
+	var updated centerResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &updated); err != nil {
+		t.Fatal(err)
+	}
+	if len(updated.Skills) != 2 {
+		t.Fatalf("skills = %+v", updated.Skills)
+	}
+	proficiencies := map[string]string{}
+	for _, skill := range updated.Skills {
+		proficiencies[skill.Name] = skill.Proficiency
+	}
+	if proficiencies["我的自定义技能"] != "我是这个领域的神！" || proficiencies["PCB 设计"] != "比较熟练" {
+		t.Fatalf("unexpected proficiencies: %+v", proficiencies)
+	}
+	custom, err := app.FindFirstRecordByFilter("skills", `name = "我的自定义技能"`)
+	if err != nil || custom.GetString("category") != "自定义" {
+		t.Fatalf("custom skill not created: %v %+v", err, custom)
+	}
+	if rows, err := app.FindRecordsByFilter("user_skills", "user_id = {:user}", "", 0, 0, dbx.Params{"user": member.Id}); err != nil || len(rows) != 2 {
+		t.Fatalf("user skills = %d, %v", len(rows), err)
+	}
+
+	if invalid := request("PUT", memberToken, `{"skills":[{"name":"x","proficiency":"随便","abilityNote":""}]}`); invalid.Code != http.StatusBadRequest {
+		t.Fatalf("invalid proficiency status = %d, want 400", invalid.Code)
+	}
+	if duplicate := request("PUT", memberToken, `{"skills":[{"name":"x","proficiency":"初学者","abilityNote":""},{"name":"x","proficiency":"略懂一二","abilityNote":""}]}`); duplicate.Code != http.StatusBadRequest {
+		t.Fatalf("duplicate skill status = %d, want 400", duplicate.Code)
+	}
+	if missing := request("PUT", memberToken, `{}`); missing.Code != http.StatusBadRequest {
+		t.Fatalf("missing skills status = %d, want 400", missing.Code)
+	}
+
+	response = request("PUT", memberToken, `{"skills":[]}`)
+	if response.Code != http.StatusOK {
+		t.Fatalf("clear skills status = %d: %s", response.Code, response.Body.String())
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &updated); err != nil {
+		t.Fatal(err)
+	}
+	if len(updated.Skills) != 0 {
+		t.Fatalf("skills not cleared: %+v", updated.Skills)
+	}
+	if rows, err := app.FindRecordsByFilter("user_skills", "user_id = {:user}", "", 0, 0, dbx.Params{"user": member.Id}); err != nil || len(rows) != 0 {
+		t.Fatalf("user skills not cleared: %d, %v", len(rows), err)
 	}
 }
 

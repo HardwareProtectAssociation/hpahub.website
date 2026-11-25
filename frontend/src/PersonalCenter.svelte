@@ -18,6 +18,12 @@
   let removeAvatar = false;
   let avatarFile = null;
   let avatarPreview = '';
+  let skillsEditing = false;
+  let skillsSaving = false;
+  let skillError = '';
+  let skillRows = [];
+
+  const proficiencyOptions = ['初学者', '略懂一二', '比较熟练', '非常熟练', '你可以永远信任我', '我是这个领域的神！'];
 
   const rewardLabels = { money: '资金', product: '实物', title: '头衔', credit: '署名', learning: '学习', none: '无', other: '其他' };
   const statusLabels = { ongoing: '进行中', paused: '暂停', terminated: '已中止', completed: '已完成' };
@@ -65,6 +71,7 @@
   }
 
   function startEdit() {
+    if (skillsEditing) cancelSkillEdit();
     formName = data?.profile?.name || '';
     formBio = data?.profile?.bio || '';
     formPublic = !!data?.profile?.profilePublic;
@@ -127,6 +134,71 @@
       formError = err.message || String(err);
     } finally {
       saving = false;
+    }
+  }
+
+  function startSkillEdit() {
+    if (editing) cancelEdit();
+    skillRows = (data?.skills || []).map((skill) => ({
+      name: skill.name,
+      proficiency: proficiencyOptions.includes(skill.proficiency) ? skill.proficiency : '初学者',
+      abilityNote: skill.abilityNote || '',
+    }));
+    skillError = '';
+    notice = '';
+    skillsEditing = true;
+  }
+
+  function cancelSkillEdit() {
+    skillsEditing = false;
+    skillsSaving = false;
+    skillError = '';
+    skillRows = [];
+  }
+
+  function addSkillRow() {
+    skillRows = [...skillRows, { name: '', proficiency: '初学者', abilityNote: '' }];
+  }
+
+  function removeSkillRow(index) {
+    skillRows = skillRows.filter((_, itemIndex) => itemIndex !== index);
+  }
+
+  async function saveSkills() {
+    const names = new Set();
+    for (const row of skillRows) {
+      const name = row.name.trim();
+      if (!name) {
+        skillError = '请填写技能名称。';
+        return;
+      }
+      if (names.has(name.toLowerCase())) {
+        skillError = '技能名称重复。';
+        return;
+      }
+      names.add(name.toLowerCase());
+    }
+    skillsSaving = true;
+    skillError = '';
+    notice = '';
+    try {
+      const response = await fetch('/api/hpahub/me/center/skills', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({
+          skills: skillRows.map((row) => ({ name: row.name.trim(), proficiency: row.proficiency, abilityNote: row.abilityNote })),
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.message || `请求失败（${response.status}）`);
+      data = result;
+      skillsEditing = false;
+      skillRows = [];
+      notice = '技能已保存。';
+    } catch (err) {
+      skillError = err.message || String(err);
+    } finally {
+      skillsSaving = false;
     }
   }
 
@@ -302,16 +374,35 @@
         {/if}
       </section>
 
-      <section class="center-section" aria-labelledby="center-skills">
+      <section class="center-section" class:wide={skillsEditing} aria-labelledby="center-skills">
         <div class="section-head">
           <div><h2 id="center-skills">{$t('技能展示')}</h2><p>{$t('技能为本人自述，作品与贡献作为依据。')}</p></div>
+          {#if !skillsEditing}<button type="button" class="link-button" on:click={startSkillEdit}>{$t('编辑技能')}</button>{/if}
         </div>
-        {#if data.skills.length}
+        {#if skillsEditing}
+          <div class="skill-edit">
+            {#if skillError}<p class="message error" role="alert">{$t(skillError)}</p>{/if}
+            {#each skillRows as row, index}
+              <div class="skill-row">
+                <label>{$t('技能名称')}<input bind:value={row.name} maxlength="80" placeholder={$t('输入技能名称')} /></label>
+                <label>{$t('熟练程度')}<select bind:value={row.proficiency}>{#each proficiencyOptions as option}<option value={option}>{$t(option)}</option>{/each}</select></label>
+                <label class="skill-note">{$t('能力说明')}<textarea bind:value={row.abilityNote} maxlength="500" rows="2" placeholder={$t('简单说明你的经验或作品')}></textarea></label>
+                <button type="button" class="small danger" on:click={() => removeSkillRow(index)}>{$t('删除')}</button>
+              </div>
+            {/each}
+            {#if !skillRows.length}<p class="center-empty">{$t('还没有添加技能')}</p>{/if}
+            <div class="skill-edit-actions">
+              <button type="button" on:click={addSkillRow}>{$t('新增技能')}</button>
+              <button class="primary" type="button" on:click={saveSkills} disabled={skillsSaving}>{skillsSaving ? $t('正在保存…') : $t('保存技能')}</button>
+              <button type="button" on:click={cancelSkillEdit} disabled={skillsSaving}>{$t('取消')}</button>
+            </div>
+          </div>
+        {:else if data.skills.length}
           <ul class="skill-list">
             {#each data.skills as skill (skill.id)}
               <li class="skill-card">
-                <div class="skill-head"><strong>{skill.name}</strong>{#if skill.category}<span class="chip small">{skill.category}</span>{/if}</div>
-                {#if skill.proficiency}<span class="meta">{$t('熟练程度')}：{skill.proficiency}</span>{/if}
+                <div class="skill-head"><strong>{skill.name}</strong>{#if skill.category}<span class="chip small">{$t(skill.category)}</span>{/if}</div>
+                {#if skill.proficiency}<span class="meta">{$t('熟练程度')}：{$t(skill.proficiency)}</span>{/if}
                 {#if skill.abilityNote}<p>{skill.abilityNote}</p>{/if}
               </li>
             {/each}
@@ -399,6 +490,14 @@
   .skill-card:first-child { padding-top: 0; border-top: 0; }
   .skill-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
   .skill-card p { margin: 6px 0 0; color: #6f7b6d; font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .skill-edit { display: grid; gap: 12px; }
+  .skill-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 12px; border: 1px solid #e6e9df; background: #fff; }
+  .skill-row label { display: grid; gap: 4px; color: #52695a; font-size: 12px; }
+  .skill-row input, .skill-row select, .skill-row textarea { width: 100%; padding: 8px; border: 1px solid #b9c3b3; background: #fff; color: #252b26; font: inherit; }
+  .skill-row .skill-note { grid-column: 1 / -1; }
+  .skill-row button { grid-column: 1 / -1; justify-self: start; }
+  .skill-edit-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+  @media (max-width: 600px) { .skill-row { grid-template-columns: 1fr; } }
   .reward-note { margin: 12px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
   .center-empty { color: #818b7f; font-size: 13px; }
   .center-empty p { margin: 0 0 6px; }

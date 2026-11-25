@@ -36,6 +36,19 @@ type centerSkill struct {
 	AbilityNote string `json:"abilityNote"`
 }
 
+type centerSkillInput struct {
+	Name        string `json:"name"`
+	Proficiency string `json:"proficiency"`
+	AbilityNote string `json:"abilityNote"`
+}
+
+type centerSkillsInput struct {
+	Skills *[]centerSkillInput `json:"skills"`
+}
+
+// centerSkillProficiencies is the fixed self-reported proficiency scale.
+var centerSkillProficiencies = []string{"初学者", "略懂一二", "比较熟练", "非常熟练", "你可以永远信任我", "我是这个领域的神！"}
+
 type centerPreferences struct {
 	Willingness         string   `json:"willingness"`
 	HelpTypes           []string `json:"helpTypes"`
@@ -84,6 +97,29 @@ type centerResponse struct {
 	Badges      []centerBadge      `json:"badges"`
 	Skills      []centerSkill      `json:"skills"`
 	Preferences *centerPreferences `json:"preferences"`
+}
+
+func centerSkillProficiency(value string) string {
+	switch value {
+	case "入门":
+		return "初学者"
+	case "熟练":
+		return "比较熟练"
+	case "精通":
+		return "非常熟练"
+	case "":
+		return "初学者"
+	}
+	return value
+}
+
+func validCenterSkillProficiency(value string) bool {
+	for _, option := range centerSkillProficiencies {
+		if option == value {
+			return true
+		}
+	}
+	return false
 }
 
 // bindPersonalCenterRoutes exposes the signed-in account's own summary. It is
@@ -193,6 +229,110 @@ func bindPersonalCenterRoutes(e *core.ServeEvent) {
 		}
 		return e.JSON(200, data)
 	})
+	e.Router.PUT("/api/hpahub/me/center/skills", func(e *core.RequestEvent) error {
+		noCache(e)
+		if e.Auth == nil {
+			return e.UnauthorizedError("Authentication required.", nil)
+		}
+		owner, member, err := personalCenterOwner(e.App, e.Auth)
+		if err != nil {
+			return e.InternalServerError("Unable to load skills.", err)
+		}
+		if !member {
+			return e.ForbiddenError("No member profile is linked to this account.", nil)
+		}
+		var input centerSkillsInput
+		if err := e.BindBody(&input); err != nil || input.Skills == nil {
+			return e.BadRequestError("Invalid skills.", err)
+		}
+		if len(*input.Skills) > 50 {
+			return e.BadRequestError("Invalid skills.", nil)
+		}
+		items := make([]centerSkillInput, 0, len(*input.Skills))
+		seen := map[string]bool{}
+		for _, item := range *input.Skills {
+			name := strings.TrimSpace(item.Name)
+			if name == "" || utf8.RuneCountInString(name) > 80 || !validCenterSkillProficiency(item.Proficiency) || utf8.RuneCountInString(item.AbilityNote) > 500 {
+				return e.BadRequestError("Invalid skills.", nil)
+			}
+			key := strings.ToLower(name)
+			if seen[key] {
+				return e.BadRequestError("Invalid skills.", nil)
+			}
+			seen[key] = true
+			item.Name = name
+			items = append(items, item)
+		}
+		if err := replacePersonalCenterSkills(e.App, owner.Id, items); err != nil {
+			return e.InternalServerError("Unable to save skills.", err)
+		}
+		data, err := personalCenterData(e.App, e.Auth)
+		if err != nil {
+			return e.InternalServerError("Unable to reload personal center.", err)
+		}
+		return e.JSON(200, data)
+	})
+}
+
+// replacePersonalCenterSkills replaces the user's full skill list in one
+// transaction. Custom names are added to the shared skills dictionary so they
+// remain available for search and matching.
+func replacePersonalCenterSkills(app core.App, userID string, items []centerSkillInput) error {
+	return app.RunInTransaction(func(tx core.App) error {
+		existing, err := tx.FindRecordsByFilter("user_skills", "user_id = {:user}", "", 0, 0, dbx.Params{"user": userID})
+		if err != nil {
+			return err
+		}
+		keep := map[string]bool{}
+		for _, item := range items {
+			skill, err := tx.FindFirstRecordByFilter("skills", "name = {:name}", dbx.Params{"name": item.Name})
+			if errors.Is(err, sql.ErrNoRows) {
+				collection, err := tx.FindCollectionByNameOrId("skills")
+				if err != nil {
+					return err
+				}
+				skill = core.NewRecord(collection)
+				skill.Set("name", item.Name)
+				skill.Set("category", "自定义")
+				if err := tx.Save(skill); err != nil {
+					return err
+				}
+			} else if err != nil {
+				return err
+			}
+			keep[skill.Id] = true
+			userSkill, err := tx.FindFirstRecordByFilter(
+				"user_skills",
+				"user_id = {:user} && skill_id = {:skill}",
+				dbx.Params{"user": userID, "skill": skill.Id},
+			)
+			if errors.Is(err, sql.ErrNoRows) {
+				collection, err := tx.FindCollectionByNameOrId("user_skills")
+				if err != nil {
+					return err
+				}
+				userSkill = core.NewRecord(collection)
+				userSkill.Set("user_id", userID)
+				userSkill.Set("skill_id", skill.Id)
+			} else if err != nil {
+				return err
+			}
+			userSkill.Set("proficiency", item.Proficiency)
+			userSkill.Set("ability_note", item.AbilityNote)
+			if err := tx.Save(userSkill); err != nil {
+				return err
+			}
+		}
+		for _, row := range existing {
+			if keep[row.GetString("skill_id")] {
+				continue
+			}
+			if err := tx.Delete(row); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 // personalCenterOwner resolves the record whose member data should be shown.
@@ -288,7 +428,7 @@ func personalCenterData(app core.App, auth *core.Record) (centerResponse, error)
 			ID:          skill.Id,
 			Name:        skill.GetString("name"),
 			Category:    skill.GetString("category"),
-			Proficiency: row.GetString("proficiency"),
+			Proficiency: centerSkillProficiency(row.GetString("proficiency")),
 			AbilityNote: row.GetString("ability_note"),
 		})
 	}
