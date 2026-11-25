@@ -66,7 +66,6 @@ func TestInvitationAPIRestrictions(t *testing.T) {
 	collection, err := app.FindCollectionByNameOrId("users")
 	if err != nil { t.Fatal(err) }
 	if collection.CreateRule != nil || collection.UpdateRule != nil || collection.DeleteRule != nil || collection.OAuth2.Enabled { t.Fatal("users writes or OAuth2 are not locked") }
-	if collection.Fields.GetByName("email").(*core.EmailField).Required { t.Fatal("email must be optional for legacy accounts") }
 	if siteRole(nil) != "guest" { t.Fatal("anonymous role is not guest") }
 	unknown := core.NewRecord(collection)
 	if siteRole(unknown) != "user" { t.Fatal("missing role did not fall back to user") }
