@@ -262,7 +262,7 @@
       <a class="text-button" href="/" aria-current={pathname === '/' && page === 'home' ? 'page' : undefined}>{$t('首页')}</a>
       <a class="text-button" href="/hardware">{$t('硬件数据库')}</a>
       <a class="text-button" href="/community">{$t('成员')}</a>
-      <a class="text-button" href="/showcase">{$t('项目展示')}</a>
+      <a class="text-button" href="/showcase">{$t('项目大厅')}</a>
       {#if token && !checking}
         <a class="text-button" href="/me">{$t('个人中心')}</a>
         {#if ['member', 'admin'].includes(role)}<a class="text-button" href="/settings">{$t('个人设置')}</a>{/if}

@@ -134,7 +134,7 @@
 </script>
 
 <main class="dashboard public-page editor-page">
-  <h1>{manage ? $t('项目展示管理') : $t('个人设置')}</h1>
+  <h1>{manage ? $t('项目大厅管理') : $t('个人设置')}</h1>
   {#if error}<p class="message error" role="alert">{$t(error, errorParams)}</p>{/if}{#if notice}<p class="message success" role="status">{$t(notice)}</p>{/if}
   {#if manage}
     <section class="difficulty-section">
