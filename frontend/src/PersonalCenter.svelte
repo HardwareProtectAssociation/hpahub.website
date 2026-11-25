@@ -32,20 +32,10 @@
   let generatingInvitation = false;
   let inviteCount = 1;
   let copiedCode = '';
-  let health = null;
-  let healthError = '';
-  let healthSaving = false;
-  let healthMood = 'good';
-  let healthRested = false;
-  let healthExercised = false;
-  let healthAteOnTime = false;
-  let healthChecking = false;
 
   const genderLabels = { male: '男', female: '女', nonbinary: '非二元', private: '不愿透露' };
   const genderOptions = Object.entries(genderLabels);
   const currentStatusLabels = { busy: '忙碌', free: '空闲' };
-  const moodLabels = { great: '很好', good: '不错', okay: '一般', low: '低落', bad: '很差' };
-  const moodOptions = Object.entries(moodLabels);
   const contactTypes = [
     { value: 'email', label: '邮箱' },
     { value: 'wechat', label: '微信' },
@@ -299,73 +289,9 @@
     return value ? new Date(value * 1000).toLocaleString() : '—';
   }
 
-  async function loadHealth() {
-    try {
-      const response = await fetch('/api/hpahub/me/health', {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        cache: 'no-store',
-      });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body.message || `请求失败（${response.status}）`);
-      health = body;
-    } catch (err) {
-      healthError = err.message || String(err);
-    }
-  }
-
-  async function toggleHealth() {
-    if (!health) return;
-    healthSaving = true;
-    healthError = '';
-    notice = '';
-    try {
-      const response = await fetch('/api/hpahub/me/health/settings', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ enabled: !health.enabled }),
-      });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body.message || '保存失败，请重试。');
-      health = { ...health, enabled: body.enabled };
-      notice = body.enabled ? '每日健康询问已开启。' : '每日健康询问已关闭。';
-    } catch (err) {
-      healthError = err.message || String(err);
-    } finally {
-      healthSaving = false;
-    }
-  }
-
-  async function submitHealth() {
-    healthChecking = true;
-    healthError = '';
-    notice = '';
-    try {
-      const response = await fetch('/api/hpahub/me/health/checkin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({
-          mood: healthMood,
-          rested: healthRested,
-          exercised: healthExercised,
-          ateOnTime: healthAteOnTime,
-          note: '',
-        }),
-      });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body.message || '保存失败，请重试。');
-      health = { ...health, checkedInToday: true, today: body };
-      notice = '健康评估已记录。';
-    } catch (err) {
-      healthError = err.message || String(err);
-    } finally {
-      healthChecking = false;
-    }
-  }
-
   onMount(async () => {
     await load();
     await loadInvitations();
-    await loadHealth();
   });
   onDestroy(() => {
     if (avatarSrc) URL.revokeObjectURL(avatarSrc);
@@ -510,37 +436,6 @@
 
     {#if !data.profile.member}
       <p class="message">{$t('当前为平台超级管理员账号，个人中心不包含会员资料；请使用会员账号查看完整信息。')}</p>
-    {/if}
-
-    {#if data.profile.member && health}
-      <section class="center-section wide health-summary" aria-labelledby="center-health">
-        <div class="section-head">
-          <div><h2 id="center-health">{$t('每日健康评估')}</h2><p>{$t('记录今天的心情、休息和锻炼情况。')}</p></div>
-          <button type="button" class="link-button" on:click={toggleHealth} disabled={healthSaving}>{health.enabled ? $t('关闭每日询问') : $t('开启每日询问')}</button>
-        </div>
-        {#if healthError}<p class="message error" role="alert">{$t(healthError)}</p>{/if}
-        {#if health.enabled}
-          {#if health.checkedInToday && health.today}
-            <div class="health-today">
-              <span>{$t('今日心情')}：{$t(moodLabels[health.today.mood] || health.today.mood)}</span>
-              <span>{health.today.rested ? $t('已休息') : $t('未休息')}</span>
-              <span>{health.today.exercised ? $t('已锻炼') : $t('未锻炼')}</span>
-              <span>{health.today.ateOnTime ? $t('按时吃饭') : $t('未按时吃饭')}</span>
-            </div>
-            {#if health.today.note}<p class="health-note-text">{health.today.note}</p>{/if}
-          {:else}
-            <div class="health-inline">
-              <label>{$t('今日心情')}<select bind:value={healthMood}>{#each moodOptions as [value, label]}<option value={value}>{$t(label)}</option>{/each}</select></label>
-              <label class="health-check"><input type="checkbox" bind:checked={healthRested} />{$t('休息够了')}</label>
-              <label class="health-check"><input type="checkbox" bind:checked={healthExercised} />{$t('今天锻炼了')}</label>
-              <label class="health-check"><input type="checkbox" bind:checked={healthAteOnTime} />{$t('按时吃饭')}</label>
-              <button type="button" class="primary" on:click={submitHealth} disabled={healthChecking}>{healthChecking ? $t('正在保存…') : $t('提交评估')}</button>
-            </div>
-          {/if}
-        {:else}
-          <p class="health-status">{$t('每日健康询问已关闭。')}</p>
-        {/if}
-      </section>
     {/if}
 
     <div class="stat-grid">
@@ -736,15 +631,6 @@
   .center-contacts strong { color: #2f4534; }
   .current-status { padding: 2px 8px; border-radius: 999px; background: #eef3e8; color: #4d6448; }
   .current-status.busy { background: #fff3df; color: #7a4b12; }
-  .health-summary { margin-bottom: 20px; }
-  .health-today { display: flex; flex-wrap: wrap; gap: 8px 16px; color: #52695a; font-size: 13px; }
-  .health-status { margin: 0; color: #818b7f; font-size: 13px; }
-  .health-inline { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
-  .health-inline label { display: grid; gap: 4px; color: #52695a; font-size: 12px; }
-  .health-inline select { padding: 7px; border: 1px solid #b9c3b3; background: #fff; color: #252b26; }
-  .health-inline .health-check { display: flex; align-items: center; gap: 6px; }
-  .health-inline .primary { min-height: 40px; }
-  .health-note-text { margin: 10px 0 0; color: #6f7b6d; font-size: 13px; }
   .chips { display: flex; flex-wrap: wrap; gap: 8px; }
   .chip { display: inline-block; padding: 4px 10px; border: 1px solid #c8d4c0; border-radius: 999px; background: #eef3e8; color: #3f5d3a; font-size: 12px; }
   .chip.small { padding: 2px 8px; font-size: 11px; }

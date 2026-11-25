@@ -50,7 +50,7 @@ go run . migrate up --dir <临时数据目录>        # 在空库或已有库上
 11. **`users` 其他映射**：`avatar` 文件字段对应 `avatar_url`，`bio` 沿用现有字段，`display_name` 为昵称；`gender`、`personality`、`age`、`contacts`、`activity_areas` 为个人资料扩展字段；`user_identities.featured` 标记“想要展示的职业”，服务层限制最多 3 个；`email`/`password` 由 PocketBase 认证管理；`users.createRule/updateRule/deleteRule` 仍为空（仅超级管理员），未在本次迁移放宽。
 12. **项目难度**：`projects.difficulty` 取值为 `D`、`C`、`B`、`A`、`S`，由管理员在“项目管理”页判定；`1760000013` 为已有项目回填 `C`，公开项目接口返回该等级。
 13. **管理控制台与邀请码**：管理控制台显示成员目录、待审批项目加入申请和全部项目；项目成员申请通过后写入 `project_members`。邀请码从控制台移到个人中心，普通成员只能查看和生成自己的邀请码；`hpahub_invitations` 增加 `created_by`，启动时对旧表自动补列。
-14. **健康评估**：`users.current_status` 为 `busy`/`free`；`users.daily_health_enabled` 控制每日健康评估开关，现有账号回填为开启；`health_checkins` 按用户和日期唯一记录心情、休息、锻炼、按时吃饭和备注；入口在个人中心，不再自动弹窗。
+14. **健康评估（已取消）**：功能入口和后端接口已移除；`users.current_status`、`daily_health_enabled` 与 `health_checkins` 表结构保留，避免删除历史数据。
 15. **已完成项目改进**：`project_join_requests.source` 增加 `improvement`；已完成项目的详情页只提供改进申请，普通加入申请会返回 400；管理控制台按来源显示“申请改进”或“申请加入”。
 16. **硬件新闻**：`hardware_news` 保存成员发布的标题、正文和原文链接；`hardware_news_reactions` 每个成员对每条新闻最多一个反应，取值为 `like` 或 `useless`，作者不能给自己投票。
 17. **成员互动关系**：`member_relations` 保存有向关系 `admire`（关注）/`watch`（监视）/`investigate`（调查），同一对成员只能有一条关系；公开成员页显示被关注、被监视、被调查数量及当前访问者的关系。

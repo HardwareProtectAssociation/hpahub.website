@@ -78,7 +78,6 @@ func main() {
 		bindPublicProjectRoutes(e)
 		bindAdminConsoleRoutes(e)
 		bindMyProjectRoutes(e)
-		bindHealthRoutes(e)
 		bindNewsRoutes(e)
 		bindMemberRelationRoutes(e)
 		bindPersonalCenterRoutes(e)
