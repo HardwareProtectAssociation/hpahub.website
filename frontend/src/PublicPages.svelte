@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte';
-  import { t } from './i18n.js';
+  import { locale, t } from './i18n.js';
   export let pathname;
   let data = null;
   let error = '';
@@ -12,13 +12,20 @@
   onMount(async () => {
     if (!['community', 'showcase'].includes(section)) { loading = false; return; }
     try {
-      const endpoint = section === 'community' ? 'members' : 'showcase';
+      const endpoint = section === 'community' ? 'members' : 'projects';
       const response = await fetch(`/api/hpahub/${endpoint}${id ? '/' + encodeURIComponent(id) : ''}`, { cache: 'no-store' });
       if (!response.ok) { error = response.status === 404 ? '内容不存在或未公开。' : '加载失败（{status}）'; errorParams = { status: response.status }; return; }
       data = await response.json();
     } catch (e) { error = e.message; } finally { loading = false; }
   });
   $: items = Array.isArray(data) ? data : data?.items || [];
+  const statusLabels = { ongoing: '进行中', paused: '暂停', terminated: '已中止', completed: '已完成' };
+  function statusLabel(status) { return $t(statusLabels[status] || status); }
+  function formatDate(value) {
+    if (!value) return '';
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString($locale);
+  }
 </script>
 
 <main class="dashboard public-page">
@@ -38,7 +45,80 @@
       <h1>{$t('成员')}</h1><p>{$t('认识 HPA 的成员。')}</p>{#if items.length}<div class="public-grid">{#each items as member}<article class="public-card member-card">{#if member.avatarUrl}<img class="avatar" src={member.avatarUrl} alt="" />{:else}<span class="avatar avatar-default" aria-hidden="true"></span>{/if}<h2>{#if member.id}<a href={'/community/' + encodeURIComponent(member.id)}>{member.name}</a>{:else}{member.name}{/if}</h2></article>{/each}</div>{:else}<p>{$t('暂无成员。')}</p>{/if}
     {/if}
   {:else if section === 'showcase'}
-    {#if id}<a href="/showcase">{$t('返回项目列表')}</a><h1>{data.title}</h1><p>{data.text}</p><div class="image-grid">{#each data.imageUrls || [] as url}<a href={url} target="_blank" rel="noreferrer"><img src={url} alt={data.title} /></a>{/each}</div>
-    {:else}<h1>{$t('项目展示')}</h1>{#if items.length}<div class="public-grid">{#each items as project}<article class="public-card"><h2><a href={'/showcase/' + encodeURIComponent(project.id)}>{project.title}</a></h2><p>{project.text}</p>{#if project.imageUrls?.length}<img class="project-cover" src={project.imageUrls[0]} alt="" loading="lazy" />{/if}</article>{/each}</div>{:else}<p>{$t('暂无公开项目。')}</p>{/if}{/if}
+    {#if id}
+      <a href="/showcase">{$t('返回项目列表')}</a>
+      <header class="project-detail-head">
+        <div class="project-meta"><span class:done={data.status === 'completed'} class="project-status">{statusLabel(data.status)}</span>{#if data.currentStage}<span class="project-stage">{$t('当前阶段')}：{data.currentStage}</span>{/if}</div>
+        <h1>{data.title}</h1>
+        <p>{data.summary}</p>
+        <p class="project-owner">{$t('负责人')}：{data.ownerName || '—'}{#if data.updated} · {$t('更新于')} {formatDate(data.updated)}{/if}</p>
+        {#if data.description && data.description !== data.summary}<p class="project-description">{data.description}</p>{/if}
+        {#if data.estimatedDurationDays}<p class="project-owner">{$t('预计周期')}：{data.estimatedDurationDays} {$t('天')}</p>{/if}
+      </header>
+      {#if data.stages?.length}
+        <section class="project-section">
+          <h2>{$t('项目阶段')}</h2>
+          <ol class="project-stages">
+            {#each data.stages as stage}
+              <li class:current={stage.current}>
+                <strong>{stage.name}</strong>
+                {#if stage.description}<p>{stage.description}</p>{/if}
+                <span class="project-stage-state">{stage.completedAt ? $t('已完成') : stage.current ? $t('当前阶段') : $t('未开始')}</span>
+              </li>
+            {/each}
+          </ol>
+        </section>
+      {/if}
+      <section class="project-section">
+        <h2>{$t('协作成员')}</h2>
+        {#if data.members?.length}
+          <ul class="project-members">
+            {#each data.members as member}
+              <li><strong>{member.name || '—'}</strong>{#if member.duties}<span>{member.duties}</span>{/if}</li>
+            {/each}
+          </ul>
+        {:else}
+          <p>{$t('暂无协作成员。')}</p>
+        {/if}
+      </section>
+    {:else}
+      <h1>{$t('项目展示')}</h1>
+      <p>{$t('浏览公开的共创项目。')}</p>
+      {#if items.length}
+        <div class="public-grid">
+          {#each items as project}
+            <article class="public-card project-card">
+              <div class="project-meta"><span class:done={project.status === 'completed'} class="project-status">{statusLabel(project.status)}</span></div>
+              <h2><a href={'/showcase/' + encodeURIComponent(project.id)}>{project.title}</a></h2>
+              <p>{project.summary}</p>
+              <p class="project-owner">{$t('负责人')}：{project.ownerName || '—'}{#if project.updated} · {$t('更新于')} {formatDate(project.updated)}{/if}</p>
+            </article>
+          {/each}
+        </div>
+      {:else}<p>{$t('暂无公开项目。')}</p>{/if}
+    {/if}
   {:else}<h1>{$t('页面不存在')}</h1><a href="/">{$t('返回首页')}</a>{/if}
 </main>
+
+<style>
+  .project-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .project-status { display: inline-block; padding: 3px 9px; border: 1px solid #c8d4c0; border-radius: 999px; color: #3f5d3a; font-size: 12px; }
+  .project-status.done { background: #e3eddd; }
+  .project-stage { color: #818b7f; font-size: 12px; }
+  .project-owner { margin: 0 0 10px; color: #818b7f; font-size: 13px; }
+  .project-card p { margin: 0 0 10px; }
+  .project-card p.project-owner { margin-bottom: 0; }
+  .project-description { margin-top: 16px; max-width: 70ch; white-space: pre-wrap; }
+  .project-detail-head { margin: 24px 0 32px; }
+  .project-detail-head h1 { margin: 8px 0 12px; }
+  .project-section { margin: 32px 0; }
+  .project-section h2 { margin-bottom: 12px; }
+  .project-stages { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+  .project-stages li { padding: 4px 0 4px 14px; border-left: 2px solid #dcded4; }
+  .project-stages li.current { border-color: #6f9661; }
+  .project-stages p { margin: 4px 0; color: #6f7b6d; font-size: 13px; }
+  .project-stage-state { color: #818b7f; font-size: 12px; }
+  .project-members { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+  .project-members li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+  .project-members span { color: #818b7f; font-size: 13px; }
+</style>
