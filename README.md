@@ -73,6 +73,8 @@ cd backend
 go run . superuser create admin@hpahub.local '替换为测试密码' --dir (Join-Path (Get-Location) 'pb_data')
 ```
 
+临时调试需要跳过密码和邀请码时，在启动 `dev.ps1` 前设置 `$env:HPA_DEV_LOGIN = '1'`。此时仅本机回环地址的登录请求可用账号 `1`、密码 `1` 直接以超级管理员身份进入；不要在生产环境或对外暴露的服务上设置该变量。
+
 如果 8090 或 5173 端口被占用，先检查占用进程；如果是上一次未正确关闭的本项目开发服务器，停止该服务器及其子进程后重启。不要终止其他项目的进程。视频预览还需要在 Windows 上安装 FFmpeg 并加入 PATH。
 
 其他检查应在隔离容器中执行：

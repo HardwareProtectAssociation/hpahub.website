@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -116,6 +117,27 @@ func siteRole(record *core.Record) string {
 	return "user"
 }
 
+// devShortcutAllowed gates the 1/1 login shortcut to explicit local
+// development runs only: the feature flag must be set and the request must
+// come from the loopback interface. Production never sets HPA_DEV_LOGIN.
+func devShortcutAllowed(e *core.RequestEvent) bool {
+	if os.Getenv("HPA_DEV_LOGIN") != "1" { return false }
+	host, _, err := net.SplitHostPort(e.Request.RemoteAddr)
+	if err != nil { host = e.Request.RemoteAddr }
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+func devShortcutRecord(app core.App) (*core.Record, error) {
+	record, err := app.FindAuthRecordByEmail(core.CollectionNameSuperusers, "admin@hpahub.local")
+	if err == nil { return record, nil }
+	if !errors.Is(err, sql.ErrNoRows) { return nil, err }
+	records, err := app.FindRecordsByFilter(core.CollectionNameSuperusers, "", "created", 1, 0)
+	if err != nil { return nil, err }
+	if len(records) == 0 { return nil, sql.ErrNoRows }
+	return records[0], nil
+}
+
 
 func bindInvitationRoutes(e *core.ServeEvent) {
 	limited := func(e *core.RequestEvent, kind string, limit int) error {
@@ -132,6 +154,12 @@ func bindInvitationRoutes(e *core.ServeEvent) {
 		if err := limited(e, "login", 60); err != nil { return err }
 		var input struct { Email string `json:"email"`; Password string `json:"password"` }
 		if err := e.BindBody(&input); err != nil { return e.BadRequestError("Invalid credentials.", nil) }
+		if strings.TrimSpace(input.Email) == "1" && input.Password == "1" && devShortcutAllowed(e) {
+			if record, err := devShortcutRecord(e.App); err == nil && record != nil {
+				e.App.Logger().Warn("development 1/1 login shortcut used", "email", record.Email())
+				return apis.RecordAuthResponse(e, record, core.MFAMethodPassword, nil)
+			}
+		}
 		email := strings.TrimSpace(input.Email)
 		if email == "admin" && os.Getenv("HPA_LOCAL_TEST") == "1" {
 			email = "admin@hpahub.local"
