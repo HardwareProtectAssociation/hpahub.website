@@ -67,6 +67,8 @@ func main() {
 	app.OnBackupRestore().BindFunc(lockBackup)
 
 	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
+		// Skip the installer so a fresh database doesn't auto-open the PocketBase page in a browser.
+		e.InstallerFunc = nil
 		if err := initInvitations(app); err != nil {
 			return err
 		}
