@@ -74,6 +74,14 @@ func TestHardwareAPI(t *testing.T) {
 	const gpu = `{"kind":"gpu","name":"GPU","brand":"Brand","subtitle":"subtitle","sort_order":2,"data":{"fields":{"model":"GPU","vram_size":"16"},"sections":{"cooling":{"core_temp":"71"}},"rows":{"games":[{"game":"Game","avg_fps":"3.5"}]},"custom":{"basic":{"extra":[{"key":"x","value":"v"}]}}}}`
 	want(request("POST", base+"/records", "", gpu), http.StatusUnauthorized)
 	want(request("POST", base+"/records", user, gpu), http.StatusForbidden)
+	schema := request("GET", base+"/schema", "", "")
+	want(schema, http.StatusOK)
+	for _, fragment := range []string{`"key":"gpu"`, `"key":"cpu"`, `"key":"device"`, `"name_field":"model"`, `"显卡型号"`, `"游戏测试"`, `"avg_fps"`} {
+		if !strings.Contains(schema.Body.String(), fragment) {
+			t.Fatalf("schema missing %s: %s", fragment, schema.Body.String())
+		}
+	}
+	want(request("POST", base+"/records", member, `{"kind":"toaster","name":"x","data":{"fields":{}}}`), http.StatusBadRequest)
 	created := request("POST", base+"/records", member, gpu)
 	want(created, http.StatusCreated)
 	id, ok := object(created)["id"].(string)
@@ -109,7 +117,7 @@ func TestHardwareAPI(t *testing.T) {
 			t.Fatalf("public media leak: %s", res.Body.String())
 		}
 	}
-	for _, name := range []string{"hardware", "hardware_media", "hardware_options"} {
+	for _, name := range []string{"hardware", "hardware_media", "hardware_options", "hw_types", "hw_fields", "hw_tables"} {
 		collection, err := app.FindCollectionByNameOrId(name)
 		if err != nil {
 			t.Fatal(err)
