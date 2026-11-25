@@ -290,3 +290,58 @@ func TestInvitationAPIRestrictions(t *testing.T) {
 		t.Fatalf("rate limit returned %d", status)
 	}
 }
+func TestInvitationBatchLimit(t *testing.T) {
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+	if err := initInvitations(app); err != nil {
+		t.Fatal(err)
+	}
+	collection, err := app.FindCollectionByNameOrId("users")
+	if err != nil {
+		t.Fatal(err)
+	}
+	member := core.NewRecord(collection)
+	member.SetEmail("batch@example.com")
+	member.SetPassword("valid-password-123")
+	member.Set("role", "member")
+	if err := app.Save(member); err != nil {
+		t.Fatal(err)
+	}
+	token, err := member.NewAuthToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	router, err := apis.NewRouter(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bindInvitationRoutes(&core.ServeEvent{App: app, Router: router})
+	mux, err := router.BuildMux()
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := func(body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/api/hpahub/invitations", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+token)
+		response := httptest.NewRecorder()
+		mux.ServeHTTP(response, req)
+		return response
+	}
+	response := request(`{"count":5}`)
+	if response.Code != http.StatusOK {
+		t.Fatalf("batch status = %d: %s", response.Code, response.Body.String())
+	}
+	var batch struct {
+		Items []invitation `json:"items"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &batch); err != nil || len(batch.Items) != 5 {
+		t.Fatalf("batch items = %+v, %v", batch.Items, err)
+	}
+	if response := request(`{"count":6}`); response.Code != http.StatusBadRequest {
+		t.Fatalf("count 6 status = %d, want 400", response.Code)
+	}
+}

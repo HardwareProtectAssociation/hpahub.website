@@ -269,4 +269,10 @@ export default {
   '关注项目': ['關注專案', 'プロジェクトをフォロー', 'Follow project'],
   '已关注': ['已關注', 'フォロー中', 'Following'],
   '关注失败，请重试。': ['關注失敗，請重試。', 'フォローに失敗しました。もう一度お試しください。', 'Follow failed; please try again.'],
+  '生成数量': ['生成數量', '生成数', 'Quantity'],
+  '已生成 {count} 个邀请码。': ['已生成 {count} 個邀請碼。', '{count} 件の招待コードを生成しました。', 'Generated {count} invitation code(s).'],
+  '复制': ['複製', 'コピー', 'Copy'],
+  '已复制': ['已複製', 'コピーしました', 'Copied'],
+  '邀请码已复制。': ['邀請碼已複製。', '招待コードをコピーしました。', 'Invitation code copied.'],
+  '复制失败，请手动复制。': ['複製失敗，請手動複製。', 'コピーに失敗しました。手動でコピーしてください。', 'Copy failed; please copy manually.'],
 };

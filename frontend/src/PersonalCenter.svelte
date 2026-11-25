@@ -29,6 +29,8 @@
   let invitationError = '';
   let invitationNotice = '';
   let generatingInvitation = false;
+  let inviteCount = 1;
+  let copiedCode = '';
 
   const genderLabels = { male: '男', female: '女', nonbinary: '非二元', private: '不愿透露' };
   const genderOptions = Object.entries(genderLabels);
@@ -223,17 +225,54 @@
     try {
       const response = await fetch('/api/hpahub/invitations', {
         method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ count: Number(inviteCount) }),
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.message || '生成失败，请重试。');
       await loadInvitations();
-      invitationNotice = '邀请码已生成，有效期为 24 小时。';
+      invitationNotice = $t('已生成 {count} 个邀请码。', { count: Number(inviteCount) });
     } catch (err) {
       invitationError = err.message || String(err);
     } finally {
       generatingInvitation = false;
     }
+  }
+
+  async function copyInvitation(code) {
+    let copied = false;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(code);
+        copied = true;
+      }
+    } catch {
+      copied = false;
+    }
+    if (!copied) {
+      try {
+        const area = document.createElement('textarea');
+        area.value = code;
+        area.setAttribute('readonly', '');
+        area.style.position = 'fixed';
+        area.style.opacity = '0';
+        document.body.appendChild(area);
+        area.select();
+        copied = document.execCommand('copy');
+        area.remove();
+      } catch {
+        copied = false;
+      }
+    }
+    if (!copied) {
+      invitationError = $t('复制失败，请手动复制。');
+      return;
+    }
+    copiedCode = code;
+    invitationNotice = $t('邀请码已复制。');
+    setTimeout(() => {
+      if (copiedCode === code) copiedCode = '';
+    }, 1500);
   }
 
   function invitationStatus(invitation) {
@@ -523,15 +562,22 @@
         <section class="center-section wide" aria-labelledby="center-invitations">
           <div class="section-head">
             <div><h2 id="center-invitations">{$t('我的邀请码')}</h2><p>{$t('邀请码有效 24 小时，仅可使用一次。')}</p></div>
-            <button type="button" class="link-button" on:click={generateInvitation} disabled={generatingInvitation}>{generatingInvitation ? $t('正在生成…') : $t('生成邀请码')}</button>
+            <div class="invite-controls">
+              <label>{$t('生成数量')}<select bind:value={inviteCount} aria-label={$t('生成数量')}>{#each [1, 2, 3, 4, 5] as count}<option value={count}>{count}</option>{/each}</select></label>
+              <button type="button" class="link-button" on:click={generateInvitation} disabled={generatingInvitation}>{generatingInvitation ? $t('正在生成…') : $t('生成邀请码')}</button>
+            </div>
           </div>
-          {#if invitationError}<p class="message error" role="alert">{$t(invitationError)}</p>{/if}
-          {#if invitationNotice}<p class="message success" role="status">{$t(invitationNotice)}</p>{/if}
+          {#if invitationError}<p class="message error" role="alert">{invitationError}</p>{/if}
+          {#if invitationNotice}<p class="message success" role="status">{invitationNotice}</p>{/if}
           {#if invitations.length}
             <div class="invitation-list">
               {#each invitations as invitation (invitation.code)}
                 <article class="invitation-card">
-                  <div class="invitation-head"><strong>{invitation.code}</strong><span class:used={invitation.used} class="invitation-status">{$t(invitationStatus(invitation))}</span></div>
+                  <div class="invitation-head">
+                    <strong>{invitation.code}</strong>
+                    <button type="button" class="small copy-button" on:click={() => copyInvitation(invitation.code)}>{copiedCode === invitation.code ? $t('已复制') : $t('复制')}</button>
+                  </div>
+                  <div class="invitation-status-line"><span class:used={invitation.used} class="invitation-status">{$t(invitationStatus(invitation))}</span></div>
                   <small>{$t('到期时间')}：{invitationDate(invitation.expires)}</small>
                   {#if invitation.used}<small>{$t('使用者')}：{invitation.usedBy || '—'} · {invitationDate(invitation.used)}</small>{/if}
                 </article>
@@ -646,8 +692,14 @@
   .skill-hint { margin: 6px 0 0 !important; font-size: 12px !important; color: #8b9587 !important; }
   .like-count { color: #a84358; font-size: 12px; }
   .invitation-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+  .invite-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+  .invite-controls label { display: flex; align-items: center; gap: 6px; color: #52695a; font-size: 12px; }
+  .invite-controls select { padding: 6px 8px; border: 1px solid #b9c3b3; background: #fff; color: #252b26; }
+  .invitation-code { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .copy-button { padding: 2px 8px; }
   .invitation-card { display: grid; gap: 4px; padding: 12px; border: 1px solid #dce3d6; background: #fff; }
   .invitation-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .invitation-status-line { display: flex; align-items: center; }
   .invitation-status { color: #4d6448; font-size: 12px; }
   .invitation-status.used { color: #8b9587; }
   .invitation-card small { color: #6f7b6d; }

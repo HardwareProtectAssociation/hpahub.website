@@ -282,11 +282,29 @@ func bindInvitationRoutes(e *core.ServeEvent) {
 		if role != "member" && role != "admin" && role != "octopus" {
 			return e.ForbiddenError("Insufficient permissions.", nil)
 		}
-		item, err := newInvitation(e.App, time.Now(), e.Auth.Id)
-		if err != nil {
-			return e.InternalServerError("Failed to create invitation.", err)
+		var input struct {
+			Count int `json:"count"`
 		}
-		return e.JSON(http.StatusOK, item)
+		if e.Request.ContentLength > 0 {
+			if err := e.BindBody(&input); err != nil {
+				return e.BadRequestError("Invalid invitation count.", nil)
+			}
+		}
+		if input.Count == 0 {
+			input.Count = 1
+		}
+		if input.Count < 1 || input.Count > 5 {
+			return e.BadRequestError("You can generate 1 to 5 invitations at a time.", nil)
+		}
+		items := make([]invitation, 0, input.Count)
+		for range input.Count {
+			item, err := newInvitation(e.App, time.Now(), e.Auth.Id)
+			if err != nil {
+				return e.InternalServerError("Failed to create invitation.", err)
+			}
+			items = append(items, item)
+		}
+		return e.JSON(http.StatusOK, map[string]any{"items": items})
 	})
 	e.Router.GET("/api/hpahub/invitations", func(e *core.RequestEvent) error {
 		if e.Auth == nil {
