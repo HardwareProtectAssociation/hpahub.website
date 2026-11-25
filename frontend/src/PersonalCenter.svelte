@@ -15,9 +15,29 @@
   let formName = '';
   let formBio = '';
   let formPublic = false;
+  let formGender = '';
+  let formPersonality = '';
+  let formAge = '';
+  let formContacts = [];
+  let formActivityAreas = [];
+  let formIdentityIds = [];
+  let activityDraft = '';
   let removeAvatar = false;
   let avatarFile = null;
   let avatarPreview = '';
+
+  const genderLabels = { male: '男', female: '女', nonbinary: '非二元', private: '不愿透露' };
+  const genderOptions = Object.entries(genderLabels);
+  const contactTypes = [
+    { value: 'email', label: '邮箱' },
+    { value: 'wechat', label: '微信' },
+    { value: 'qq', label: 'QQ' },
+    { value: 'discord', label: 'Discord' },
+    { value: 'phone', label: '电话' },
+    { value: 'other', label: '其他' },
+  ];
+  const activityOptions = ['线上', '同城', '省内', '全国', '海外'];
+  $: featuredIdentities = (data?.identities || []).filter((identity) => identity.featured);
 
   const rewardLabels = { money: '资金', product: '实物', title: '头衔', credit: '署名', learning: '学习', none: '无', other: '其他' };
   const statusLabels = { ongoing: '进行中', paused: '暂停', terminated: '已中止', completed: '已完成' };
@@ -68,6 +88,13 @@
     formName = data?.profile?.name || '';
     formBio = data?.profile?.bio || '';
     formPublic = !!data?.profile?.profilePublic;
+    formGender = data?.profile?.gender || '';
+    formPersonality = data?.profile?.personality || '';
+    formAge = data?.profile?.age || '';
+    formContacts = (data?.profile?.contacts || []).map((contact) => ({ ...contact }));
+    formActivityAreas = [...(data?.profile?.activityAreas || [])];
+    formIdentityIds = (data?.identities || []).filter((identity) => identity.featured).map((identity) => identity.id);
+    activityDraft = '';
     removeAvatar = false;
     avatarFile = null;
     formError = '';
@@ -75,6 +102,42 @@
     if (avatarPreview) URL.revokeObjectURL(avatarPreview);
     avatarPreview = '';
     editing = true;
+  }
+
+  function addContact() {
+    if (formContacts.length >= 5) return;
+    formContacts = [...formContacts, { type: 'email', value: '' }];
+  }
+
+  function removeContact(index) {
+    formContacts = formContacts.filter((_, itemIndex) => itemIndex !== index);
+  }
+
+  function addActivityArea() {
+    const value = activityDraft.trim();
+    if (!value) return;
+    if (formActivityAreas.length >= 2) {
+      formError = '最多选择 2 个活动范围。';
+      return;
+    }
+    if (!formActivityAreas.includes(value)) formActivityAreas = [...formActivityAreas, value];
+    activityDraft = '';
+  }
+
+  function removeActivityArea(index) {
+    formActivityAreas = formActivityAreas.filter((_, itemIndex) => itemIndex !== index);
+  }
+
+  function toggleIdentity(id) {
+    if (formIdentityIds.includes(id)) {
+      formIdentityIds = formIdentityIds.filter((item) => item !== id);
+      return;
+    }
+    if (formIdentityIds.length >= 3) {
+      formError = '最多选择 3 个职业。';
+      return;
+    }
+    formIdentityIds = [...formIdentityIds, id];
   }
 
   function cancelEdit() {
@@ -109,6 +172,12 @@
       body.set('name', name);
       body.set('bio', formBio);
       body.set('profilePublic', formPublic ? 'true' : 'false');
+      body.set('gender', formGender);
+      body.set('personality', formPersonality);
+      body.set('age', String(formAge || 0));
+      body.set('contacts', JSON.stringify(formContacts.filter((contact) => contact.value.trim())));
+      body.set('activityAreas', JSON.stringify(formActivityAreas));
+      body.set('identityIds', JSON.stringify(formIdentityIds));
       if (avatarFile) body.set('avatar', avatarFile);
       if (removeAvatar) body.set('removeAvatar', 'true');
       const response = await fetch('/api/hpahub/me/center/profile', {
@@ -158,10 +227,26 @@
           <p class="center-email">{data.profile.email}</p>
         {/if}
         {#if data.profile.bio}<p class="center-bio">{data.profile.bio}</p>{/if}
-        {#if data.identities.length}
+        {#if featuredIdentities.length}
           <div class="chips">
-            {#each data.identities as identity}
+            {#each featuredIdentities as identity}
               <span class="chip">{$t(identity.category === 'main' ? '主力职业' : '辅助职业')} · {identity.name}</span>
+            {/each}
+          </div>
+        {/if}
+        {#if data.profile.gender || data.profile.age || data.profile.activityAreas?.length}
+          <p class="profile-meta">
+            {#if data.profile.gender}<span>{$t('性别')}：{$t(genderLabels[data.profile.gender] || data.profile.gender)}</span>{/if}
+            {#if data.profile.age}<span>{$t('年龄')}：{data.profile.age}</span>{/if}
+            {#if data.profile.activityAreas?.length}<span>{$t('活动范围')}：{data.profile.activityAreas.join('、')}</span>{/if}
+          </p>
+        {/if}
+        {#if data.profile.personality}<p class="center-personality">{$t('性格')}：{data.profile.personality}</p>{/if}
+        {#if data.profile.contacts?.length}
+          <div class="center-contacts">
+            <strong>{$t('联系方式')}</strong>
+            {#each data.profile.contacts as contact}
+              <span>{$t(contactTypes.find((item) => item.value === contact.type)?.label || contact.type)}：{contact.value}</span>
             {/each}
           </div>
         {/if}
@@ -202,6 +287,50 @@
         </div>
         <label class="edit-field">{$t('昵称')}<input bind:value={formName} maxlength="80" required /></label>
         <label class="edit-field">{$t('简介')}<textarea bind:value={formBio} maxlength="600" rows="4"></textarea></label>
+        <div class="edit-grid">
+          <label class="edit-field">{$t('性别')}<select bind:value={formGender}><option value="">{$t('未填写')}</option>{#each genderOptions as [value, label]}<option {value}>{$t(label)}</option>{/each}</select></label>
+          <label class="edit-field">{$t('年龄')}<input type="number" min="1" max="120" bind:value={formAge} placeholder={$t('可不填')} /></label>
+        </div>
+        <label class="edit-field">{$t('性格')}<input bind:value={formPersonality} maxlength="200" placeholder={$t('例如：偏内向，喜欢把复杂问题拆成可执行的小步骤')} /></label>
+        <fieldset class="edit-block">
+          <legend>{$t('联系方式（最多 5 项）')}</legend>
+          {#each formContacts as contact, index}
+            <div class="contact-row">
+              <select bind:value={contact.type}>{#each contactTypes as type}<option value={type.value}>{$t(type.label)}</option>{/each}</select>
+              <input bind:value={contact.value} maxlength="200" placeholder={$t('填写具体账号或号码')} />
+              <button type="button" class="small" on:click={() => removeContact(index)}>{$t('删除')}</button>
+            </div>
+          {/each}
+          {#if formContacts.length < 5}<button type="button" class="link-button" on:click={addContact}>{$t('添加联系方式')}</button>{/if}
+        </fieldset>
+        <fieldset class="edit-block">
+          <legend>{$t('活动范围（最多 2 个）')}</legend>
+          {#if formActivityAreas.length}
+            <div class="tag-list">
+              {#each formActivityAreas as area, index}
+                <span class="chip">{area}<button type="button" aria-label={$t('删除')} on:click={() => removeActivityArea(index)}>×</button></span>
+              {/each}
+            </div>
+          {/if}
+          {#if formActivityAreas.length < 2}
+            <div class="tag-input">
+              <input bind:value={activityDraft} list="activity-options" maxlength="40" placeholder={$t('线上 / 上海 / 江浙沪')} />
+              <button type="button" class="small" on:click={addActivityArea}>{$t('添加')}</button>
+            </div>
+            <datalist id="activity-options">{#each activityOptions as option}<option value={option}></option>{/each}</datalist>
+          {/if}
+        </fieldset>
+        <fieldset class="edit-block">
+          <legend>{$t('想要展示的职业（最多 3 个）')}</legend>
+          <div class="identity-picker">
+            {#each data.identityOptions as identity}
+              <label class:checked={formIdentityIds.includes(identity.id)}>
+                <input type="checkbox" checked={formIdentityIds.includes(identity.id)} on:change={() => toggleIdentity(identity.id)} />
+                <span>{identity.name}</span>
+              </label>
+            {/each}
+          </div>
+        </fieldset>
         <label class="check-label"><input type="checkbox" bind:checked={formPublic} />{$t('公开我的个人资料')}</label>
         <div class="edit-actions">
           <button class="primary" type="submit" disabled={saving}>{saving ? $t('正在保存…') : $t('保存资料')}</button>
@@ -370,6 +499,10 @@
   .center-profile h1 { margin: 0 0 6px; font-size: clamp(28px, 3vw, 40px); line-height: 1.2; letter-spacing: -0.035em; font-weight: 600; }
   .center-email { margin: 0 0 12px; color: #818b7f; font-size: 14px; }
   .center-bio { margin: 0 0 14px; max-width: 70ch; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .profile-meta { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0 0 6px; color: #52695a; font-size: 13px; }
+  .center-personality { margin: 0 0 8px; color: #52695a; font-size: 13px; max-width: 70ch; }
+  .center-contacts { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0 0 10px; color: #52695a; font-size: 13px; }
+  .center-contacts strong { color: #2f4534; }
   .chips { display: flex; flex-wrap: wrap; gap: 8px; }
   .chip { display: inline-block; padding: 4px 10px; border: 1px solid #c8d4c0; border-radius: 999px; background: #eef3e8; color: #3f5d3a; font-size: 12px; }
   .chip.small { padding: 2px 8px; font-size: 11px; }
@@ -384,8 +517,20 @@
   .file-label { display: inline-flex; align-items: center; gap: 8px; color: #345d3d; font-size: 13px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
   .file-label input { max-width: 220px; }
   .edit-field { display: grid; gap: 6px; max-width: 620px; color: #52695a; font-size: 13px; }
-  .edit-field input, .edit-field textarea { width: 100%; padding: 10px; border: 1px solid #b9c3b3; background: #fff; color: #252b26; font: inherit; }
+  .edit-field input, .edit-field textarea, .edit-field select { width: 100%; padding: 10px; border: 1px solid #b9c3b3; background: #fff; color: #252b26; font: inherit; }
   .edit-field textarea { resize: vertical; }
+  .edit-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; max-width: 620px; }
+  .edit-block { display: grid; gap: 10px; margin: 0; padding: 14px; border: 1px solid #e0e5da; background: #fff; }
+  .edit-block legend { padding: 0 6px; color: #52695a; font-size: 13px; }
+  .contact-row { display: grid; grid-template-columns: 120px minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+  .contact-row select, .contact-row input { width: 100%; padding: 8px; border: 1px solid #b9c3b3; background: #fff; color: #252b26; font: inherit; }
+  .tag-list { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip button { margin-left: 6px; padding: 0; border: 0; background: none; color: inherit; cursor: pointer; font-size: 14px; line-height: 1; }
+  .tag-input { display: flex; gap: 8px; }
+  .tag-input input { flex: 1; padding: 8px; border: 1px solid #b9c3b3; background: #fff; font: inherit; }
+  .identity-picker { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; max-height: 260px; overflow: auto; }
+  .identity-picker label { display: flex; align-items: center; gap: 6px; padding: 5px 7px; border: 1px solid #dce3d6; background: #fafbf7; font-size: 13px; cursor: pointer; }
+  .identity-picker label.checked { border-color: #7c9b6c; background: #eef3e8; }
   .edit-actions { display: flex; flex-wrap: wrap; gap: 10px; }
   .stat-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin: 26px 0; }
   .stat { border: 1px solid #dcded4; background: #fafbf7; padding: 18px 20px; }
@@ -434,7 +579,7 @@
   .tier-4 { color: #fff; background: linear-gradient(120deg, #7c4dff, #d04dff, #ffb84d, #7c4dff); background-size: 300% 300%; border-color: #e0c7ff; box-shadow: 0 0 12px rgba(160, 80, 255, 0.45); animation: recognized-shine 6s linear infinite; }
   @keyframes recognized-shine { to { background-position: 300% 50%; } }
   @media (prefers-reduced-motion: reduce) { .tier-4 { animation: none; } }
-  @media (max-width: 600px) { .center-grid { grid-template-columns: 1fr; } }
+  @media (max-width: 600px) { .center-grid { grid-template-columns: 1fr; } .edit-grid, .contact-row { grid-template-columns: 1fr; } }
   .reward-note { margin: 12px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
   .center-empty { color: #818b7f; font-size: 13px; }
   .center-empty p { margin: 0 0 6px; }

@@ -65,6 +65,17 @@ func records(e *core.RequestEvent, collection, filter string, params dbx.Params)
 func visibleMember(e *core.RequestEvent, id string) (*core.Record, error) {
  r, err := e.App.FindRecordById("users", id); if err != nil || !r.GetBool("profilePublic") || (siteRole(r) != "member" && siteRole(r) != "admin") { return nil, e.NotFoundError("Not found.", nil) }; return r, nil
 }
+func publicMemberIdentities(e *core.RequestEvent, member *core.Record) ([]map[string]any, error) {
+ rows, err := e.App.FindRecordsByFilter("user_identities", "user_id = {:user} && featured = true", "", 0, 0, dbx.Params{"user": member.Id}); if err != nil { return nil, err }
+ identities, err := e.App.FindRecordsByFilter("collaboration_identities", "", "category,name", 0, 0); if err != nil { return nil, err }
+ byID := map[string]*core.Record{}; for _, identity := range identities { byID[identity.Id] = identity }
+ result := make([]map[string]any, 0, len(rows))
+ for _, row := range rows {
+  identity := byID[row.GetString("identity_id")]; if identity == nil { continue }
+  result = append(result, map[string]any{"id": identity.Id, "name": identity.GetString("name"), "category": identity.GetString("category")})
+ }
+ return result, nil
+}
 func publicMemberSkills(e *core.RequestEvent, member *core.Record) ([]map[string]any, error) {
  rows, err := e.App.FindRecordsByFilter("user_skills", "user_id = {:user}", "", 0, 0, dbx.Params{"user": member.Id}); if err != nil { return nil, err }
  skills, err := e.App.FindRecordsByFilter("skills", "", "name", 0, 0); if err != nil { return nil, err }
@@ -132,7 +143,7 @@ func bindPublicRoutes(s *core.ServeEvent) {
   for _,r:=range users { if !r.GetBool("profilePublic") {items=append(items,map[string]any{"name":"匿名成员"})} else {p:=profileData(r,true); items=append(items,map[string]any{"id":r.Id,"name":r.GetString("name"),"avatarUrl":p["avatarUrl"]})} }; return e.JSON(200,map[string]any{"items":items})
  })
  s.Router.GET("/api/hpahub/members/{id}",func(e *core.RequestEvent) error {
-  noCache(e); r,err:=visibleMember(e,e.Request.PathValue("id")); if err!=nil{return err}; cards,err:=records(e,"member_cards","owner = {:owner}",dbx.Params{"owner":r.Id}); if err!=nil{return e.InternalServerError("Unable to load cards.",err)}; list:=[]any{}; for _,c:=range cards { list=append(list,contentData(c,[]string{"members",r.Id,"cards",c.Id})) }; p:=profileData(r,true); delete(p,"profilePublic"); p["cards"]=list; skills,err:=publicMemberSkills(e,r); if err!=nil{return e.InternalServerError("Unable to load skills.",err)}; p["skills"]=skills; return e.JSON(200,p)
+  noCache(e); r,err:=visibleMember(e,e.Request.PathValue("id")); if err!=nil{return err}; cards,err:=records(e,"member_cards","owner = {:owner}",dbx.Params{"owner":r.Id}); if err!=nil{return e.InternalServerError("Unable to load cards.",err)}; list:=[]any{}; for _,c:=range cards { list=append(list,contentData(c,[]string{"members",r.Id,"cards",c.Id})) }; p:=profileData(r,true); delete(p,"profilePublic"); p["cards"]=list; skills,err:=publicMemberSkills(e,r); if err!=nil{return e.InternalServerError("Unable to load skills.",err)}; p["skills"]=skills; identities,err:=publicMemberIdentities(e,r); if err!=nil{return e.InternalServerError("Unable to load identities.",err)}; p["identities"]=identities; return e.JSON(200,p)
  })
  s.Router.GET("/api/hpahub/members/{id}/avatar",func(e *core.RequestEvent) error { noCache(e); r,err:=visibleMember(e,e.Request.PathValue("id")); if err!=nil{return err}; return serveContentFile(e,r,"avatar",r.GetString("avatar")) })
  s.Router.GET("/api/hpahub/members/{id}/cards/{card}/images/{file}",func(e *core.RequestEvent) error { noCache(e); r,err:=visibleMember(e,e.Request.PathValue("id")); if err!=nil{return err}; card,err:=e.App.FindRecordById("member_cards",e.Request.PathValue("card")); if err!=nil || card.GetString("owner")!=r.Id{return e.NotFoundError("Not found.",nil)}; return serveContentFile(e,card,"images",e.Request.PathValue("file")) })

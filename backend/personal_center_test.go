@@ -564,6 +564,83 @@ func TestPersonalCenterSkillCRUD(t *testing.T) {
 	}
 }
 
+func TestProfileDetailsFields(t *testing.T) {
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+
+	member := centerTestUser(t, app, "profile-details@example.com", "member")
+	identities, err := app.FindRecordsByFilter("collaboration_identities", "", "name", 4, 0)
+	if err != nil || len(identities) < 4 {
+		t.Fatalf("identities = %d, %v", len(identities), err)
+	}
+	ids := []string{identities[0].Id, identities[1].Id, identities[2].Id}
+
+	router, err := apis.NewRouter(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bindPersonalCenterRoutes(&core.ServeEvent{App: app, Router: router})
+	mux, err := router.BuildMux()
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := member.NewAuthToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := func(body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("PATCH", "/api/hpahub/me/center/profile", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+token)
+		response := httptest.NewRecorder()
+		mux.ServeHTTP(response, req)
+		return response
+	}
+
+	payload, err := json.Marshal(map[string]any{
+		"gender":        "male",
+		"personality":   "偏内向，喜欢把复杂问题拆成可执行的小步骤。",
+		"age":           30,
+		"contacts":      []map[string]string{{"type": "email", "value": "member@example.com"}, {"type": "wechat", "value": "member-wechat"}},
+		"activityAreas": []string{"线上", "上海"},
+		"identityIds":   ids,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := request(string(payload))
+	if response.Code != http.StatusOK {
+		t.Fatalf("details status = %d: %s", response.Code, response.Body.String())
+	}
+	var updated centerResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &updated); err != nil {
+		t.Fatal(err)
+	}
+	if updated.Profile.Gender != "male" || updated.Profile.Age != 30 || len(updated.Profile.Contacts) != 2 || len(updated.Profile.ActivityAreas) != 2 {
+		t.Fatalf("unexpected details: %+v", updated.Profile)
+	}
+	featured := 0
+	for _, identity := range updated.Identities {
+		if identity.Featured {
+			featured++
+		}
+	}
+	if featured != 3 || len(updated.IdentityOptions) < 4 {
+		t.Fatalf("featured = %d, options = %d", featured, len(updated.IdentityOptions))
+	}
+	tooManyAreas, _ := json.Marshal(map[string]any{"activityAreas": []string{"线上", "上海", "北京"}})
+	if response := request(string(tooManyAreas)); response.Code != http.StatusBadRequest {
+		t.Fatalf("three areas status = %d, want 400", response.Code)
+	}
+	tooManyIdentities, _ := json.Marshal(map[string]any{"identityIds": []string{identities[0].Id, identities[1].Id, identities[2].Id, identities[3].Id}})
+	if response := request(string(tooManyIdentities)); response.Code != http.StatusBadRequest {
+		t.Fatalf("four identities status = %d, want 400", response.Code)
+	}
+}
+
 func centerTestUser(t *testing.T, app core.App, email, role string) *core.Record {
 	t.Helper()
 	record := centerTestRecord(t, app, "users")

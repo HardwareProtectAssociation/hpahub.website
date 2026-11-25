@@ -47,7 +47,7 @@ go run . migrate up --dir <临时数据目录>        # 在空库或已有库上
 8. **可空数值**：NumberField 没有 NULL，未设置为 0。约定 0 表示“未填写/未知”；对 0 有业务含义的字段用伴随字段区分，详见下一节。
 9. **默认值**：PocketBase 字段没有默认值，布尔列固定默认 false。文档中默认为 true 的字段（如 `enabled`、`xp_enabled`、`accepts_sponsorship`、`is_active`、`receive_updates`）以及其余默认值由服务层写入，见“服务层必须补齐的规则”。
 10. **平台角色**：复用现有 `users.role`（`member`/`user` 视为普通会员，`admin` 为平台管理员），超级管理员为 PocketBase `_superusers`，即文档中的 `super_admin`。没有新增 `platform_role` 字段，避免两套角色双写。`display_name` 为新增可选字段，现存量账号未自动生成昵称，服务层应在完善资料时要求填写。
-11. **`users` 其他映射**：`avatar` 文件字段对应 `avatar_url`，`bio` 沿用现有字段，`email`/`password` 由 PocketBase 认证管理；`users.createRule/updateRule/deleteRule` 仍为空（仅超级管理员），未在本次迁移放宽。
+11. **`users` 其他映射**：`avatar` 文件字段对应 `avatar_url`，`bio` 沿用现有字段，`display_name` 为昵称；`gender`、`personality`、`age`、`contacts`、`activity_areas` 为个人资料扩展字段；`user_identities.featured` 标记“想要展示的职业”，服务层限制最多 3 个；`email`/`password` 由 PocketBase 认证管理；`users.createRule/updateRule/deleteRule` 仍为空（仅超级管理员），未在本次迁移放宽。
 12. **0 与未知**：`weekly_hours`、`expected_weekly_hours`、`estimated_duration_days`、`people_needed`、`quantity_limit`、`target_amount_cents`、`target_quantity`、`pledged_*`、`delivered_*`、`allocation_basis_points`、`eligible_count`、`valid_vote_count`、`final_xp` 的 0 都按“未填写”解释。`task_xp_votes.xp_value` 为 0 且有 `voted_at` 时表示投了 0 经验；`task_xp_ballots.final_xp` 为 0 且 `closed_at` 非空时表示有效结果为 0；贡献份额 0 且状态为 `confirmed` 表示确认的 0 份额。`career_level_thresholds.minimum_total_xp` 的 0 是等级 1 的合法门槛，`eligible_count` 为 0 表示合法但无人具备资格的边界；两者因 NumberField 不能表达 NULL 而保持可选。这样不额外增加可空标记字段。
 
 ## 唯一约束与部分唯一索引
@@ -114,4 +114,4 @@ go run . migrate up --dir <临时数据目录>        # 在空库或已有库上
 - 金额以分为单位，接口和前端展示需要统一转换；任何汇总必须使用整数。
 - 0 表示未填写，无法区分“真实的 0 小时”和“未填”；`xp_value`/`final_xp`/贡献份额通过伴随字段区分。
 - 评分分制（D05/D20）、经验投票计票（D16）、贡献分配（D17）、等级曲线（D18）、接管审批（D01—D03）、邀请码配额（D22）、角色确认（D23）等仍待决策；结构已留字段，不把建议值写成已确认规则。
-- 迁移文件已到 11 个；新增 `1760000010`（技能点赞表）、`1760000011`（技能图片与链接）。按 AGENTS.md 的约束，达到 10 个时应整理迁移基线；但现有迁移已在环境中应用，合并需要兼容已部署记录和升级路径，暂保留历史。后续结构变更应新增迁移，不要修改已部署的 `1760000008` 及之后的迁移。
+- 迁移文件已到 12 个；新增 `1760000010`（技能点赞表）、`1760000011`（技能图片与链接）、`1760000012`（个人资料字段与展示职业标记）。按 AGENTS.md 的约束，达到 10 个时应整理迁移基线；但现有迁移已在环境中应用，合并需要兼容已部署记录和升级路径，暂保留历史。后续结构变更应新增迁移，不要修改已部署的 `1760000008` 及之后的迁移。

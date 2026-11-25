@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"net/url"
 	"sort"
@@ -12,21 +13,32 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 )
 
+type centerContact struct {
+	Type  string `json:"type"`
+	Value string `json:"value"`
+}
+
 type centerProfile struct {
-	ID            string `json:"id"`
-	Email         string `json:"email"`
-	Name          string `json:"name"`
-	Bio           string `json:"bio"`
-	AvatarURL     string `json:"avatarUrl"`
-	ProfilePublic bool   `json:"profilePublic"`
-	Role          string `json:"role"`
-	Member        bool   `json:"member"`
+	ID            string          `json:"id"`
+	Email         string          `json:"email"`
+	Name          string          `json:"name"`
+	Bio           string          `json:"bio"`
+	AvatarURL     string          `json:"avatarUrl"`
+	ProfilePublic bool            `json:"profilePublic"`
+	Role          string          `json:"role"`
+	Member        bool            `json:"member"`
+	Gender        string          `json:"gender"`
+	Personality   string          `json:"personality"`
+	Age           int             `json:"age"`
+	Contacts      []centerContact `json:"contacts"`
+	ActivityAreas []string        `json:"activityAreas"`
 }
 
 type centerIdentity struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
 	Category string `json:"category"`
+	Featured bool   `json:"featured"`
 }
 
 type centerSkill struct {
@@ -105,12 +117,13 @@ type centerProjects struct {
 }
 
 type centerResponse struct {
-	Profile     centerProfile      `json:"profile"`
-	Identities  []centerIdentity   `json:"identities"`
-	Projects    centerProjects     `json:"projects"`
-	Badges      []centerBadge      `json:"badges"`
-	Skills      []centerSkill      `json:"skills"`
-	Preferences *centerPreferences `json:"preferences"`
+	Profile         centerProfile      `json:"profile"`
+	Identities      []centerIdentity   `json:"identities"`
+	IdentityOptions []centerIdentity   `json:"identityOptions"`
+	Projects        centerProjects     `json:"projects"`
+	Badges          []centerBadge      `json:"badges"`
+	Skills          []centerSkill      `json:"skills"`
+	Preferences     *centerPreferences `json:"preferences"`
 }
 
 func centerSkillProficiency(value string) string {
@@ -134,6 +147,143 @@ func validCenterSkillProficiency(value string) bool {
 		}
 	}
 	return false
+}
+
+var centerContactTypes = []string{"email", "wechat", "qq", "discord", "phone", "other"}
+var centerGenders = []string{"male", "female", "nonbinary", "private"}
+
+func validCenterGender(value string) bool {
+	if value == "" {
+		return true
+	}
+	for _, option := range centerGenders {
+		if option == value {
+			return true
+		}
+	}
+	return false
+}
+
+func parseCenterContacts(record *core.Record) []centerContact {
+	raw, err := json.Marshal(record.Get("contacts"))
+	if err != nil {
+		return []centerContact{}
+	}
+	var contacts []centerContact
+	if err := json.Unmarshal(raw, &contacts); err != nil || contacts == nil {
+		return []centerContact{}
+	}
+	return contacts
+}
+
+func normalizeCenterContacts(contacts []centerContact) ([]centerContact, bool) {
+	if len(contacts) > 5 {
+		return nil, false
+	}
+	out := make([]centerContact, 0, len(contacts))
+	for _, contact := range contacts {
+		contact.Type = strings.TrimSpace(contact.Type)
+		contact.Value = strings.TrimSpace(contact.Value)
+		validType := false
+		for _, option := range centerContactTypes {
+			if option == contact.Type {
+				validType = true
+				break
+			}
+		}
+		if !validType || contact.Value == "" || utf8.RuneCountInString(contact.Value) > 200 {
+			return nil, false
+		}
+		out = append(out, contact)
+	}
+	return out, true
+}
+
+func normalizeActivityAreas(values []string) ([]string, bool) {
+	if len(values) > 2 {
+		return nil, false
+	}
+	out := make([]string, 0, len(values))
+	seen := map[string]bool{}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" || seen[value] || utf8.RuneCountInString(value) > 40 {
+			continue
+		}
+		seen[value] = true
+		out = append(out, value)
+	}
+	return out, true
+}
+
+func parseCenterStrings(record *core.Record, field string) []string {
+	raw, err := json.Marshal(record.Get(field))
+	if err != nil {
+		return []string{}
+	}
+	var values []string
+	if err := json.Unmarshal(raw, &values); err != nil || values == nil {
+		return []string{}
+	}
+	return values
+}
+
+func inputField(input *contentInput, key string, out any) (bool, error) {
+	raw, ok := input.values[key]
+	if !ok {
+		return false, nil
+	}
+	if err := json.Unmarshal(raw, out); err == nil {
+		return true, nil
+	}
+	var text string
+	if err := json.Unmarshal(raw, &text); err != nil {
+		return true, err
+	}
+	return true, json.Unmarshal([]byte(text), out)
+}
+
+func updateFeaturedIdentities(app core.App, userID string, identityIDs []string) error {
+	rows, err := app.FindRecordsByFilter("user_identities", "user_id = {:user}", "", 0, 0, dbx.Params{"user": userID})
+	if err != nil {
+		return err
+	}
+	existing := map[string]*core.Record{}
+	for _, row := range rows {
+		existing[row.GetString("identity_id")] = row
+	}
+	selected := map[string]bool{}
+	for _, id := range identityIDs {
+		identity, err := app.FindRecordById("collaboration_identities", id)
+		if err != nil {
+			return err
+		}
+		selected[identity.Id] = true
+		row := existing[identity.Id]
+		if row == nil {
+			collection, err := app.FindCollectionByNameOrId("user_identities")
+			if err != nil {
+				return err
+			}
+			row = core.NewRecord(collection)
+			row.Set("user_id", userID)
+			row.Set("identity_id", identity.Id)
+		}
+		row.Set("featured", true)
+		if err := app.Save(row); err != nil {
+			return err
+		}
+	}
+	for identityID, row := range existing {
+		if selected[identityID] || !row.GetBool("featured") {
+			continue
+		}
+		row.Set("featured", false)
+		if err := app.Save(row); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func normalizeCenterSkillPayload(input centerSkillPayload) (centerSkillPayload, bool) {
@@ -268,6 +418,7 @@ func bindPersonalCenterRoutes(e *core.ServeEvent) {
 		}
 		input, err := readContentInput(e, map[string]bool{
 			"name": true, "bio": true, "profilePublic": true, "avatar": true, "removeAvatar": true,
+			"gender": true, "personality": true, "age": true, "contacts": true, "activityAreas": true, "identityIds": true,
 		})
 		if e.Request.MultipartForm != nil {
 			defer e.Request.MultipartForm.RemoveAll()
@@ -292,6 +443,35 @@ func bindPersonalCenterRoutes(e *core.ServeEvent) {
 		if _, err := input.get("removeAvatar", &removeAvatar); err != nil {
 			return e.BadRequestError("Invalid profile.", err)
 		}
+		var gender, personality string
+		hasGender, err := inputField(input, "gender", &gender)
+		if err != nil {
+			return e.BadRequestError("Invalid profile.", err)
+		}
+		hasPersonality, err := inputField(input, "personality", &personality)
+		if err != nil {
+			return e.BadRequestError("Invalid profile.", err)
+		}
+		var age int
+		hasAge, err := inputField(input, "age", &age)
+		if err != nil {
+			return e.BadRequestError("Invalid profile.", err)
+		}
+		var contacts []centerContact
+		hasContacts, err := inputField(input, "contacts", &contacts)
+		if err != nil {
+			return e.BadRequestError("Invalid profile.", err)
+		}
+		var activityAreas []string
+		hasAreas, err := inputField(input, "activityAreas", &activityAreas)
+		if err != nil {
+			return e.BadRequestError("Invalid profile.", err)
+		}
+		var identityIDs []string
+		hasIdentities, err := inputField(input, "identityIds", &identityIDs)
+		if err != nil {
+			return e.BadRequestError("Invalid profile.", err)
+		}
 		files := input.files["avatar"]
 		if len(files) > 1 || (removeAvatar && len(files) > 0) {
 			return e.BadRequestError("Invalid profile.", nil)
@@ -313,6 +493,42 @@ func bindPersonalCenterRoutes(e *core.ServeEvent) {
 		if hasPublic {
 			owner.Set("profilePublic", profilePublic)
 		}
+		if hasGender {
+			gender = strings.TrimSpace(gender)
+			if !validCenterGender(gender) {
+				return e.BadRequestError("Invalid profile.", nil)
+			}
+			owner.Set("gender", gender)
+		}
+		if hasPersonality {
+			if utf8.RuneCountInString(personality) > 200 {
+				return e.BadRequestError("Invalid profile.", nil)
+			}
+			owner.Set("personality", personality)
+		}
+		if hasAge {
+			if age < 0 || age > 120 {
+				return e.BadRequestError("Invalid profile.", nil)
+			}
+			owner.Set("age", age)
+		}
+		if hasContacts {
+			normalized, ok := normalizeCenterContacts(contacts)
+			if !ok {
+				return e.BadRequestError("Invalid profile.", nil)
+			}
+			owner.Set("contacts", normalized)
+		}
+		if hasAreas {
+			normalized, ok := normalizeActivityAreas(activityAreas)
+			if !ok {
+				return e.BadRequestError("Invalid profile.", nil)
+			}
+			owner.Set("activity_areas", normalized)
+		}
+		if hasIdentities && len(identityIDs) > 3 {
+			return e.BadRequestError("Invalid profile.", nil)
+		}
 		if removeAvatar {
 			owner.Set("avatar", "")
 		} else if len(files) == 1 {
@@ -323,6 +539,11 @@ func bindPersonalCenterRoutes(e *core.ServeEvent) {
 		}
 		if err := e.App.Save(owner); err != nil {
 			return e.BadRequestError("Unable to save profile.", err)
+		}
+		if hasIdentities {
+			if err := updateFeaturedIdentities(e.App, owner.Id, identityIDs); err != nil {
+				return e.BadRequestError("Unable to save profile.", err)
+			}
 		}
 		data, err := personalCenterData(e.App, e.Auth)
 		if err != nil {
@@ -698,7 +919,8 @@ func personalCenterData(app core.App, auth *core.Record) (centerResponse, error)
 			Role:   siteRole(auth),
 			Member: member,
 		},
-		Identities: []centerIdentity{},
+		Identities:      []centerIdentity{},
+		IdentityOptions: []centerIdentity{},
 		Projects: centerProjects{
 			Participating: []centerProject{},
 			Completed:     []centerProject{},
@@ -719,6 +941,11 @@ func personalCenterData(app core.App, auth *core.Record) (centerResponse, error)
 	}
 	response.Profile.Bio = owner.GetString("bio")
 	response.Profile.ProfilePublic = owner.GetBool("profilePublic")
+	response.Profile.Gender = owner.GetString("gender")
+	response.Profile.Personality = owner.GetString("personality")
+	response.Profile.Age = owner.GetInt("age")
+	response.Profile.Contacts = parseCenterContacts(owner)
+	response.Profile.ActivityAreas = parseCenterStrings(owner, "activity_areas")
 	if owner.GetString("avatar") != "" {
 		response.Profile.AvatarURL = contentURL("me", "center", "avatar")
 	}
@@ -727,6 +954,19 @@ func personalCenterData(app core.App, auth *core.Record) (centerResponse, error)
 	if err != nil {
 		return response, err
 	}
+	for _, identity := range identities {
+		response.IdentityOptions = append(response.IdentityOptions, centerIdentity{
+			ID:       identity.Id,
+			Name:     identity.GetString("name"),
+			Category: identity.GetString("category"),
+		})
+	}
+	sort.SliceStable(response.IdentityOptions, func(i, j int) bool {
+		if response.IdentityOptions[i].Category != response.IdentityOptions[j].Category {
+			return response.IdentityOptions[i].Category < response.IdentityOptions[j].Category
+		}
+		return response.IdentityOptions[i].Name < response.IdentityOptions[j].Name
+	})
 	identityRows, err := app.FindRecordsByFilter("user_identities", "user_id = {:user}", "", 0, 0, dbx.Params{"user": owner.Id})
 	if err != nil {
 		return response, err
@@ -740,6 +980,7 @@ func personalCenterData(app core.App, auth *core.Record) (centerResponse, error)
 			ID:       identity.Id,
 			Name:     identity.GetString("name"),
 			Category: identity.GetString("category"),
+			Featured: row.GetBool("featured"),
 		})
 	}
 
