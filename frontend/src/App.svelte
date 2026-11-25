@@ -1,12 +1,17 @@
 <script>
   import { onMount } from 'svelte';
   import { locale, languages, t } from './i18n.js';
-  import Gpu from './Gpu.svelte';
-  import Warehouse from './Warehouse.svelte';
+  import Hardware from './Hardware.svelte';
+  import News from './News.svelte';
+  import PersonalCenter from './PersonalCenter.svelte';
+  import SkillEditor from './SkillEditor.svelte';
+  import AdminDirectory from './AdminDirectory.svelte';
+  import MyProjects from './MyProjects.svelte';
   import PublicPages from './PublicPages.svelte';
   import Editors from './Editors.svelte';
 
   const pathname = location.pathname.replace(/\/+$/, '') || '/';
+  if (pathname === '/gpu') location.replace('/hardware');
 
   let token = sessionStorage.getItem('authToken') || '';
   let collection = sessionStorage.getItem('authCollection') || '';
@@ -16,8 +21,6 @@
   let mode = pathname === '/join' ? 'register' : 'login';
   let inviteCode = '';
   let passwordConfirm = '';
-  let invitations = [];
-  let generating = false;
   let identity = '';
   let password = '';
   let role = 'guest';
@@ -145,39 +148,11 @@
     menuOpen = false;
     page = 'console';
     error = '';
-    await Promise.all([loadInvitations(), ...(role === 'octopus' ? [refresh()] : [])]);
-  }
-
-  async function loadInvitations() {
-    try {
-      const result = await request('/api/hpahub/invitations');
-      invitations = result.items;
-    } catch (err) {
-      error = err.message;
-    }
-  }
-
-  async function generateInvitation() {
-    generating = true;
-    error = '';
-    notice = '';
-    try {
-      await request('/api/hpahub/invitations', { method: 'POST' });
-      await loadInvitations();
-      if (!error) notice = $t('邀请码已生成，有效期为 24 小时。');
-    } catch (err) {
-      error = err.message;
-    } finally {
-      generating = false;
-    }
+    if (role === 'octopus') await refresh();
   }
 
   function logout() {
     menuOpen = false;
-    fetch('/api/hpahub/warehouse/media-session', {
-      method: 'DELETE',
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    }).catch(() => {});
     clearTimeout(expiryTimer);
     token = '';
     collection = '';
@@ -186,7 +161,6 @@
     sessionStorage.removeItem('authCollection');
     sessionStorage.removeItem('adminToken');
     backups = [];
-    invitations = [];
     password = '';
     page = 'home';
     error = '';
@@ -288,22 +262,28 @@
     <a class="brand" href="/" aria-label={$t('HPA Hub 首页')}><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span>HPA<span class="brand-light">HUB</span></span></a>
     <nav id="main-navigation" class="topbar-right" aria-label={$t('主导航')}>
       <a class="text-button" href="/" aria-current={pathname === '/' && page === 'home' ? 'page' : undefined}>{$t('首页')}</a>
-      <a class="text-button" href="/gpu">{$t('显卡库')}</a>
-      <a class="text-button" href="/warehouse">{$t('仓库')}</a>
+      <a class="text-button" href="/hardware">{$t('硬件数据库')}</a>
+      <a class="text-button" href="/news">{$t('硬件新闻')}</a>
       <a class="text-button" href="/community">{$t('成员')}</a>
-      <a class="text-button" href="/showcase">{$t('项目展示')}</a>
+      <a class="text-button" href="/showcase">{$t('项目大厅')}</a>
       {#if token && !checking}
+        <a class="text-button" href="/me">{$t('个人中心')}</a>
+        {#if ['member', 'admin', 'octopus'].includes(role)}<a class="text-button" href="/my-projects">{$t('我的项目')}</a>{/if}
         {#if ['member', 'admin'].includes(role)}<a class="text-button" href="/settings">{$t('个人设置')}</a>{/if}
         {#if isAdmin}
-          <a class="text-button" href="/manage/showcase">{$t('项目管理')}</a>
+          <a class="text-button" href="/manage/showcase">{$t('项目大厅管理')}</a>
           {#if pathname === '/'}<button class="text-button" on:click={openConsole}>{$t('管理控制台')}</button>
           {:else}<a class="text-button" href="/?console=1">{$t('管理控制台')}</a>{/if}
         {/if}
-        <button class="text-button" on:click={logout}>{$t('退出登录')}</button>
-      {:else if !checking}
-        <a class="text-button" href="/sign-in">{$t('登录')}</a>
       {/if}
-      <label><span class="sr-only">{$t('语言')}</span><select bind:value={$locale} aria-label={$t('语言')}>{#each Object.entries(languages) as [code, name]}<option value={code} lang={code}>{name}</option>{/each}</select></label>
+      <div class="sidebar-footer">
+        {#if token && !checking}
+          <button class="text-button" on:click={logout}>{$t('退出登录')}</button>
+        {:else if !checking}
+          <a class="text-button" href="/sign-in">{$t('登录')}</a>
+        {/if}
+        <label><span class="sr-only">{$t('语言')}</span><select bind:value={$locale} aria-label={$t('语言')}>{#each Object.entries(languages) as [code, name]}<option value={code} lang={code}>{name}</option>{/each}</select></label>
+      </div>
     </nav>
   </header>
   <button class="menu-toggle" aria-label={menuOpen ? $t('关闭导航菜单') : $t('打开导航菜单')} aria-expanded={menuOpen} aria-controls="main-navigation" on:click={() => menuOpen = !menuOpen}>
@@ -312,13 +292,27 @@
 
   {#if checking}
     <main class="dashboard"><p role="status">{$t('正在验证登录状态…')}</p></main>
-  {:else if pathname === '/gpu'}
-    <Gpu {token} {role} />
-  {:else if pathname === '/warehouse'}
-    {#if token && ['member', 'admin', 'octopus'].includes(role)}
-      <Warehouse {token} {role} />
+  {:else if pathname === '/hardware'}
+    <Hardware {token} {role} />
+  {:else if pathname === '/news'}
+    <News {token} />
+  {:else if pathname === '/me/skills'}
+    {#if token}
+      <SkillEditor {token} />
     {:else}
-      <main class="dashboard"><h1>{$t('仓库')}</h1><p>{$t('仓库仅供内部成员访问。')}</p><a href="/sign-in">{$t('登录账户')}</a></main>
+      <main class="dashboard"><h1>{$t('技能管理')}</h1><p>{$t('请先登录后管理技能。')}</p><a href="/sign-in">{$t('登录')}</a></main>
+    {/if}
+  {:else if pathname === '/my-projects'}
+    {#if token}
+      <MyProjects {token} />
+    {:else}
+      <main class="dashboard"><h1>{$t('我的项目')}</h1><p>{$t('请先登录后查看我的项目。')}</p><a href="/sign-in">{$t('登录')}</a></main>
+    {/if}
+  {:else if pathname === '/me'}
+    {#if token}
+      <PersonalCenter {token} />
+    {:else}
+      <main class="dashboard"><h1>{$t('个人中心')}</h1><p>{$t('请先登录后查看个人中心。')}</p><a href="/sign-in">{$t('登录')}</a></main>
     {/if}
   {:else if pathname === '/settings' || pathname === '/manage/showcase'}
     {#if token && (pathname === '/settings' ? ['member', 'admin'].includes(role) : isAdmin)}
@@ -359,14 +353,14 @@
       </section>
     </main>
   {:else if pathname !== '/' || page === 'home' || !isAdmin}
-    <PublicPages {pathname} />
+    <PublicPages {pathname} {token} />
   {:else}
     <main class="dashboard">
-      <div class="breadcrumb">{$t('管理控制台')} <span>/</span> {isOctopus ? $t('备份管理') : $t('邀请码')}</div>
+      <div class="breadcrumb">{$t('管理控制台')} <span>/</span> {isOctopus ? $t('备份管理') : $t('成员与项目')}</div>
       {#if isOctopus}
         <div class="page-heading"><div><h1>{$t('备份管理')}<span class="heading-dot">.</span></h1><p>{$t('管理自动备份策略，或随时创建一份备份。')}</p></div><button class="primary" on:click={createBackup} disabled={creating || loading}><span class="plus" aria-hidden="true">＋</span> {creating ? $t('正在创建…') : $t('立即备份')}</button></div>
       {:else}
-        <div class="page-heading"><div><h1>{$t('邀请码')}<span class="heading-dot">.</span></h1><p>{$t('生成邀请码并查看使用记录。')}</p></div></div>
+        <div class="page-heading"><div><h1>{$t('管理控制台')}<span class="heading-dot">.</span></h1><p>{$t('查看成员信息、审批加入申请和项目状态。')}</p></div></div>
       {/if}
       {#if error}<div class="message error" role="alert">{$t(error)}</div>{/if}
       {#if notice}<div class="message success" role="status">{notice}</div>{/if}
@@ -395,18 +389,7 @@
         </section>
       </div>
       {/if}
-      <section class="archive-section invitations" aria-labelledby="invitations-title">
-        <div class="archive-head">
-          <div><h2 id="invitations-title">{$t('邀请码')}</h2><p>{$t('邀请码有效 24 小时，仅可使用一次。')}</p></div>
-          <button class="primary" on:click={generateInvitation} disabled={generating}>{generating ? $t('正在生成…') : $t('生成邀请码')}</button>
-        </div>
-        <div class="table-wrap"><table><thead><tr><th>{$t('邀请码')}</th><th>{$t('创建时间')}</th><th>{$t('到期时间')}</th><th>{$t('状态')}</th><th>{$t('使用者')}</th><th>{$t('使用时间')}</th></tr></thead><tbody>
-          {#each invitations as invitation (invitation.code)}
-            <tr><td>{invitation.code}</td><td>{formatDate(invitation.created * 1000, $locale)}</td><td>{formatDate(invitation.expires * 1000, $locale)}</td><td>{invitation.used ? $t('已使用') : invitation.expires * 1000 <= Date.now() ? $t('已过期') : $t('未使用')}</td><td>{invitation.usedBy || '—'}</td><td>{invitation.used ? formatDate(invitation.used * 1000, $locale) : '—'}</td></tr>
-          {/each}
-        </tbody></table></div>
-        {#if !invitations.length}<div class="empty"><h3>{$t('还没有邀请码')}</h3><p>{$t('生成邀请码后，可在这里查看使用记录。')}</p></div>{/if}
-      </section>
+      <AdminDirectory {token} />
     </main>
   {/if}
   <footer class="site-footer"><span>HPA HUB</span><span>{$t('欢迎来到 HPA Hub。')}</span></footer>

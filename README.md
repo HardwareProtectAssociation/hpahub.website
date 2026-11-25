@@ -16,7 +16,7 @@ docker compose up -d --build --remove-orphans
 
 访问 `http://localhost:18763`。设置 `PORT` 环境变量可更改宿主机端口。PocketBase 数据保存在 Docker 卷 `pb_data` 中，更新容器不会清除数据。
 
-显卡数据、仓库项目与文件由 PocketBase 管理，保存在 `pb_data`；默认本地文件存储会随 PocketBase 备份一起保存。视频缩略图和预览依赖容器内的 FFmpeg、ffprobe。
+硬件数据、仓库项目与文件由 PocketBase 管理，保存在 `pb_data`；默认本地文件存储会随 PocketBase 备份一起保存。视频缩略图和预览依赖容器内的 FFmpeg、ffprobe。
 
 创建 PocketBase 超级管理员（将邮箱和密码替换为自己的值）：
 
@@ -72,6 +72,8 @@ Set-ExecutionPolicy -Scope LocalMachine -Force Bypass
 cd backend
 go run . superuser create admin@hpahub.local '替换为测试密码' --dir (Join-Path (Get-Location) 'pb_data')
 ```
+
+临时调试需要跳过密码和邀请码时，在启动 `dev.ps1` 前设置 `$env:HPA_DEV_LOGIN = '1'`。此时仅本机回环地址的登录请求可用账号 `1`、密码 `1` 直接以超级管理员身份进入；不要在生产环境或对外暴露的服务上设置该变量。
 
 如果 8090 或 5173 端口被占用，先检查占用进程；如果是上一次未正确关闭的本项目开发服务器，停止该服务器及其子进程后重启。不要终止其他项目的进程。视频预览还需要在 Windows 上安装 FFmpeg 并加入 PATH。
 

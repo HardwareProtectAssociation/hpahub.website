@@ -36,6 +36,14 @@ func bindHardwareRoutes(s *core.ServeEvent) {
 		}
 		return r, nil
 	}
+	s.Router.GET(base+"/schema", func(e *core.RequestEvent) error {
+		noCache(e)
+		schema, err := hardwareSchema(e.App)
+		if err != nil {
+			return e.InternalServerError("Unable to load schema.", err)
+		}
+		return e.JSON(200, schema)
+	})
 	s.Router.GET(base+"/records", func(e *core.RequestEvent) error {
 		noCache(e)
 		rs, err := e.App.FindRecordsByFilter("hardware", "", "sort_order,id", 0, 0)
@@ -122,11 +130,7 @@ func bindHardwareRoutes(s *core.ServeEvent) {
 		}
 		name += " 副本"
 		if fields, ok := data["fields"].(map[string]any); ok {
-			key := "model"
-			if r.GetString("kind") == "device" {
-				key = "name"
-			}
-			fields[key] = name
+			fields[hardwareNameField(e.App, r.GetString("kind"))] = name
 		}
 		c, err := e.App.FindCollectionByNameOrId("hardware")
 		if err != nil {
@@ -233,9 +237,6 @@ func bindHardwareRoutes(s *core.ServeEvent) {
 				r, err := tx.FindRecordById("hardware", id)
 				if err != nil {
 					return e.BadRequestError("Hardware not found.", err)
-				}
-				if r.GetString("kind") != "gpu" {
-					return e.BadRequestError("Invalid hardware kind.", nil)
 				}
 				r.Set("sort_order", i)
 				if err := tx.Save(r); err != nil {
