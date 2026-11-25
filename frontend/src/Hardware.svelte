@@ -7,8 +7,8 @@
   $: canEdit = !!token && ['member', 'admin', 'octopus'].includes(role);
   const suggestions = {game:['三角洲大坝','死亡搁浅2','CS2','LOL大乱斗','永劫无间','2077','红色沙漠','绝区零'],resolution:['1080P','2K','4K','1080P60','4K60','8K','8K60'],quality:['最低','非常低','低','中','中等','高','超高','极高','最高','超级','极致','影视级','电影级','原画','性能','均衡','流畅','便携'],ray_tracing:['开启','无','中','超级','变态'],upscale_tech:['DLSS','FSR','XeSS'],upscale_quality:['性能','平衡'],frame_gen:['X2','X3','X4','X5'],codec:['H.264','H.265/HEVC','HEVC','AV1','VP9','VP8','MPEG-2','MPEG-4','VC-1','MJPEG','剪映H264','剪映HEVC','剪映AV1']};
   let types = [], records = [], gameOptions = [], error = '', notice = '', loading = false, busy = false;
-  let view = 'list', kind = 'gpu', detail = null, id = null, editing = false, search = '', filter = 'all', brandFilter = '';
-  let gameFilter = '', resolutionFilter = '', qualityFilter = '', media = [], mediaPath = '', newGame = '', submitKind = 'gpu';
+  let view = 'list', kind = 'general', detail = null, id = null, editing = false, search = '', filter = 'all', brandFilter = '';
+  let gameFilter = '', resolutionFilter = '', qualityFilter = '', media = [], mediaPath = '', newGame = '', submitKind = 'general';
   let selected = [], compareDetails = [], metric = '', compareGame = '', compareResolution = '', compareField = 'avg_fps';
   const typeOf = k => types.find(x => x.key === k);
   const typeLabel = k => typeOf(k)?.label || k;

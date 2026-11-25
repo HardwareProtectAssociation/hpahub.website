@@ -71,18 +71,23 @@ func TestHardwareAPI(t *testing.T) {
 		return value
 	}
 	const base = "/api/hpahub/hardware"
-	const gpu = `{"kind":"gpu","name":"GPU","brand":"Brand","subtitle":"subtitle","sort_order":2,"data":{"fields":{"model":"GPU","vram_size":"16"},"sections":{"cooling":{"core_temp":"71"}},"rows":{"games":[{"game":"Game","avg_fps":"3.5"}]},"custom":{"basic":{"extra":[{"key":"x","value":"v"}]}}}}`
-	want(request("POST", base+"/records", "", gpu), http.StatusUnauthorized)
-	want(request("POST", base+"/records", user, gpu), http.StatusForbidden)
+	const generic = `{"kind":"general","name":"Device","brand":"Brand","subtitle":"subtitle","sort_order":2,"data":{"fields":{"name":"Device","brand":"Brand","model":"M","category":"测试","note":"备注"},"custom":{"basic":{"extra":[{"key":"x","value":"v"}]}}}}`
+	want(request("POST", base+"/records", "", generic), http.StatusUnauthorized)
+	want(request("POST", base+"/records", user, generic), http.StatusForbidden)
 	schema := request("GET", base+"/schema", "", "")
 	want(schema, http.StatusOK)
-	for _, fragment := range []string{`"key":"gpu"`, `"key":"cpu"`, `"key":"device"`, `"name_field":"model"`, `"显卡型号"`, `"游戏测试"`, `"avg_fps"`} {
+	for _, fragment := range []string{`"key":"general"`, `"name_field":"name"`, `"名称"`, `"基本信息"`} {
 		if !strings.Contains(schema.Body.String(), fragment) {
 			t.Fatalf("schema missing %s: %s", fragment, schema.Body.String())
 		}
 	}
+	for _, old := range []string{`"key":"gpu"`, `"key":"cpu"`, `"key":"device"`} {
+		if strings.Contains(schema.Body.String(), old) {
+			t.Fatalf("old template still present %s: %s", old, schema.Body.String())
+		}
+	}
 	want(request("POST", base+"/records", member, `{"kind":"toaster","name":"x","data":{"fields":{}}}`), http.StatusBadRequest)
-	created := request("POST", base+"/records", member, gpu)
+	created := request("POST", base+"/records", member, generic)
 	want(created, http.StatusCreated)
 	id, ok := object(created)["id"].(string)
 	if !ok || id == "" {
@@ -93,11 +98,11 @@ func TestHardwareAPI(t *testing.T) {
 	want(detail, http.StatusOK)
 	value := object(detail)
 	data, ok := value["data"].(map[string]any)
-	if !ok || value["id"] != id || value["kind"] != "gpu" || value["name"] != "GPU" || value["brand"] != "Brand" || value["subtitle"] != "subtitle" || value["sort_order"] != float64(2) {
+	if !ok || value["id"] != id || value["kind"] != "general" || value["name"] != "Device" || value["brand"] != "Brand" || value["subtitle"] != "subtitle" || value["sort_order"] != float64(2) {
 		t.Fatalf("detail: %#v", value)
 	}
 	fields, ok := data["fields"].(map[string]any)
-	if !ok || fields["vram_size"] != "16" || !strings.Contains(detail.Body.String(), `"3.5"`) {
+	if !ok || fields["model"] != "M" || fields["category"] != "测试" {
 		t.Fatalf("detail data: %#v", data)
 	}
 	want(request("GET", path+"/media", "", ""), http.StatusUnauthorized)
@@ -128,19 +133,19 @@ func TestHardwareAPI(t *testing.T) {
 		want(request("GET", "/api/collections/"+name+"/records", "", ""), http.StatusForbidden)
 		want(request("GET", "/api/collections/"+name+"/records", member, ""), http.StatusForbidden)
 	}
-	want(request("PUT", path, user, gpu), http.StatusForbidden)
+	want(request("PUT", path, user, generic), http.StatusForbidden)
 	want(request("PUT", path, member, `{"kind":"gpu","name":"bad","data":{"fields":{"nested":{"related_media":"secret"}}}}`), http.StatusBadRequest)
 	want(request("PUT", path, member, `{"kind":"cpu","name":"wrong","data":{}}`), http.StatusBadRequest)
 	detail = request("GET", path, "", "")
 	want(detail, http.StatusOK)
-	if object(detail)["name"] != "GPU" {
+	if object(detail)["name"] != "Device" {
 		t.Fatal("failed update changed record")
 	}
-	const edited = `{"kind":"gpu","name":"changed","brand":"New","subtitle":"","sort_order":3,"data":{"fields":{"model":"changed"},"rows":{"games":[{"game":"new"}]}}}`
+	const edited = `{"kind":"general","name":"changed","brand":"New","subtitle":"","sort_order":3,"data":{"fields":{"name":"changed","brand":"New","category":"改","note":"new"},"rows":{"games":[{"game":"new"}]}}}`
 	want(request("PUT", path, member, edited), http.StatusOK)
 	detail = request("GET", path, "", "")
 	want(detail, http.StatusOK)
-	if object(detail)["name"] != "changed" || !strings.Contains(detail.Body.String(), `"new"`) || strings.Contains(detail.Body.String(), `"cooling"`) {
+	if object(detail)["name"] != "changed" || !strings.Contains(detail.Body.String(), `"new"`) || strings.Contains(detail.Body.String(), `"测试"`) {
 		t.Fatalf("edited detail: %s", detail.Body.String())
 	}
 	media = request("GET", path+"/media", member, "")
@@ -180,28 +185,6 @@ func TestHardwareAPI(t *testing.T) {
 	var games []string
 	if err := json.Unmarshal(options.Body.Bytes(), &games); err != nil || len(games) != 2 || !strings.Contains(options.Body.String(), `"extra"`) || !strings.Contains(options.Body.String(), `"new"`) {
 		t.Fatalf("options: %s err=%v", options.Body.String(), err)
-	}
-	cpuResult := request("POST", base+"/records", member, `{"kind":"cpu","name":"CPU","brand":"Brand","subtitle":"desktop","sort_order":4,"data":{"fields":{"cores":8},"rows":{"bench":[{"score":42}]}}}`)
-	want(cpuResult, http.StatusCreated)
-	cpuID, ok := object(cpuResult)["id"].(string)
-	if !ok || cpuID == "" {
-		t.Fatalf("CPU id: %s", cpuResult.Body.String())
-	}
-	cpu := request("GET", base+"/records/"+cpuID, "", "")
-	want(cpu, http.StatusOK)
-	if !strings.Contains(cpu.Body.String(), `"cores":8`) || !strings.Contains(cpu.Body.String(), `"score":42`) {
-		t.Fatalf("CPU data: %s", cpu.Body.String())
-	}
-	deviceResult := request("POST", base+"/records", member, `{"kind":"device","name":"Device","data":{"fields":{"color":"black"},"rows":{"ports":[]}}}`)
-	want(deviceResult, http.StatusCreated)
-	deviceID, ok := object(deviceResult)["id"].(string)
-	if !ok || deviceID == "" {
-		t.Fatalf("device id: %s", deviceResult.Body.String())
-	}
-	device := request("GET", base+"/records/"+deviceID, "", "")
-	want(device, http.StatusOK)
-	if !strings.Contains(device.Body.String(), `"color":"black"`) || !strings.Contains(device.Body.String(), `"ports":[]`) {
-		t.Fatalf("device data: %s", device.Body.String())
 	}
 	want(request("DELETE", path, user, ""), http.StatusForbidden)
 	want(request("DELETE", path, member, ""), http.StatusOK)
