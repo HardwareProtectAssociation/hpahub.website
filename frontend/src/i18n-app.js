@@ -246,4 +246,13 @@ export default {
   '后可申请加入。': ['後可申請加入。', 'ログインすると参加申請できます。', ' to apply to join.'],
   '申请失败，请重试。': ['申請失敗，請重試。', '申請に失敗しました。もう一度お試しください。', 'Application failed; please try again.'],
   '查看成员信息、审批加入申请和项目状态。': ['查看成員資訊、審批加入申請和專案狀態。', 'メンバー情報、参加申請、プロジェクト状態を確認します。', 'View member details, approve join requests and check project status.'],
+  '完成项目': ['完成專案', '完了したプロジェクト', 'Completed projects'],
+  '进行中项目': ['進行中專案', '進行中のプロジェクト', 'Ongoing projects'],
+  '职业等级': ['職業等級', 'キャリアレベル', 'Career levels'],
+  '公开资料': ['公開資料', '公開プロフィール', 'Public profile'],
+  '暂无完成项目。': ['暫無完成專案。', '完了したプロジェクトはありません。', 'No completed projects.'],
+  '暂无进行中项目。': ['暫無進行中專案。', '進行中のプロジェクトはありません。', 'No ongoing projects.'],
+  '暂无职业等级。': ['暫無職業等級。', 'キャリアレベルはありません。', 'No career levels.'],
+  '暂无技能展示。': ['暫無技能展示。', 'スキルはありません。', 'No skills.'],
+  '最高等级': ['最高等級', '最高レベル', 'Max level'],
 };

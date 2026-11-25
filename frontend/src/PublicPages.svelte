@@ -10,6 +10,7 @@
   let applyError = '';
   let applyNotice = '';
   let applying = false;
+  let activeTab = 'completed';
   let loading = true;
   let errorParams = {};
   const parts = pathname.split('/').filter(Boolean);
@@ -25,6 +26,15 @@
       });
       if (!response.ok) { error = response.status === 404 ? '内容不存在或未公开。' : '加载失败（{status}）'; errorParams = { status: response.status }; return; }
       data = await response.json();
+      if (section === 'community' && id) {
+        const candidates = [
+          ['completed', data.projectsCompleted?.length || 0],
+          ['ongoing', data.projectsOngoing?.length || 0],
+          ['career', data.career?.length || 0],
+          ['skills', data.skills?.length || 0],
+        ];
+        activeTab = candidates.find(([, count]) => count > 0)?.[0] || 'completed';
+      }
     } catch (e) { error = e.message; } finally { loading = false; }
   });
   $: items = Array.isArray(data) ? data : data?.items || [];
@@ -34,6 +44,11 @@
     if (!value) return '';
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString($locale);
+  }
+  function careerProgress(badge) {
+    const span = badge.nextLevelXp - badge.levelMinXp;
+    if (!span || span <= 0) return 100;
+    return Math.max(0, Math.min(100, Math.round(((badge.totalXp - badge.levelMinXp) / span) * 100)));
   }
   async function endorseSkill(skill) {
     if (!token) return;
@@ -93,10 +108,60 @@
       <a href="/community">{$t('返回成员列表')}</a><header class="profile-heading">{#if data.avatarUrl}<img class="avatar" src={data.avatarUrl} alt="" />{:else}<span class="avatar avatar-default" aria-hidden="true"></span>{/if}<div><h1>{data.name}</h1><p>{data.bio}</p></div></header>
       {#if data.identities?.length}<div class="member-identities">{#each data.identities as identity}<span class="chip">{$t(identity.category === 'main' ? '主力职业' : '辅助职业')} · {identity.name}</span>{/each}</div>{/if}
       {#if data.cards?.length}<div class="public-grid">{#each data.cards as card}<article class="public-card"><h2>{card.title}</h2><p>{card.text}</p><div class="image-grid">{#each card.imageUrls || [] as url}<a href={url} target="_blank" rel="noreferrer"><img src={url} alt={card.title} loading="lazy" /></a>{/each}</div></article>{/each}</div>{:else}<p>{$t('暂无公开卡片。')}</p>{/if}
-      {#if data.skills?.length}
-        <section class="member-skills" aria-labelledby="member-skills-title">
-          <h2 id="member-skills-title">{$t('技能展示')}</h2>
-          {#if skillError}<p class="message error" role="alert">{$t(skillError)}</p>{/if}
+      <nav class="profile-tabs" aria-label={$t('公开资料')}>
+        <button type="button" class:active={activeTab === 'completed'} on:click={() => activeTab = 'completed'}>{$t('完成项目')}<span>{data.projectsCompleted?.length || 0}</span></button>
+        <button type="button" class:active={activeTab === 'ongoing'} on:click={() => activeTab = 'ongoing'}>{$t('进行中项目')}<span>{data.projectsOngoing?.length || 0}</span></button>
+        <button type="button" class:active={activeTab === 'career'} on:click={() => activeTab = 'career'}>{$t('职业等级')}<span>{data.career?.length || 0}</span></button>
+        <button type="button" class:active={activeTab === 'skills'} on:click={() => activeTab = 'skills'}>{$t('技能展示')}<span>{data.skills?.length || 0}</span></button>
+      </nav>
+      {#if activeTab === 'completed'}
+        {#if data.projectsCompleted?.length}
+          <div class="public-grid">
+            {#each data.projectsCompleted as project}
+              <article class="public-card project-card">
+                <div class="project-meta"><span class="project-status done">{$t('已完成')}</span>{#if project.difficulty}<span class={`project-difficulty difficulty-${project.difficulty}`}>{$t('难度')} {project.difficulty}</span>{/if}</div>
+                <h2><a href={'/showcase/' + encodeURIComponent(project.id)}>{project.title}</a></h2>
+                <p>{project.summary}</p>
+                <p class="project-owner">{$t('负责人')}：{project.ownerName || '—'}{#if project.updated} · {$t('更新于')} {formatDate(project.updated)}{/if}</p>
+              </article>
+            {/each}
+          </div>
+        {:else}
+          <p class="tab-empty">{$t('暂无完成项目。')}</p>
+        {/if}
+      {:else if activeTab === 'ongoing'}
+        {#if data.projectsOngoing?.length}
+          <div class="public-grid">
+            {#each data.projectsOngoing as project}
+              <article class="public-card project-card">
+                <div class="project-meta"><span class="project-status">{$t('进行中')}</span>{#if project.difficulty}<span class={`project-difficulty difficulty-${project.difficulty}`}>{$t('难度')} {project.difficulty}</span>{/if}</div>
+                <h2><a href={'/showcase/' + encodeURIComponent(project.id)}>{project.title}</a></h2>
+                <p>{project.summary}</p>
+                <p class="project-owner">{$t('负责人')}：{project.ownerName || '—'}{#if project.updated} · {$t('更新于')} {formatDate(project.updated)}{/if}</p>
+              </article>
+            {/each}
+          </div>
+        {:else}
+          <p class="tab-empty">{$t('暂无进行中项目。')}</p>
+        {/if}
+      {:else if activeTab === 'career'}
+        {#if data.career?.length}
+          <div class="career-grid">
+            {#each data.career as badge}
+              <article class="career-card">
+                <div class="career-head"><h3>{badge.careerName}</h3><span>{badge.levelTitle}</span></div>
+                <p>{badge.totalXp} XP · {$t('最高等级')} Lv.{badge.maxLevel}</p>
+                <div class="progress" role="img" aria-label={`${badge.totalXp} / ${badge.nextLevelXp} XP`}><span style={`width:${careerProgress(badge)}%`}></span></div>
+                {#if badge.nextLevelXp}<small>{$t('下一等级')} {badge.nextLevelTitle} · {badge.nextLevelXp} XP</small>{:else}<small>{$t('已达到当前最高等级')}</small>{/if}
+              </article>
+            {/each}
+          </div>
+        {:else}
+          <p class="tab-empty">{$t('暂无职业等级。')}</p>
+        {/if}
+      {:else if activeTab === 'skills'}
+        {#if skillError}<p class="message error" role="alert">{$t(skillError)}</p>{/if}
+        {#if data.skills?.length}
           <ul class="public-skill-list">
             {#each data.skills as skill (skill.userSkillId)}
               <li class="public-skill">
@@ -130,7 +195,9 @@
               </li>
             {/each}
           </ul>
-        </section>
+        {:else}
+          <p class="tab-empty">{$t('暂无技能展示。')}</p>
+        {/if}
       {/if}
     {:else}
       <h1>{$t('成员')}</h1><p>{$t('认识 HPA 的成员。')}</p>{#if items.length}<div class="public-grid">{#each items as member}<article class="public-card member-card">{#if member.avatarUrl}<img class="avatar" src={member.avatarUrl} alt="" />{:else}<span class="avatar avatar-default" aria-hidden="true"></span>{/if}<h2>{#if member.id}<a href={'/community/' + encodeURIComponent(member.id)}>{member.name}</a>{:else}{member.name}{/if}</h2></article>{/each}</div>{:else}<p>{$t('暂无成员。')}</p>{/if}
@@ -252,6 +319,22 @@
   .meta { color: #818b7f; font-size: 12px; }
   .member-identities { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 20px; }
   .chip { display: inline-block; padding: 4px 10px; border: 1px solid #c8d4c0; border-radius: 999px; background: #eef3e8; color: #3f5d3a; font-size: 12px; }
+  .profile-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 18px 0 22px; padding-bottom: 8px; border-bottom: 1px solid #dcded4; }
+  .profile-tabs button { border: 1px solid transparent; background: none; padding: 7px 12px; color: #52695a; font-size: 13px; }
+  .profile-tabs button:hover { background: #eef3e8; }
+  .profile-tabs button.active { background: #274732; color: #fff; }
+  .profile-tabs button span { margin-left: 5px; opacity: 0.72; }
+  .profile-tab-panel { margin-top: 10px; }
+  .career-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+  .career-card { padding: 14px; border: 1px solid #dcded4; background: #fafbf7; }
+  .career-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .career-head h3 { margin: 0; font-size: 15px; }
+  .career-head span { color: #4d6448; font-size: 12px; }
+  .career-card p { margin: 6px 0; color: #6f7b6d; font-size: 13px; }
+  .career-card small { color: #818b7f; font-size: 12px; }
+  .career-card .progress { height: 6px; margin: 8px 0 4px; background: #e6ebe1; }
+  .career-card .progress span { display: block; height: 100%; background: #6f9661; }
+  .tab-empty { padding: 20px 0; color: #818b7f; }
   .like-button { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border: 1px solid #d6ddd2; border-radius: 999px; background: #fff; color: #52695a; font-size: 12px; cursor: pointer; }
   .like-button.liked { color: #a84358; border-color: #e3bcc4; background: #fff4f6; }
   .like-count { color: #a84358; font-size: 12px; }
