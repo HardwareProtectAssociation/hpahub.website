@@ -50,6 +50,16 @@ npm ci
 cd ..
 ```
 
+如果 PowerShell 提示「禁止运行脚本」，先设置执行策略以允许直接运行 `.ps1`（`Bypass` 会无提示执行所有脚本，仅建议开发机使用）：
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser -Force Bypass
+# 对所有用户生效时，在管理员 PowerShell 中运行：
+Set-ExecutionPolicy -Scope LocalMachine -Force Bypass
+```
+
+注意 `CurrentUser` 优先级高于 `LocalMachine`，已有 `CurrentUser` 设置的账户需一并更改。
+
 在仓库根目录的 PowerShell 中运行：
 
 ```powershell
