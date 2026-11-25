@@ -16,6 +16,8 @@
   let improvementError = '';
   let improvementNotice = '';
   let improving = false;
+  let relationBusy = '';
+  let relationError = '';
   let activeTab = 'completed';
   let loading = true;
   let errorParams = {};
@@ -46,6 +48,8 @@
   $: items = Array.isArray(data) ? data : data?.items || [];
   const statusLabels = { ongoing: '进行中', paused: '暂停', terminated: '已中止', completed: '已完成' };
   const currentStatusLabels = { busy: '忙碌', free: '空闲' };
+  const relationLabels = { admire: '敬仰', watch: '监视', investigate: '调查' };
+  const relationOptions = Object.entries(relationLabels);
   function statusLabel(status) { return $t(statusLabels[status] || status); }
   function formatDate(value) {
     if (!value) return '';
@@ -140,6 +144,27 @@
       improving = false;
     }
   }
+
+  async function setRelation(type) {
+    if (!token || !data?.relations?.canRelate) return;
+    relationBusy = type;
+    relationError = '';
+    try {
+      const next = data.relations.myRelation === type ? 'none' : type;
+      const response = await fetch(`/api/hpahub/members/${encodeURIComponent(data.id)}/relation`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ relation: next }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.message || '保存关系失败，请重试。');
+      data = { ...data, relations: result };
+    } catch (err) {
+      relationError = err.message || '保存关系失败，请重试。';
+    } finally {
+      relationBusy = '';
+    }
+  }
 </script>
 
 <main class="dashboard public-page">
@@ -155,6 +180,25 @@
     {#if id}
       <a href="/community">{$t('返回成员列表')}</a><header class="profile-heading">{#if data.avatarUrl}<img class="avatar" src={data.avatarUrl} alt="" />{:else}<span class="avatar avatar-default" aria-hidden="true"></span>{/if}<div><h1>{data.name}</h1><p>{data.bio}</p>{#if data.currentStatus}<span class:busy={data.currentStatus === 'busy'} class="public-current-status">{$t('当前状态')}：{$t(currentStatusLabels[data.currentStatus] || data.currentStatus)}</span>{/if}</div></header>
       {#if data.identities?.length}<div class="member-identities">{#each data.identities as identity}<span class="chip">{$t(identity.category === 'main' ? '主力职业' : '辅助职业')} · {identity.name}</span>{/each}</div>{/if}
+      {#if data.relations}
+        <div class="relation-panel">
+          <div class="relation-counts">
+            <span>{$t('被敬仰')} <strong>{data.relations.admireCount}</strong></span>
+            <span>{$t('被监视')} <strong>{data.relations.watchCount}</strong></span>
+            <span>{$t('被调查')} <strong>{data.relations.investigateCount}</strong></span>
+          </div>
+          {#if data.relations.canRelate}
+            <div class="relation-actions">
+              {#each relationOptions as [type, label]}
+                <button type="button" class:active={data.relations.myRelation === type} on:click={() => setRelation(type)} disabled={relationBusy === type}>{$t(label)}</button>
+              {/each}
+            </div>
+          {/if}
+          {#if data.relations.myRelation}<p class="relation-current">{$t('你正在{relation}此人', { relation: $t(relationLabels[data.relations.myRelation]) })}</p>{/if}
+          {#if relationError}<p class="relation-error">{$t(relationError)}</p>{/if}
+          {#if !token}<p class="relation-hint">{$t('登录后可设置互动关系。')}</p>{/if}
+        </div>
+      {/if}
       {#if data.cards?.length}<div class="public-grid">{#each data.cards as card}<article class="public-card"><h2>{card.title}</h2><p>{card.text}</p><div class="image-grid">{#each card.imageUrls || [] as url}<a href={url} target="_blank" rel="noreferrer"><img src={url} alt={card.title} loading="lazy" /></a>{/each}</div></article>{/each}</div>{:else}<p>{$t('暂无公开卡片。')}</p>{/if}
       <nav class="profile-tabs" aria-label={$t('公开资料')}>
         <button type="button" class:active={activeTab === 'completed'} on:click={() => activeTab = 'completed'}>{$t('完成项目')}<span>{data.projectsCompleted?.length || 0}</span></button>
@@ -391,6 +435,14 @@
   .member-identities { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 20px; }
   .public-current-status { display: inline-block; margin-top: 8px; padding: 2px 9px; border-radius: 999px; background: #eef3e8; color: #4d6448; font-size: 12px; }
   .public-current-status.busy { background: #fff3df; color: #7a4b12; }
+  .relation-panel { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; margin: 0 0 20px; padding: 12px 14px; border: 1px solid #dce3d6; background: #fafbf7; }
+  .relation-counts { display: flex; flex-wrap: wrap; gap: 12px; color: #6f7b6d; font-size: 12px; }
+  .relation-counts strong { color: #274732; }
+  .relation-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+  .relation-actions button { padding: 4px 10px; border: 1px solid #d6ddd2; border-radius: 999px; background: #fff; color: #52695a; font-size: 12px; }
+  .relation-actions button.active { border-color: #7c9b6c; background: #eef3e8; color: #274732; }
+  .relation-current, .relation-hint, .relation-error { flex-basis: 100%; margin: 0; color: #6f7b6d; font-size: 12px; }
+  .relation-error { color: #9b402c; }
   .chip { display: inline-block; padding: 4px 10px; border: 1px solid #c8d4c0; border-radius: 999px; background: #eef3e8; color: #3f5d3a; font-size: 12px; }
   .profile-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 18px 0 22px; padding-bottom: 8px; border-bottom: 1px solid #dcded4; }
   .profile-tabs button { border: 1px solid transparent; background: none; padding: 7px 12px; color: #52695a; font-size: 13px; }

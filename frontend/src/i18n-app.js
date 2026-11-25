@@ -329,4 +329,13 @@ export default {
   '新闻删除成功。': ['新聞刪除成功。', 'ニュースを削除しました。', 'News deleted.'],
   '确定删除这条新闻吗？': ['確定刪除這條新聞嗎？', 'このニュースを削除しますか？', 'Delete this news post?'],
   '操作失败，请重试。': ['操作失敗，請重試。', '操作に失敗しました。もう一度お試しください。', 'Action failed; please try again.'],
+  '敬仰': ['敬仰', '敬服', 'Admire'],
+  '监视': ['監視', '監視', 'Watch'],
+  '调查': ['調查', '調査', 'Investigate'],
+  '被敬仰': ['被敬仰', '敬服されている', 'Admired by'],
+  '被监视': ['被監視', '監視されている', 'Watched by'],
+  '被调查': ['被調查', '調査されている', 'Investigated by'],
+  '你正在{relation}此人': ['你正在{relation}此人', 'この人を{relation}しています', 'You are {relation}ing this member'],
+  '登录后可设置互动关系。': ['登入後可設定互動關係。', 'ログインすると関係を設定できます。', 'Sign in to set a relationship.'],
+  '保存关系失败，请重试。': ['儲存關係失敗，請重試。', '関係の保存に失敗しました。もう一度お試しください。', 'Failed to save relationship; please try again.'],
 };
