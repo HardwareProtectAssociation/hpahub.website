@@ -128,6 +128,7 @@ func registerInvitation(app core.App, email, password, confirm, code string, now
 		user = core.NewRecord(collection)
 		user.SetEmail(email)
 		user.Set("role", "member")
+		user.Set("daily_health_enabled", true)
 		user.SetPassword(password)
 		if err := tx.Save(user); err != nil {
 			return err

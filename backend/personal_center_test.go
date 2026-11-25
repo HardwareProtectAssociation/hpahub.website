@@ -606,6 +606,7 @@ func TestProfileDetailsFields(t *testing.T) {
 		"age":           30,
 		"contacts":      []map[string]string{{"type": "email", "value": "member@example.com"}, {"type": "wechat", "value": "member-wechat"}},
 		"activityAreas": []string{"线上", "上海"},
+		"currentStatus": "busy",
 		"identityIds":   ids,
 	})
 	if err != nil {
@@ -619,7 +620,7 @@ func TestProfileDetailsFields(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &updated); err != nil {
 		t.Fatal(err)
 	}
-	if updated.Profile.Gender != "male" || updated.Profile.Age != 30 || len(updated.Profile.Contacts) != 2 || len(updated.Profile.ActivityAreas) != 2 {
+	if updated.Profile.Gender != "male" || updated.Profile.Age != 30 || len(updated.Profile.Contacts) != 2 || len(updated.Profile.ActivityAreas) != 2 || updated.Profile.CurrentStatus != "busy" {
 		t.Fatalf("unexpected details: %+v", updated.Profile)
 	}
 	featured := 0

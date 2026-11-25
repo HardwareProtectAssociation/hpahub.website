@@ -32,6 +32,7 @@ type centerProfile struct {
 	Age           int             `json:"age"`
 	Contacts      []centerContact `json:"contacts"`
 	ActivityAreas []string        `json:"activityAreas"`
+	CurrentStatus string          `json:"currentStatus"`
 }
 
 type centerIdentity struct {
@@ -418,7 +419,7 @@ func bindPersonalCenterRoutes(e *core.ServeEvent) {
 		}
 		input, err := readContentInput(e, map[string]bool{
 			"name": true, "bio": true, "profilePublic": true, "avatar": true, "removeAvatar": true,
-			"gender": true, "personality": true, "age": true, "contacts": true, "activityAreas": true, "identityIds": true,
+			"gender": true, "personality": true, "age": true, "contacts": true, "activityAreas": true, "identityIds": true, "currentStatus": true,
 		})
 		if e.Request.MultipartForm != nil {
 			defer e.Request.MultipartForm.RemoveAll()
@@ -472,6 +473,11 @@ func bindPersonalCenterRoutes(e *core.ServeEvent) {
 		if err != nil {
 			return e.BadRequestError("Invalid profile.", err)
 		}
+		var currentStatus string
+		hasCurrentStatus, err := inputField(input, "currentStatus", &currentStatus)
+		if err != nil {
+			return e.BadRequestError("Invalid profile.", err)
+		}
 		files := input.files["avatar"]
 		if len(files) > 1 || (removeAvatar && len(files) > 0) {
 			return e.BadRequestError("Invalid profile.", nil)
@@ -492,6 +498,13 @@ func bindPersonalCenterRoutes(e *core.ServeEvent) {
 		}
 		if hasPublic {
 			owner.Set("profilePublic", profilePublic)
+		}
+		if hasCurrentStatus {
+			currentStatus = strings.TrimSpace(currentStatus)
+			if currentStatus != "" && currentStatus != "busy" && currentStatus != "free" {
+				return e.BadRequestError("Invalid profile.", nil)
+			}
+			owner.Set("current_status", currentStatus)
 		}
 		if hasGender {
 			gender = strings.TrimSpace(gender)
@@ -946,6 +959,7 @@ func personalCenterData(app core.App, auth *core.Record) (centerResponse, error)
 	response.Profile.Age = owner.GetInt("age")
 	response.Profile.Contacts = parseCenterContacts(owner)
 	response.Profile.ActivityAreas = parseCenterStrings(owner, "activity_areas")
+	response.Profile.CurrentStatus = owner.GetString("current_status")
 	if owner.GetString("avatar") != "" {
 		response.Profile.AvatarURL = contentURL("me", "center", "avatar")
 	}

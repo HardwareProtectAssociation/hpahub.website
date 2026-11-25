@@ -41,6 +41,7 @@
   });
   $: items = Array.isArray(data) ? data : data?.items || [];
   const statusLabels = { ongoing: '进行中', paused: '暂停', terminated: '已中止', completed: '已完成' };
+  const currentStatusLabels = { busy: '忙碌', free: '空闲' };
   function statusLabel(status) { return $t(statusLabels[status] || status); }
   function formatDate(value) {
     if (!value) return '';
@@ -126,7 +127,7 @@
   {:else if error}<p class="message error" role="alert">{$t(error, errorParams)}</p>
   {:else if section === 'community'}
     {#if id}
-      <a href="/community">{$t('返回成员列表')}</a><header class="profile-heading">{#if data.avatarUrl}<img class="avatar" src={data.avatarUrl} alt="" />{:else}<span class="avatar avatar-default" aria-hidden="true"></span>{/if}<div><h1>{data.name}</h1><p>{data.bio}</p></div></header>
+      <a href="/community">{$t('返回成员列表')}</a><header class="profile-heading">{#if data.avatarUrl}<img class="avatar" src={data.avatarUrl} alt="" />{:else}<span class="avatar avatar-default" aria-hidden="true"></span>{/if}<div><h1>{data.name}</h1><p>{data.bio}</p>{#if data.currentStatus}<span class:busy={data.currentStatus === 'busy'} class="public-current-status">{$t('当前状态')}：{$t(currentStatusLabels[data.currentStatus] || data.currentStatus)}</span>{/if}</div></header>
       {#if data.identities?.length}<div class="member-identities">{#each data.identities as identity}<span class="chip">{$t(identity.category === 'main' ? '主力职业' : '辅助职业')} · {identity.name}</span>{/each}</div>{/if}
       {#if data.cards?.length}<div class="public-grid">{#each data.cards as card}<article class="public-card"><h2>{card.title}</h2><p>{card.text}</p><div class="image-grid">{#each card.imageUrls || [] as url}<a href={url} target="_blank" rel="noreferrer"><img src={url} alt={card.title} loading="lazy" /></a>{/each}</div></article>{/each}</div>{:else}<p>{$t('暂无公开卡片。')}</p>{/if}
       <nav class="profile-tabs" aria-label={$t('公开资料')}>
@@ -352,6 +353,8 @@
   .public-skill-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
   .meta { color: #818b7f; font-size: 12px; }
   .member-identities { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 20px; }
+  .public-current-status { display: inline-block; margin-top: 8px; padding: 2px 9px; border-radius: 999px; background: #eef3e8; color: #4d6448; font-size: 12px; }
+  .public-current-status.busy { background: #fff3df; color: #7a4b12; }
   .chip { display: inline-block; padding: 4px 10px; border: 1px solid #c8d4c0; border-radius: 999px; background: #eef3e8; color: #3f5d3a; font-size: 12px; }
   .profile-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 18px 0 22px; padding-bottom: 8px; border-bottom: 1px solid #dcded4; }
   .profile-tabs button { border: 1px solid transparent; background: none; padding: 7px 12px; color: #52695a; font-size: 13px; }

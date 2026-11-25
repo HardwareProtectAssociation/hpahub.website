@@ -18,6 +18,7 @@
   let formGender = '';
   let formPersonality = '';
   let formAge = '';
+  let formCurrentStatus = '';
   let formContacts = [];
   let formActivityAreas = [];
   let formIdentityIds = [];
@@ -31,9 +32,14 @@
   let generatingInvitation = false;
   let inviteCount = 1;
   let copiedCode = '';
+  let health = null;
+  let healthError = '';
+  let healthSaving = false;
 
   const genderLabels = { male: '男', female: '女', nonbinary: '非二元', private: '不愿透露' };
   const genderOptions = Object.entries(genderLabels);
+  const currentStatusLabels = { busy: '忙碌', free: '空闲' };
+  const moodLabels = { great: '很好', good: '不错', okay: '一般', low: '低落', bad: '很差' };
   const contactTypes = [
     { value: 'email', label: '邮箱' },
     { value: 'wechat', label: '微信' },
@@ -97,6 +103,7 @@
     formGender = data?.profile?.gender || '';
     formPersonality = data?.profile?.personality || '';
     formAge = data?.profile?.age || '';
+    formCurrentStatus = data?.profile?.currentStatus || '';
     formContacts = (data?.profile?.contacts || []).map((contact) => ({ ...contact }));
     formActivityAreas = [...(data?.profile?.activityAreas || [])];
     formIdentityIds = (data?.identities || []).filter((identity) => identity.featured).map((identity) => identity.id);
@@ -181,6 +188,7 @@
       body.set('gender', formGender);
       body.set('personality', formPersonality);
       body.set('age', String(formAge || 0));
+      body.set('currentStatus', formCurrentStatus);
       body.set('contacts', JSON.stringify(formContacts.filter((contact) => contact.value.trim())));
       body.set('activityAreas', JSON.stringify(formActivityAreas));
       body.set('identityIds', JSON.stringify(formIdentityIds));
@@ -285,11 +293,50 @@
     return value ? new Date(value * 1000).toLocaleString() : '—';
   }
 
+  async function loadHealth() {
+    try {
+      const response = await fetch('/api/hpahub/me/health', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        cache: 'no-store',
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.message || `请求失败（${response.status}）`);
+      health = body;
+    } catch (err) {
+      healthError = err.message || String(err);
+    }
+  }
+
+  async function toggleHealth() {
+    if (!health) return;
+    healthSaving = true;
+    healthError = '';
+    notice = '';
+    try {
+      const response = await fetch('/api/hpahub/me/health/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ enabled: !health.enabled }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.message || '保存失败，请重试。');
+      health = { ...health, enabled: body.enabled };
+      notice = body.enabled ? '每日健康询问已开启。' : '每日健康询问已关闭。';
+    } catch (err) {
+      healthError = err.message || String(err);
+    } finally {
+      healthSaving = false;
+    }
+  }
+
   onMount(async () => {
+    window.addEventListener('hpahub:health-updated', loadHealth);
     await load();
     await loadInvitations();
+    await loadHealth();
   });
   onDestroy(() => {
+    window.removeEventListener('hpahub:health-updated', loadHealth);
     if (avatarSrc) URL.revokeObjectURL(avatarSrc);
     if (avatarPreview) URL.revokeObjectURL(avatarPreview);
   });
@@ -325,6 +372,7 @@
         {/if}
         {#if data.profile.gender || data.profile.age || data.profile.activityAreas?.length}
           <p class="profile-meta">
+            {#if data.profile.currentStatus}<span class:busy={data.profile.currentStatus === 'busy'} class="current-status">{$t('当前状态')}：{$t(currentStatusLabels[data.profile.currentStatus] || data.profile.currentStatus)}</span>{/if}
             {#if data.profile.gender}<span>{$t('性别')}：{$t(genderLabels[data.profile.gender] || data.profile.gender)}</span>{/if}
             {#if data.profile.age}<span>{$t('年龄')}：{data.profile.age}</span>{/if}
             {#if data.profile.activityAreas?.length}<span>{$t('活动范围')}：{data.profile.activityAreas.join('、')}</span>{/if}
@@ -381,6 +429,7 @@
           <label class="edit-field">{$t('年龄')}<input type="number" min="1" max="120" bind:value={formAge} placeholder={$t('可不填')} /></label>
         </div>
         <label class="edit-field">{$t('性格')}<input bind:value={formPersonality} maxlength="200" placeholder={$t('例如：偏内向，喜欢把复杂问题拆成可执行的小步骤')} /></label>
+        <label class="edit-field">{$t('当前状态')}<select bind:value={formCurrentStatus}><option value="">{$t('未设置')}</option><option value="busy">{$t('忙碌')}</option><option value="free">{$t('空闲')}</option></select></label>
         <fieldset class="edit-block">
           <legend>{$t('联系方式（最多 5 项）')}</legend>
           {#each formContacts as contact, index}
@@ -430,6 +479,31 @@
 
     {#if !data.profile.member}
       <p class="message">{$t('当前为平台超级管理员账号，个人中心不包含会员资料；请使用会员账号查看完整信息。')}</p>
+    {/if}
+
+    {#if data.profile.member && health}
+      <section class="center-section wide health-summary" aria-labelledby="center-health">
+        <div class="section-head">
+          <div><h2 id="center-health">{$t('每日健康评估')}</h2><p>{$t('每天询问一次，可以随时关闭。')}</p></div>
+          <button type="button" class="link-button" on:click={toggleHealth} disabled={healthSaving}>{health.enabled ? $t('关闭每日询问') : $t('开启每日询问')}</button>
+        </div>
+        {#if healthError}<p class="message error" role="alert">{$t(healthError)}</p>{/if}
+        {#if health.enabled}
+          {#if health.checkedInToday && health.today}
+            <div class="health-today">
+              <span>{$t('今日心情')}：{$t(moodLabels[health.today.mood] || health.today.mood)}</span>
+              <span>{health.today.rested ? $t('已休息') : $t('未休息')}</span>
+              <span>{health.today.exercised ? $t('已锻炼') : $t('未锻炼')}</span>
+              <span>{health.today.ateOnTime ? $t('按时吃饭') : $t('未按时吃饭')}</span>
+            </div>
+            {#if health.today.note}<p class="health-note-text">{health.today.note}</p>{/if}
+          {:else}
+            <p class="health-status">{$t('今天还没有填写健康评估。')}</p>
+          {/if}
+        {:else}
+          <p class="health-status">{$t('每日健康询问已关闭。')}</p>
+        {/if}
+      </section>
     {/if}
 
     <div class="stat-grid">
@@ -623,6 +697,12 @@
   .center-personality { margin: 0 0 8px; color: #52695a; font-size: 13px; max-width: 70ch; }
   .center-contacts { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0 0 10px; color: #52695a; font-size: 13px; }
   .center-contacts strong { color: #2f4534; }
+  .current-status { padding: 2px 8px; border-radius: 999px; background: #eef3e8; color: #4d6448; }
+  .current-status.busy { background: #fff3df; color: #7a4b12; }
+  .health-summary { margin-bottom: 20px; }
+  .health-today { display: flex; flex-wrap: wrap; gap: 8px 16px; color: #52695a; font-size: 13px; }
+  .health-status { margin: 0; color: #818b7f; font-size: 13px; }
+  .health-note-text { margin: 10px 0 0; color: #6f7b6d; font-size: 13px; }
   .chips { display: flex; flex-wrap: wrap; gap: 8px; }
   .chip { display: inline-block; padding: 4px 10px; border: 1px solid #c8d4c0; border-radius: 999px; background: #eef3e8; color: #3f5d3a; font-size: 12px; }
   .chip.small { padding: 2px 8px; font-size: 11px; }

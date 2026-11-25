@@ -53,7 +53,7 @@ func requireContentRole(e *core.RequestEvent, admin, userOnly bool) error {
 func contentURL(parts ...string) string { for i := range parts { parts[i] = url.PathEscape(parts[i]) }; return "/api/hpahub/" + strings.Join(parts, "/") }
 func profileData(r *core.Record, public bool) map[string]any {
  avatar := ""; if r.GetString("avatar") != "" { if public { avatar = contentURL("members", r.Id, "avatar") } else { avatar = contentURL("me", "profile", "avatar") } }
- return map[string]any{"id":r.Id,"name":r.GetString("name"),"bio":r.GetString("bio"),"profilePublic":r.GetBool("profilePublic"),"avatarUrl":avatar}
+ return map[string]any{"id":r.Id,"name":r.GetString("name"),"bio":r.GetString("bio"),"profilePublic":r.GetBool("profilePublic"),"avatarUrl":avatar,"currentStatus":r.GetString("current_status")}
 }
 func contentData(r *core.Record, base []string) map[string]any {
  names := r.GetStringSlice("images"); if names == nil { names = []string{} }; urls := make([]string, 0, len(names))
