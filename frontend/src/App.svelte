@@ -1,12 +1,13 @@
 <script>
   import { onMount } from 'svelte';
   import { locale, languages, t } from './i18n.js';
-  import Gpu from './Gpu.svelte';
+  import Hardware from './Hardware.svelte';
   import Warehouse from './Warehouse.svelte';
   import PublicPages from './PublicPages.svelte';
   import Editors from './Editors.svelte';
 
   const pathname = location.pathname.replace(/\/+$/, '') || '/';
+  if (pathname === '/gpu') location.replace('/hardware');
 
   let token = sessionStorage.getItem('authToken') || '';
   let collection = sessionStorage.getItem('authCollection') || '';
@@ -288,7 +289,7 @@
     <a class="brand" href="/" aria-label={$t('HPA Hub 首页')}><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span>HPA<span class="brand-light">HUB</span></span></a>
     <nav id="main-navigation" class="topbar-right" aria-label={$t('主导航')}>
       <a class="text-button" href="/" aria-current={pathname === '/' && page === 'home' ? 'page' : undefined}>{$t('首页')}</a>
-      <a class="text-button" href="/gpu">{$t('显卡库')}</a>
+      <a class="text-button" href="/hardware">{$t('硬件数据库')}</a>
       <a class="text-button" href="/warehouse">{$t('仓库')}</a>
       <a class="text-button" href="/community">{$t('成员')}</a>
       <a class="text-button" href="/showcase">{$t('项目展示')}</a>
@@ -312,8 +313,8 @@
 
   {#if checking}
     <main class="dashboard"><p role="status">{$t('正在验证登录状态…')}</p></main>
-  {:else if pathname === '/gpu'}
-    <Gpu {token} {role} />
+  {:else if pathname === '/hardware'}
+    <Hardware {token} {role} />
   {:else if pathname === '/warehouse'}
     {#if token && ['member', 'admin', 'octopus'].includes(role)}
       <Warehouse {token} {role} />

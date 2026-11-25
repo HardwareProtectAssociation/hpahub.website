@@ -1,7 +1,7 @@
 export default {
   '硬件保护协会': ['硬體保護協會', 'ハードウェア保護協会', 'Hardware Protection Association'],
   '合理规范地使用硬件，避免硬件遭受不必要的破坏或恶意损坏。': ['合理規範地使用硬體，避免硬體遭受不必要的破壞或惡意損壞。', 'ハードウェアを適切に使用し、不必要な破壊や悪意ある損傷を防ぎます。', 'Use hardware responsibly and prevent unnecessary destruction or malicious damage.'],
-  '浏览显卡库': ['瀏覽顯示卡庫', 'グラフィックカード一覧を見る', 'Browse graphics cards'],
+  '浏览硬件数据库': ['瀏覽硬體資料庫', 'ハードウェアデータベースを見る', 'Browse hardware database'],
   '认识成员': ['認識成員', 'メンバーを知る', 'Meet members'],
   '项目展示': ['專案展示', 'プロジェクト紹介', 'Showcase'],
   '协会简介': ['協會簡介', '協会について', 'About the association'],

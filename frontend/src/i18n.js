@@ -1,11 +1,11 @@
 import { derived, writable } from 'svelte/store';
 import app from './i18n-app.js';
-import gpu from './i18n-gpu.js';
+import hardware from './i18n-hardware.js';
 import warehouse from './i18n-warehouse.js';
 import publicPages from './i18n-public.js';
 
 export const languages = { 'zh-CN': '简体中文', 'zh-TW': '繁體中文', ja: '日本語', en: 'English' };
-const translations = { ...app, ...gpu, ...warehouse, ...publicPages };
+const translations = { ...app, ...hardware, ...warehouse, ...publicPages };
 const simplifiedErrors = {
   'Invalid credentials.': '凭据无效。',
   'Authentication failed.': '认证失败。',
