@@ -497,6 +497,73 @@ func TestPublicMemberSkills(t *testing.T) {
 	}
 }
 
+func TestPersonalCenterSkillCRUD(t *testing.T) {
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+
+	member := centerTestUser(t, app, "skill-crud@example.com", "member")
+	router, err := apis.NewRouter(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bindPersonalCenterRoutes(&core.ServeEvent{App: app, Router: router})
+	mux, err := router.BuildMux()
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := member.NewAuthToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := func(method, path, body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, path, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+token)
+		response := httptest.NewRecorder()
+		mux.ServeHTTP(response, req)
+		return response
+	}
+
+	response := request("POST", "/api/hpahub/me/skills", `{"name":"页面作品技能","proficiency":"略懂一二","abilityNote":"说明","links":["https://example.com/a"]}`)
+	if response.Code != http.StatusOK {
+		t.Fatalf("create status = %d: %s", response.Code, response.Body.String())
+	}
+	var created struct {
+		UserSkillID string `json:"userSkillId"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &created); err != nil || created.UserSkillID == "" {
+		t.Fatalf("create response: %s", response.Body.String())
+	}
+	path := "/api/hpahub/me/skills/" + created.UserSkillID
+	response = request("PATCH", path, `{"name":"页面作品技能改","proficiency":"非常熟练","abilityNote":"新说明","links":["https://example.com/b"]}`)
+	if response.Code != http.StatusOK {
+		t.Fatalf("update status = %d: %s", response.Code, response.Body.String())
+	}
+	data, err := personalCenterData(app, member)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(data.Skills) != 1 || data.Skills[0].Name != "页面作品技能改" || len(data.Skills[0].Links) != 1 || data.Skills[0].Links[0] != "https://example.com/b" {
+		t.Fatalf("unexpected skill: %+v", data.Skills)
+	}
+	if response := request("PATCH", path, `{"name":"x","proficiency":"非常熟练","links":["javascript:alert(1)"]}`); response.Code != http.StatusBadRequest {
+		t.Fatalf("invalid link status = %d, want 400", response.Code)
+	}
+	if response := request("DELETE", path, ""); response.Code != http.StatusOK {
+		t.Fatalf("delete status = %d: %s", response.Code, response.Body.String())
+	}
+	data, err = personalCenterData(app, member)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(data.Skills) != 0 {
+		t.Fatalf("skill not deleted: %+v", data.Skills)
+	}
+}
+
 func centerTestUser(t *testing.T, app core.App, email, role string) *core.Record {
 	t.Helper()
 	record := centerTestRecord(t, app, "users")

@@ -75,11 +75,14 @@ func publicMemberSkills(e *core.RequestEvent, member *core.Record) ([]map[string
  for _, row := range rows {
   skill := byID[row.GetString("skill_id")]; if skill == nil { continue }
   count, liked, err := centerSkillLikeStats(e.App, row.Id, viewer, member.Id); if err != nil { return nil, err }
+  imageNames := row.GetStringSlice("images"); images := make([]string, 0, len(imageNames)); for _, image := range imageNames { images = append(images, contentURL("skills", row.Id, "images", image)) }
   result = append(result, map[string]any{
    "userSkillId": row.Id,
    "name": skill.GetString("name"),
    "proficiency": centerSkillProficiency(row.GetString("proficiency")),
    "abilityNote": row.GetString("ability_note"),
+   "images": images,
+   "links": centerStrings(row.GetStringSlice("links")),
    "likeCount": count,
    "likeTier": centerLikeTier(count),
    "likedByMe": liked,

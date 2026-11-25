@@ -3,6 +3,7 @@
   import { locale, languages, t } from './i18n.js';
   import Hardware from './Hardware.svelte';
   import PersonalCenter from './PersonalCenter.svelte';
+  import SkillEditor from './SkillEditor.svelte';
   import PublicPages from './PublicPages.svelte';
   import Editors from './Editors.svelte';
 
@@ -311,6 +312,12 @@
     <main class="dashboard"><p role="status">{$t('正在验证登录状态…')}</p></main>
   {:else if pathname === '/hardware'}
     <Hardware {token} {role} />
+  {:else if pathname === '/me/skills'}
+    {#if token}
+      <SkillEditor {token} />
+    {:else}
+      <main class="dashboard"><h1>{$t('技能管理')}</h1><p>{$t('请先登录后管理技能。')}</p><a href="/sign-in">{$t('登录')}</a></main>
+    {/if}
   {:else if pathname === '/me'}
     {#if token}
       <PersonalCenter {token} />

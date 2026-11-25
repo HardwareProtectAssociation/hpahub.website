@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"errors"
+	"net/url"
 	"sort"
 	"strings"
 	"unicode/utf8"
@@ -29,15 +30,24 @@ type centerIdentity struct {
 }
 
 type centerSkill struct {
-	ID          string `json:"id"`
-	UserSkillID string `json:"userSkillId"`
-	Name        string `json:"name"`
-	Category    string `json:"category"`
-	Proficiency string `json:"proficiency"`
-	AbilityNote string `json:"abilityNote"`
-	LikeCount   int    `json:"likeCount"`
-	LikeTier    int    `json:"likeTier"`
-	LikedByMe   bool   `json:"likedByMe"`
+	ID          string   `json:"id"`
+	UserSkillID string   `json:"userSkillId"`
+	Name        string   `json:"name"`
+	Category    string   `json:"category"`
+	Proficiency string   `json:"proficiency"`
+	AbilityNote string   `json:"abilityNote"`
+	Images      []string `json:"images"`
+	Links       []string `json:"links"`
+	LikeCount   int      `json:"likeCount"`
+	LikeTier    int      `json:"likeTier"`
+	LikedByMe   bool     `json:"likedByMe"`
+}
+
+type centerSkillPayload struct {
+	Name        string   `json:"name"`
+	Proficiency string   `json:"proficiency"`
+	AbilityNote string   `json:"abilityNote"`
+	Links       []string `json:"links"`
 }
 
 type centerSkillInput struct {
@@ -124,6 +134,62 @@ func validCenterSkillProficiency(value string) bool {
 		}
 	}
 	return false
+}
+
+func normalizeCenterSkillPayload(input centerSkillPayload) (centerSkillPayload, bool) {
+	name := strings.TrimSpace(input.Name)
+	if name == "" || utf8.RuneCountInString(name) > 80 || !validCenterSkillProficiency(input.Proficiency) || utf8.RuneCountInString(input.AbilityNote) > 500 {
+		return input, false
+	}
+	if len(input.Links) > 5 {
+		return input, false
+	}
+	links := make([]string, 0, len(input.Links))
+	seen := map[string]bool{}
+	for _, raw := range input.Links {
+		link := strings.TrimSpace(raw)
+		if link == "" || seen[link] {
+			continue
+		}
+		parsed, err := url.Parse(link)
+		if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") || utf8.RuneCountInString(link) > 500 {
+			return input, false
+		}
+		seen[link] = true
+		links = append(links, link)
+	}
+	input.Name = name
+	input.Links = links
+	return input, true
+}
+
+func findOrCreateCenterSkill(app core.App, name string) (*core.Record, error) {
+	skill, err := app.FindFirstRecordByFilter("skills", "name = {:name}", dbx.Params{"name": name})
+	if errors.Is(err, sql.ErrNoRows) {
+		collection, err := app.FindCollectionByNameOrId("skills")
+		if err != nil {
+			return nil, err
+		}
+		skill = core.NewRecord(collection)
+		skill.Set("name", name)
+		skill.Set("category", "自定义")
+		if err := app.Save(skill); err != nil {
+			return nil, err
+		}
+		return skill, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return skill, nil
+}
+
+func centerOwnedSkill(app core.App, ownerID, id string) (*core.Record, error) {
+	row, err := app.FindRecordById("user_skills", id)
+	if err != nil || row.GetString("user_id") != ownerID {
+		return nil, sql.ErrNoRows
+	}
+	return row, nil
 }
 
 func centerLikeTier(count int) int {
@@ -306,6 +372,189 @@ func bindPersonalCenterRoutes(e *core.ServeEvent) {
 			return e.InternalServerError("Unable to reload personal center.", err)
 		}
 		return e.JSON(200, data)
+	})
+	e.Router.POST("/api/hpahub/me/skills", func(e *core.RequestEvent) error {
+		noCache(e)
+		if e.Auth == nil {
+			return e.UnauthorizedError("Authentication required.", nil)
+		}
+		owner, member, err := personalCenterOwner(e.App, e.Auth)
+		if err != nil {
+			return e.InternalServerError("Unable to load skills.", err)
+		}
+		if !member {
+			return e.ForbiddenError("No member profile is linked to this account.", nil)
+		}
+		var input centerSkillPayload
+		if err := e.BindBody(&input); err != nil {
+			return e.BadRequestError("Invalid skill.", err)
+		}
+		input, ok := normalizeCenterSkillPayload(input)
+		if !ok {
+			return e.BadRequestError("Invalid skill.", nil)
+		}
+		skill, err := findOrCreateCenterSkill(e.App, input.Name)
+		if err != nil {
+			return e.InternalServerError("Unable to save skill.", err)
+		}
+		if _, err := e.App.FindFirstRecordByFilter("user_skills", "user_id = {:user} && skill_id = {:skill}", dbx.Params{"user": owner.Id, "skill": skill.Id}); err == nil {
+			return e.BadRequestError("Skill already exists.", nil)
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return e.InternalServerError("Unable to save skill.", err)
+		}
+		collection, err := e.App.FindCollectionByNameOrId("user_skills")
+		if err != nil {
+			return e.InternalServerError("Unable to save skill.", err)
+		}
+		row := core.NewRecord(collection)
+		row.Set("user_id", owner.Id)
+		row.Set("skill_id", skill.Id)
+		row.Set("proficiency", input.Proficiency)
+		row.Set("ability_note", input.AbilityNote)
+		row.Set("links", input.Links)
+		if err := e.App.Save(row); err != nil {
+			return e.InternalServerError("Unable to save skill.", err)
+		}
+		return e.JSON(200, map[string]any{"ok": true, "userSkillId": row.Id})
+	})
+	e.Router.PATCH("/api/hpahub/me/skills/{id}", func(e *core.RequestEvent) error {
+		noCache(e)
+		if e.Auth == nil {
+			return e.UnauthorizedError("Authentication required.", nil)
+		}
+		owner, member, err := personalCenterOwner(e.App, e.Auth)
+		if err != nil {
+			return e.InternalServerError("Unable to load skills.", err)
+		}
+		if !member {
+			return e.ForbiddenError("No member profile is linked to this account.", nil)
+		}
+		row, err := centerOwnedSkill(e.App, owner.Id, e.Request.PathValue("id"))
+		if errors.Is(err, sql.ErrNoRows) {
+			return e.NotFoundError("Not found.", nil)
+		} else if err != nil {
+			return e.InternalServerError("Unable to save skill.", err)
+		}
+		var input centerSkillPayload
+		if err := e.BindBody(&input); err != nil {
+			return e.BadRequestError("Invalid skill.", err)
+		}
+		input, ok := normalizeCenterSkillPayload(input)
+		if !ok {
+			return e.BadRequestError("Invalid skill.", nil)
+		}
+		skill, err := findOrCreateCenterSkill(e.App, input.Name)
+		if err != nil {
+			return e.InternalServerError("Unable to save skill.", err)
+		}
+		if skill.Id != row.GetString("skill_id") {
+			if _, err := e.App.FindFirstRecordByFilter("user_skills", "user_id = {:user} && skill_id = {:skill}", dbx.Params{"user": owner.Id, "skill": skill.Id}); err == nil {
+				return e.BadRequestError("Skill already exists.", nil)
+			} else if !errors.Is(err, sql.ErrNoRows) {
+				return e.InternalServerError("Unable to save skill.", err)
+			}
+			row.Set("skill_id", skill.Id)
+		}
+		row.Set("proficiency", input.Proficiency)
+		row.Set("ability_note", input.AbilityNote)
+		row.Set("links", input.Links)
+		if err := e.App.Save(row); err != nil {
+			return e.InternalServerError("Unable to save skill.", err)
+		}
+		return e.JSON(200, map[string]any{"ok": true, "userSkillId": row.Id})
+	})
+	e.Router.DELETE("/api/hpahub/me/skills/{id}", func(e *core.RequestEvent) error {
+		noCache(e)
+		if e.Auth == nil {
+			return e.UnauthorizedError("Authentication required.", nil)
+		}
+		owner, member, err := personalCenterOwner(e.App, e.Auth)
+		if err != nil {
+			return e.InternalServerError("Unable to load skills.", err)
+		}
+		if !member {
+			return e.ForbiddenError("No member profile is linked to this account.", nil)
+		}
+		row, err := centerOwnedSkill(e.App, owner.Id, e.Request.PathValue("id"))
+		if errors.Is(err, sql.ErrNoRows) {
+			return e.NotFoundError("Not found.", nil)
+		} else if err != nil {
+			return e.InternalServerError("Unable to delete skill.", err)
+		}
+		if err := e.App.Delete(row); err != nil {
+			return e.InternalServerError("Unable to delete skill.", err)
+		}
+		return e.JSON(200, map[string]any{"ok": true})
+	})
+	e.Router.POST("/api/hpahub/me/skills/{id}/images", func(e *core.RequestEvent) error {
+		noCache(e)
+		if e.Auth == nil {
+			return e.UnauthorizedError("Authentication required.", nil)
+		}
+		owner, member, err := personalCenterOwner(e.App, e.Auth)
+		if err != nil {
+			return e.InternalServerError("Unable to load skills.", err)
+		}
+		if !member {
+			return e.ForbiddenError("No member profile is linked to this account.", nil)
+		}
+		row, err := centerOwnedSkill(e.App, owner.Id, e.Request.PathValue("id"))
+		if errors.Is(err, sql.ErrNoRows) {
+			return e.NotFoundError("Not found.", nil)
+		} else if err != nil {
+			return e.InternalServerError("Unable to upload images.", err)
+		}
+		input, err := readContentInput(e, map[string]bool{"images": true})
+		if e.Request.MultipartForm != nil {
+			defer e.Request.MultipartForm.RemoveAll()
+		}
+		if err != nil {
+			return e.BadRequestError("Invalid images.", err)
+		}
+		files := input.files["images"]
+		if len(files) == 0 {
+			return e.BadRequestError("Invalid images.", nil)
+		}
+		if len(row.GetStringSlice("images"))+len(files) > 4 {
+			return e.BadRequestError("Too many images.", nil)
+		}
+		row.Set("images+", files)
+		if err := e.App.Save(row); err != nil {
+			return e.InternalServerError("Unable to upload images.", err)
+		}
+		return e.JSON(200, map[string]any{"ok": true})
+	})
+	e.Router.DELETE("/api/hpahub/me/skills/{id}/images/{file}", func(e *core.RequestEvent) error {
+		noCache(e)
+		if e.Auth == nil {
+			return e.UnauthorizedError("Authentication required.", nil)
+		}
+		owner, member, err := personalCenterOwner(e.App, e.Auth)
+		if err != nil {
+			return e.InternalServerError("Unable to load skills.", err)
+		}
+		if !member {
+			return e.ForbiddenError("No member profile is linked to this account.", nil)
+		}
+		row, err := centerOwnedSkill(e.App, owner.Id, e.Request.PathValue("id"))
+		if errors.Is(err, sql.ErrNoRows) {
+			return e.NotFoundError("Not found.", nil)
+		} else if err != nil {
+			return e.InternalServerError("Unable to delete image.", err)
+		}
+		row.Set("images-", e.Request.PathValue("file"))
+		if err := e.App.Save(row); err != nil {
+			return e.InternalServerError("Unable to delete image.", err)
+		}
+		return e.JSON(200, map[string]any{"ok": true})
+	})
+	e.Router.GET("/api/hpahub/skills/{id}/images/{file}", func(e *core.RequestEvent) error {
+		noCache(e)
+		row, err := e.App.FindRecordById("user_skills", e.Request.PathValue("id"))
+		if err != nil {
+			return e.NotFoundError("Not found.", nil)
+		}
+		return serveContentFile(e, row, "images", e.Request.PathValue("file"))
 	})
 	e.Router.POST("/api/hpahub/skills/{id}/like", func(e *core.RequestEvent) error {
 		noCache(e)
@@ -511,6 +760,11 @@ func personalCenterData(app core.App, auth *core.Record) (centerResponse, error)
 		if err != nil {
 			return response, err
 		}
+		imageNames := row.GetStringSlice("images")
+		images := make([]string, 0, len(imageNames))
+		for _, image := range imageNames {
+			images = append(images, contentURL("skills", row.Id, "images", image))
+		}
 		response.Skills = append(response.Skills, centerSkill{
 			ID:          skill.Id,
 			UserSkillID: row.Id,
@@ -518,6 +772,8 @@ func personalCenterData(app core.App, auth *core.Record) (centerResponse, error)
 			Category:    skill.GetString("category"),
 			Proficiency: centerSkillProficiency(row.GetString("proficiency")),
 			AbilityNote: row.GetString("ability_note"),
+			Images:      images,
+			Links:       centerStrings(row.GetStringSlice("links")),
 			LikeCount:   likeCount,
 			LikeTier:    centerLikeTier(likeCount),
 			LikedByMe:   likedByMe,

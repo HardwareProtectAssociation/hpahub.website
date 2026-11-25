@@ -75,6 +75,20 @@
               <li class="public-skill">
                 <div class="public-skill-head"><strong>{skill.name}</strong>{#if skill.proficiency}<span class="meta">{$t('熟练程度')}：{$t(skill.proficiency)}</span>{/if}</div>
                 {#if skill.abilityNote}<p>{skill.abilityNote}</p>{/if}
+                {#if skill.images?.length}
+                  <div class="public-skill-images">
+                    {#each skill.images as url}
+                      <a href={url} target="_blank" rel="noreferrer"><img src={url} alt={skill.name} loading="lazy" /></a>
+                    {/each}
+                  </div>
+                {/if}
+                {#if skill.links?.length}
+                  <ul class="public-skill-links">
+                    {#each skill.links as link}
+                      <li><a href={link} target="_blank" rel="noreferrer">{link}</a></li>
+                    {/each}
+                  </ul>
+                {/if}
                 <div class="public-skill-foot">
                   {#if skill.canEndorse}
                     <button type="button" class:liked={skill.likedByMe} class="like-button" on:click={() => endorseSkill(skill)} aria-pressed={skill.likedByMe} aria-label={$t(skill.likedByMe ? '取消点赞' : '点赞')}>
@@ -176,6 +190,11 @@
   .public-skill-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 16px; margin: 0; padding: 0; list-style: none; }
   .public-skill { padding: 16px; border: 1px solid #dcded4; background: #fafbf7; }
   .public-skill-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+  .public-skill-images { display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 8px; margin-top: 10px; }
+  .public-skill-images img { display: block; width: 100%; height: 80px; object-fit: cover; border: 1px solid #dcded4; }
+  .public-skill-links { margin: 8px 0 0; padding-left: 16px; font-size: 12px; }
+  .public-skill-links li { margin: 2px 0; overflow-wrap: anywhere; }
+  .public-skill-links a { color: #345d3d; }
   .public-skill p { margin: 6px 0; color: #6f7b6d; font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
   .public-skill-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
   .meta { color: #818b7f; font-size: 12px; }
