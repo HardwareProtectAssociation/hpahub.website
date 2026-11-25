@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tests"
 )
@@ -100,8 +101,53 @@ func TestCoCreationSchemaCollections(t *testing.T) {
 	if got := coCount(t, app, "skills"); got != len(coSkillSeeds) {
 		t.Errorf("skill seeds = %d, want %d", got, len(coSkillSeeds))
 	}
-	if got := coCount(t, app, "career_level_thresholds"); got != len(coIdentitySeeds)*len(coCareerLevelSeeds) {
-		t.Errorf("career threshold seeds = %d, want %d", got, len(coIdentitySeeds)*len(coCareerLevelSeeds))
+	if got := coCount(t, app, "career_level_thresholds"); got != len(coIdentitySeeds)*coCareerLevelCap {
+		t.Errorf("career threshold seeds = %d, want %d", got, len(coIdentitySeeds)*coCareerLevelCap)
+	}
+}
+
+func TestCareerLevelCurve(t *testing.T) {
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+
+	identity, err := app.FindFirstRecordByFilter("collaboration_identities", "category='main'")
+	if err != nil {
+		t.Fatal(err)
+	}
+	thresholds, err := app.FindRecordsByFilter(
+		"career_level_thresholds",
+		"career_identity_id = {:identity}",
+		"level_number",
+		0,
+		0,
+		dbx.Params{"identity": identity.Id},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(thresholds) != coCareerLevelCap {
+		t.Fatalf("thresholds = %d, want %d", len(thresholds), coCareerLevelCap)
+	}
+	previous := -1
+	for index, threshold := range thresholds {
+		level := threshold.GetInt("level_number")
+		xp := threshold.GetInt("minimum_total_xp")
+		if level != index+1 {
+			t.Fatalf("level at index %d = %d", index, level)
+		}
+		if xp != 50*level*(level-1) {
+			t.Fatalf("level %d xp = %d, want %d", level, xp, 50*level*(level-1))
+		}
+		if xp <= previous {
+			t.Fatalf("level %d xp is not increasing", level)
+		}
+		previous = xp
+	}
+	if got := thresholds[len(thresholds)-1].GetInt("minimum_total_xp"); got != 495000 {
+		t.Fatalf("level %d xp = %d, want 495000", coCareerLevelCap, got)
 	}
 }
 

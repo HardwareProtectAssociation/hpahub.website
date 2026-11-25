@@ -48,6 +48,12 @@
     return Math.max(0, Math.min(100, Math.round(((badge.totalXp - badge.levelMinXp) / span) * 100)));
   }
 
+  function milestones(badge) {
+    const list = [];
+    for (let level = 10; level <= (badge.maxLevel || 0); level += 10) list.push(level);
+    return list;
+  }
+
   onMount(load);
   onDestroy(() => {
     if (avatarSrc) URL.revokeObjectURL(avatarSrc);
@@ -151,7 +157,11 @@
 
       <section class="center-section" aria-labelledby="center-badges">
         <div class="section-head">
-          <div><h2 id="center-badges">{$t('职业徽章')}</h2><p>{$t('按实际职业贡献累计的经验与等级。')}</p></div>
+          <div>
+            <h2 id="center-badges">{$t('职业徽章')}</h2>
+            <p>{$t('按实际职业贡献累计的经验与等级。')}</p>
+            <p class="badge-hint">{$t('每 10 级一个徽章，当前为占位样式。')}</p>
+          </div>
         </div>
         {#if data.badges.length}
           <ul class="badge-list">
@@ -167,6 +177,11 @@
                   {:else}
                     <small>{$t('已达到当前最高等级')}</small>
                   {/if}
+                  <div class="milestones" aria-label={$t('徽章占位')}>
+                    {#each milestones(badge) as milestone}
+                      <span class:earned={badge.level >= milestone} class="milestone" title={`Lv.${milestone} ${$t('徽章占位')}`}>{milestone}</span>
+                    {/each}
+                  </div>
                 </div>
               </li>
             {/each}
@@ -251,6 +266,10 @@
   .badge-body { flex: 1; min-width: 0; }
   .badge-body p { margin: 2px 0 6px; color: #6f7b6d; font-size: 13px; }
   .badge-body small { color: #818b7f; font-size: 12px; }
+  .badge-hint { margin: 6px 0 0 !important; font-size: 12px !important; color: #8b9587 !important; }
+  .milestones { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+  .milestone { display: grid; width: 18px; height: 18px; place-items: center; border: 1px dashed #b9c3b3; border-radius: 50%; color: #9aa596; font-size: 9px; line-height: 1; }
+  .milestone.earned { border-style: solid; border-color: #6f9661; background: #e3eddd; color: #3f5d3a; }
   .progress { height: 6px; margin: 8px 0 4px; background: #e6e9df; }
   .progress span { display: block; height: 100%; background: #6f9661; }
   .skill-card { padding-top: 12px; border-top: 1px solid #e6e9df; }

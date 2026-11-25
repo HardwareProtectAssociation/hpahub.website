@@ -132,7 +132,7 @@ func TestPersonalCenterData(t *testing.T) {
 		t.Fatalf("unexpected badges: %+v", data.Badges)
 	}
 	badge := data.Badges[0]
-	if badge.Level != 2 || badge.TotalXP != 120 || badge.LevelMinXP != 100 || badge.NextLevelXP != 300 {
+	if badge.Level != 2 || badge.MaxLevel != 100 || badge.TotalXP != 120 || badge.LevelMinXP != 100 || badge.NextLevelXP != 300 {
 		t.Fatalf("unexpected badge values: %+v", badge)
 	}
 }

@@ -95,7 +95,13 @@ var coSkillSeeds = []coSkillSeed{
 	{"资源对接", "支持"},
 }
 
+// coCareerLevelCap is the current career level ceiling. The curve is extended
+// by migration 1760000009; raising the cap later only requires adding levels
+// above this value.
+const coCareerLevelCap = 100
+
 // coCareerLevelSeeds is the example career curve from §15 (D18 still pending).
+// Migration 1760000009 extends the same curve to coCareerLevelCap.
 var coCareerLevelSeeds = []coCareerLevelSeed{
 	{1, 0, "Lv.1"},
 	{2, 100, "Lv.2"},

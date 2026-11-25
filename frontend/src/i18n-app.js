@@ -134,4 +134,6 @@ export default {
   '署名': ['署名', 'クレジット', 'Credit'],
   '学习': ['學習', '学習', 'Learning'],
   '无': ['無', 'なし', 'None'],
+  '每 10 级一个徽章，当前为占位样式。': ['每 10 級一個徽章，目前為佔位樣式。', '10レベルごとにバッジ、現在はプレースホルダーです。', 'One badge every 10 levels; placeholder styling for now.'],
+  '徽章占位': ['徽章佔位', 'バッジのプレースホルダー', 'Badge placeholder'],
 };

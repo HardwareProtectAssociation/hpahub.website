@@ -64,6 +64,7 @@ type centerBadge struct {
 	Level          int    `json:"level"`
 	LevelTitle     string `json:"levelTitle"`
 	LevelMinXP     int64  `json:"levelMinXp"`
+	MaxLevel       int    `json:"maxLevel"`
 	TotalXP        int64  `json:"totalXp"`
 	NextLevelXP    int64  `json:"nextLevelXp,omitempty"`
 	NextLevelTitle string `json:"nextLevelTitle,omitempty"`
@@ -371,6 +372,11 @@ func centerBadges(app core.App, userID string, identities map[string]*core.Recor
 			CareerName: identity.GetString("name"),
 			Category:   identity.GetString("category"),
 			TotalXP:    total.Total,
+		}
+		for _, threshold := range levels[total.CareerIdentityID] {
+			if level := threshold.GetInt("level_number"); level > badge.MaxLevel {
+				badge.MaxLevel = level
+			}
 		}
 		for _, threshold := range levels[total.CareerIdentityID] {
 			minimum := int64(threshold.GetInt("minimum_total_xp"))
