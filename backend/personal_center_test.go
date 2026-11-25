@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -208,6 +209,90 @@ func TestPersonalCenterSuperuserLinkedMember(t *testing.T) {
 	}
 	if data.Profile.Role != "octopus" {
 		t.Fatalf("superuser role = %q, want octopus", data.Profile.Role)
+	}
+}
+
+func TestPersonalCenterProfileUpdate(t *testing.T) {
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+
+	member := centerTestUser(t, app, "profile@example.com", "member")
+	superuser := centerTestSuperuser(t, app)
+	linked := centerTestUser(t, app, "octopus@example.com", "admin")
+
+	router, err := apis.NewRouter(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bindPersonalCenterRoutes(&core.ServeEvent{App: app, Router: router})
+	mux, err := router.BuildMux()
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := func(token, body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("PATCH", "/api/hpahub/me/center/profile", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		if token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+		response := httptest.NewRecorder()
+		mux.ServeHTTP(response, req)
+		return response
+	}
+
+	if response := request("", `{"name":"x"}`); response.Code != http.StatusUnauthorized {
+		t.Fatalf("anonymous status = %d, want 401", response.Code)
+	}
+
+	memberToken, err := member.NewAuthToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := request(memberToken, `{"name":"新昵称","bio":"新的个人简介","profilePublic":true}`)
+	if response.Code != http.StatusOK {
+		t.Fatalf("member update status = %d: %s", response.Code, response.Body.String())
+	}
+	var updated centerResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &updated); err != nil {
+		t.Fatal(err)
+	}
+	if updated.Profile.Name != "新昵称" || updated.Profile.Bio != "新的个人简介" || !updated.Profile.ProfilePublic {
+		t.Fatalf("unexpected updated profile: %+v", updated.Profile)
+	}
+	saved, err := app.FindRecordById("users", member.Id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.GetString("name") != "新昵称" || saved.GetString("display_name") != "新昵称" {
+		t.Fatalf("name fields not updated: %q / %q", saved.GetString("name"), saved.GetString("display_name"))
+	}
+	if invalid := request(memberToken, `{"unknown":"x"}`); invalid.Code != http.StatusBadRequest {
+		t.Fatalf("unknown field status = %d, want 400", invalid.Code)
+	}
+
+	superuserToken, err := superuser.NewAuthToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	response = request(superuserToken, `{"name":"管理员昵称","bio":"管理员简介","profilePublic":false}`)
+	if response.Code != http.StatusOK {
+		t.Fatalf("superuser update status = %d: %s", response.Code, response.Body.String())
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &updated); err != nil {
+		t.Fatal(err)
+	}
+	if !updated.Profile.Member || updated.Profile.Name != "管理员昵称" {
+		t.Fatalf("unexpected superuser-updated profile: %+v", updated.Profile)
+	}
+	savedLinked, err := app.FindRecordById("users", linked.Id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if savedLinked.GetString("display_name") != "管理员昵称" {
+		t.Fatalf("linked member not updated: %q", savedLinked.GetString("display_name"))
 	}
 }
 

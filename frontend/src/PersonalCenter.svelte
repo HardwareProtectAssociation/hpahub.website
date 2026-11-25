@@ -7,7 +7,17 @@
   let data = null;
   let loading = true;
   let error = '';
+  let notice = '';
   let avatarSrc = '';
+  let editing = false;
+  let saving = false;
+  let formError = '';
+  let formName = '';
+  let formBio = '';
+  let formPublic = false;
+  let removeAvatar = false;
+  let avatarFile = null;
+  let avatarPreview = '';
 
   const rewardLabels = { money: '资金', product: '实物', title: '头衔', credit: '署名', learning: '学习', none: '无', other: '其他' };
   const statusLabels = { ongoing: '进行中', paused: '暂停', terminated: '已中止', completed: '已完成' };
@@ -54,9 +64,76 @@
     return list;
   }
 
+  function startEdit() {
+    formName = data?.profile?.name || '';
+    formBio = data?.profile?.bio || '';
+    formPublic = !!data?.profile?.profilePublic;
+    removeAvatar = false;
+    avatarFile = null;
+    formError = '';
+    notice = '';
+    if (avatarPreview) URL.revokeObjectURL(avatarPreview);
+    avatarPreview = '';
+    editing = true;
+  }
+
+  function cancelEdit() {
+    editing = false;
+    saving = false;
+    formError = '';
+    removeAvatar = false;
+    avatarFile = null;
+    if (avatarPreview) URL.revokeObjectURL(avatarPreview);
+    avatarPreview = '';
+  }
+
+  function selectAvatar(event) {
+    const file = event.currentTarget.files?.[0] || null;
+    avatarFile = file;
+    if (avatarPreview) URL.revokeObjectURL(avatarPreview);
+    avatarPreview = file ? URL.createObjectURL(file) : '';
+    if (file) removeAvatar = false;
+  }
+
+  async function saveProfile() {
+    const name = formName.trim();
+    if (!name) {
+      formError = '请填写昵称。';
+      return;
+    }
+    saving = true;
+    formError = '';
+    notice = '';
+    try {
+      const body = new FormData();
+      body.set('name', name);
+      body.set('bio', formBio);
+      body.set('profilePublic', formPublic ? 'true' : 'false');
+      if (avatarFile) body.set('avatar', avatarFile);
+      if (removeAvatar) body.set('removeAvatar', 'true');
+      const response = await fetch('/api/hpahub/me/center/profile', {
+        method: 'PATCH',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body,
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.message || `请求失败（${response.status}）`);
+      data = result;
+      if (avatarSrc) URL.revokeObjectURL(avatarSrc);
+      avatarSrc = await loadAvatar(result.profile?.avatarUrl);
+      cancelEdit();
+      notice = '资料已保存。';
+    } catch (err) {
+      formError = err.message || String(err);
+    } finally {
+      saving = false;
+    }
+  }
+
   onMount(load);
   onDestroy(() => {
     if (avatarSrc) URL.revokeObjectURL(avatarSrc);
+    if (avatarPreview) URL.revokeObjectURL(avatarPreview);
   });
 </script>
 
@@ -90,6 +167,7 @@
         {/if}
         {#if data.profile.member}
           <div class="profile-actions">
+            {#if !editing}<button type="button" class="link-button" on:click={startEdit}>{$t('编辑资料')}</button>{/if}
             <a class="text-link" href="/settings">{$t('个人设置')}</a>
             {#if data.profile.profilePublic}
               <a class="text-link" href={`/community/${data.profile.id}`}>{$t('查看公开主页')}</a>
@@ -98,6 +176,39 @@
         {/if}
       </div>
     </section>
+
+    {#if notice}<p class="message success" role="status">{$t(notice)}</p>{/if}
+
+    {#if editing}
+      <form class="profile-edit" on:submit|preventDefault={saveProfile}>
+        <div class="section-head">
+          <div><h2>{$t('编辑个人资料')}</h2><p>{$t('修改后会立即更新个人中心和公开主页。')}</p></div>
+        </div>
+        {#if formError}<p class="message error" role="alert">{$t(formError)}</p>{/if}
+        <div class="edit-avatar">
+          {#if avatarPreview && !removeAvatar}
+            <img class="avatar" src={avatarPreview} alt={$t('新头像预览')} />
+          {:else if avatarSrc && !removeAvatar}
+            <img class="avatar" src={avatarSrc} alt={$t('当前头像')} />
+          {:else}
+            <span class="avatar avatar-default" aria-hidden="true"></span>
+          {/if}
+          <div class="avatar-controls">
+            <label class="file-label">{$t('更换头像')}<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" on:change={selectAvatar} /></label>
+            {#if avatarSrc || avatarPreview}
+              <label class="check-label"><input type="checkbox" bind:checked={removeAvatar} />{$t('删除头像')}</label>
+            {/if}
+          </div>
+        </div>
+        <label class="edit-field">{$t('昵称')}<input bind:value={formName} maxlength="80" required /></label>
+        <label class="edit-field">{$t('简介')}<textarea bind:value={formBio} maxlength="600" rows="4"></textarea></label>
+        <label class="check-label"><input type="checkbox" bind:checked={formPublic} />{$t('公开我的个人资料')}</label>
+        <div class="edit-actions">
+          <button class="primary" type="submit" disabled={saving}>{saving ? $t('正在保存…') : $t('保存资料')}</button>
+          <button type="button" on:click={cancelEdit} disabled={saving}>{$t('取消')}</button>
+        </div>
+      </form>
+    {/if}
 
     {#if !data.profile.member}
       <p class="message">{$t('当前为平台超级管理员账号，个人中心不包含会员资料；请使用会员账号查看完整信息。')}</p>
@@ -245,6 +356,18 @@
   .chip.small { padding: 2px 8px; font-size: 11px; }
   .profile-actions { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 16px; font-size: 13px; }
   .text-link { color: #345d3d; text-underline-offset: 3px; }
+  .link-button { padding: 0; border: 0; background: none; color: #345d3d; font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+  .profile-edit { display: grid; gap: 16px; max-width: 760px; margin: 0 0 26px; padding: 24px; border: 1px solid #dcded4; background: #fafbf7; }
+  .profile-edit .section-head { margin-bottom: 0; }
+  .profile-edit .message { margin: 0; }
+  .edit-avatar { display: flex; flex-wrap: wrap; align-items: center; gap: 18px; }
+  .avatar-controls { display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+  .file-label { display: inline-flex; align-items: center; gap: 8px; color: #345d3d; font-size: 13px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+  .file-label input { max-width: 220px; }
+  .edit-field { display: grid; gap: 6px; max-width: 620px; color: #52695a; font-size: 13px; }
+  .edit-field input, .edit-field textarea { width: 100%; padding: 10px; border: 1px solid #b9c3b3; background: #fff; color: #252b26; font: inherit; }
+  .edit-field textarea { resize: vertical; }
+  .edit-actions { display: flex; flex-wrap: wrap; gap: 10px; }
   .stat-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin: 26px 0; }
   .stat { border: 1px solid #dcded4; background: #fafbf7; padding: 18px 20px; }
   .stat span { font-size: 30px; font-weight: 600; letter-spacing: -0.03em; }

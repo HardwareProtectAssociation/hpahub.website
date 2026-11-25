@@ -136,4 +136,10 @@ export default {
   '无': ['無', 'なし', 'None'],
   '每 10 级一个徽章，当前为占位样式。': ['每 10 級一個徽章，目前為佔位樣式。', '10レベルごとにバッジ、現在はプレースホルダーです。', 'One badge every 10 levels; placeholder styling for now.'],
   '徽章占位': ['徽章佔位', 'バッジのプレースホルダー', 'Badge placeholder'],
+  '编辑资料': ['編輯資料', 'プロフィールを編集', 'Edit profile'],
+  '编辑个人资料': ['編輯個人資料', 'プロフィールを編集', 'Edit profile'],
+  '修改后会立即更新个人中心和公开主页。': ['修改後會立即更新個人中心和公開主頁。', '変更は個人センターと公開プロフィールにすぐ反映されます。', 'Changes update the personal center and public profile immediately.'],
+  '更换头像': ['更換頭像', 'アバターを変更', 'Change avatar'],
+  '公开我的个人资料': ['公開我的個人資料', 'プロフィールを公開', 'Make my profile public'],
+  '请填写昵称。': ['請填寫暱稱。', 'ニックネームを入力してください。', 'Please enter a display name.'],
 };

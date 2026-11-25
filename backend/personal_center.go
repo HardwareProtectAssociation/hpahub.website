@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"errors"
 	"sort"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
@@ -114,6 +116,82 @@ func bindPersonalCenterRoutes(e *core.ServeEvent) {
 			return e.NotFoundError("Not found.", nil)
 		}
 		return serveContentFile(e, owner, "avatar", owner.GetString("avatar"))
+	})
+	e.Router.PATCH("/api/hpahub/me/center/profile", func(e *core.RequestEvent) error {
+		noCache(e)
+		if e.Auth == nil {
+			return e.UnauthorizedError("Authentication required.", nil)
+		}
+		owner, member, err := personalCenterOwner(e.App, e.Auth)
+		if err != nil {
+			return e.InternalServerError("Unable to load profile.", err)
+		}
+		if !member {
+			return e.ForbiddenError("No member profile is linked to this account.", nil)
+		}
+		input, err := readContentInput(e, map[string]bool{
+			"name": true, "bio": true, "profilePublic": true, "avatar": true, "removeAvatar": true,
+		})
+		if e.Request.MultipartForm != nil {
+			defer e.Request.MultipartForm.RemoveAll()
+		}
+		if err != nil {
+			return e.BadRequestError("Invalid profile.", err)
+		}
+		var name, bio string
+		hasName, err := input.get("name", &name)
+		if err != nil {
+			return e.BadRequestError("Invalid profile.", err)
+		}
+		hasBio, err := input.get("bio", &bio)
+		if err != nil {
+			return e.BadRequestError("Invalid profile.", err)
+		}
+		var profilePublic, removeAvatar bool
+		hasPublic, err := input.get("profilePublic", &profilePublic)
+		if err != nil {
+			return e.BadRequestError("Invalid profile.", err)
+		}
+		if _, err := input.get("removeAvatar", &removeAvatar); err != nil {
+			return e.BadRequestError("Invalid profile.", err)
+		}
+		files := input.files["avatar"]
+		if len(files) > 1 || (removeAvatar && len(files) > 0) {
+			return e.BadRequestError("Invalid profile.", nil)
+		}
+		if hasName {
+			name = strings.TrimSpace(name)
+			if name == "" || utf8.RuneCountInString(name) > 80 {
+				return e.BadRequestError("Invalid profile.", nil)
+			}
+			owner.Set("name", name)
+			owner.Set("display_name", name)
+		}
+		if hasBio {
+			if utf8.RuneCountInString(bio) > 600 {
+				return e.BadRequestError("Invalid profile.", nil)
+			}
+			owner.Set("bio", bio)
+		}
+		if hasPublic {
+			owner.Set("profilePublic", profilePublic)
+		}
+		if removeAvatar {
+			owner.Set("avatar", "")
+		} else if len(files) == 1 {
+			owner.Set("avatar", files[0])
+		}
+		if owner.GetBool("profilePublic") && strings.TrimSpace(owner.GetString("name")) == "" {
+			return e.BadRequestError("Invalid profile.", nil)
+		}
+		if err := e.App.Save(owner); err != nil {
+			return e.BadRequestError("Unable to save profile.", err)
+		}
+		data, err := personalCenterData(e.App, e.Auth)
+		if err != nil {
+			return e.InternalServerError("Unable to reload personal center.", err)
+		}
+		return e.JSON(200, data)
 	})
 }
 
