@@ -30,10 +30,14 @@ type centerIdentity struct {
 
 type centerSkill struct {
 	ID          string `json:"id"`
+	UserSkillID string `json:"userSkillId"`
 	Name        string `json:"name"`
 	Category    string `json:"category"`
 	Proficiency string `json:"proficiency"`
 	AbilityNote string `json:"abilityNote"`
+	LikeCount   int    `json:"likeCount"`
+	LikeTier    int    `json:"likeTier"`
+	LikedByMe   bool   `json:"likedByMe"`
 }
 
 type centerSkillInput struct {
@@ -120,6 +124,36 @@ func validCenterSkillProficiency(value string) bool {
 		}
 	}
 	return false
+}
+
+func centerLikeTier(count int) int {
+	switch {
+	case count >= 100:
+		return 4
+	case count >= 60:
+		return 3
+	case count >= 30:
+		return 2
+	case count > 10:
+		return 1
+	}
+	return 0
+}
+
+type centerLikeStats struct {
+	Total int `db:"total"`
+	Mine  int `db:"mine"`
+}
+
+func centerSkillLikeStats(app core.App, userSkillID, userID string) (int, bool, error) {
+	var stats centerLikeStats
+	err := app.DB().NewQuery(`
+		SELECT COUNT(*) AS total,
+			COALESCE(SUM(CASE WHEN user_id = {:user} THEN 1 ELSE 0 END), 0) AS mine
+		FROM user_skill_likes
+		WHERE user_skill_id = {:skill}
+	`).Bind(dbx.Params{"skill": userSkillID, "user": userID}).One(&stats)
+	return stats.Total, stats.Mine > 0, err
 }
 
 // bindPersonalCenterRoutes exposes the signed-in account's own summary. It is
@@ -271,6 +305,51 @@ func bindPersonalCenterRoutes(e *core.ServeEvent) {
 			return e.InternalServerError("Unable to reload personal center.", err)
 		}
 		return e.JSON(200, data)
+	})
+	e.Router.POST("/api/hpahub/skills/{id}/like", func(e *core.RequestEvent) error {
+		noCache(e)
+		if e.Auth == nil {
+			return e.UnauthorizedError("Authentication required.", nil)
+		}
+		owner, member, err := personalCenterOwner(e.App, e.Auth)
+		if err != nil {
+			return e.InternalServerError("Unable to load skills.", err)
+		}
+		if !member {
+			return e.ForbiddenError("No member profile is linked to this account.", nil)
+		}
+		userSkill, err := e.App.FindRecordById("user_skills", e.Request.PathValue("id"))
+		if err != nil {
+			return e.NotFoundError("Not found.", nil)
+		}
+		like, err := e.App.FindFirstRecordByFilter(
+			"user_skill_likes",
+			"user_skill_id = {:skill} && user_id = {:user}",
+			dbx.Params{"skill": userSkill.Id, "user": owner.Id},
+		)
+		liked := false
+		if errors.Is(err, sql.ErrNoRows) {
+			collection, err := e.App.FindCollectionByNameOrId("user_skill_likes")
+			if err != nil {
+				return e.InternalServerError("Unable to like skill.", err)
+			}
+			record := core.NewRecord(collection)
+			record.Set("user_skill_id", userSkill.Id)
+			record.Set("user_id", owner.Id)
+			if err := e.App.Save(record); err != nil {
+				return e.InternalServerError("Unable to like skill.", err)
+			}
+			liked = true
+		} else if err != nil {
+			return e.InternalServerError("Unable to like skill.", err)
+		} else if err := e.App.Delete(like); err != nil {
+			return e.InternalServerError("Unable to like skill.", err)
+		}
+		count, _, err := centerSkillLikeStats(e.App, userSkill.Id, owner.Id)
+		if err != nil {
+			return e.InternalServerError("Unable to like skill.", err)
+		}
+		return e.JSON(200, map[string]any{"liked": liked, "likeCount": count, "likeTier": centerLikeTier(count)})
 	})
 }
 
@@ -424,12 +503,20 @@ func personalCenterData(app core.App, auth *core.Record) (centerResponse, error)
 		if skill == nil {
 			continue
 		}
+		likeCount, likedByMe, err := centerSkillLikeStats(app, row.Id, owner.Id)
+		if err != nil {
+			return response, err
+		}
 		response.Skills = append(response.Skills, centerSkill{
 			ID:          skill.Id,
+			UserSkillID: row.Id,
 			Name:        skill.GetString("name"),
 			Category:    skill.GetString("category"),
 			Proficiency: centerSkillProficiency(row.GetString("proficiency")),
 			AbilityNote: row.GetString("ability_note"),
+			LikeCount:   likeCount,
+			LikeTier:    centerLikeTier(likeCount),
+			LikedByMe:   likedByMe,
 		})
 	}
 

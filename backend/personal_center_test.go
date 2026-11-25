@@ -387,6 +387,60 @@ func TestPersonalCenterSkillsUpdate(t *testing.T) {
 	}
 }
 
+func TestSkillLikes(t *testing.T) {
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+
+	member := centerTestUser(t, app, "likes@example.com", "member")
+	skill := centerTestSkill(t, app)
+	userSkill := centerTestRecord(t, app, "user_skills")
+	userSkill.Set("user_id", member.Id)
+	userSkill.Set("skill_id", skill.Id)
+	userSkill.Set("proficiency", "初学者")
+	centerTestSave(t, app, userSkill)
+
+	router, err := apis.NewRouter(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bindPersonalCenterRoutes(&core.ServeEvent{App: app, Router: router})
+	mux, err := router.BuildMux()
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := member.NewAuthToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	like := func() (int, map[string]any) {
+		req := httptest.NewRequest("POST", "/api/hpahub/skills/"+userSkill.Id+"/like", nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		response := httptest.NewRecorder()
+		mux.ServeHTTP(response, req)
+		var body map[string]any
+		_ = json.Unmarshal(response.Body.Bytes(), &body)
+		return response.Code, body
+	}
+	status, body := like()
+	if status != http.StatusOK || body["liked"] != true || body["likeCount"].(float64) != 1 {
+		t.Fatalf("first like = %d %+v", status, body)
+	}
+	status, body = like()
+	if status != http.StatusOK || body["liked"] != false || body["likeCount"].(float64) != 0 {
+		t.Fatalf("unlike = %d %+v", status, body)
+	}
+
+	cases := map[int]int{0: 0, 10: 0, 11: 1, 29: 1, 30: 2, 59: 2, 60: 3, 99: 3, 100: 4}
+	for count, tier := range cases {
+		if got := centerLikeTier(count); got != tier {
+			t.Fatalf("tier(%d) = %d, want %d", count, got, tier)
+		}
+	}
+}
+
 func centerTestUser(t *testing.T, app core.App, email, role string) *core.Record {
 	t.Helper()
 	record := centerTestRecord(t, app, "users")

@@ -22,7 +22,7 @@ go run . migrate up --dir <临时数据目录>        # 在空库或已有库上
 | 模块 | 集合 |
 | --- | --- |
 | 账号 | `users`（扩展）、`membership_invitation_codes` |
-| 个人空间 | `collaboration_identities`、`user_identities`、`skills`、`user_skills`、`user_collaboration_preferences`、`user_showcases` |
+| 个人空间 | `collaboration_identities`、`user_identities`、`skills`、`user_skills`、`user_collaboration_preferences`、`user_showcases`、`user_skill_likes`（技能点赞扩展表） |
 | 项目核心 | `projects`、`project_stages`、`project_review_records` |
 | 成员权限 | `project_members`、`project_join_requests`、`project_permission_grants`、`project_permission_requests`、`project_participant_roles` |
 | 内容互动 | `project_contents`、`media_assets`、`project_comments`、`project_ratings`、`project_follows`、`project_completion_ratings` |
@@ -114,4 +114,4 @@ go run . migrate up --dir <临时数据目录>        # 在空库或已有库上
 - 金额以分为单位，接口和前端展示需要统一转换；任何汇总必须使用整数。
 - 0 表示未填写，无法区分“真实的 0 小时”和“未填”；`xp_value`/`final_xp`/贡献份额通过伴随字段区分。
 - 评分分制（D05/D20）、经验投票计票（D16）、贡献分配（D17）、等级曲线（D18）、接管审批（D01—D03）、邀请码配额（D22）、角色确认（D23）等仍待决策；结构已留字段，不把建议值写成已确认规则。
-- 迁移文件已到 9 个；按 AGENTS.md 的约束，接近 10 个时应整理迁移基线。后续结构变更应新增迁移，不要修改已部署的 `1760000008` 或 `1760000009`。
+- 迁移文件已到 10 个；新增 `1760000010`（技能点赞表）。按 AGENTS.md 的约束，达到 10 个时应整理迁移基线；但现有迁移已在环境中应用，合并需要兼容已部署记录和升级路径，暂保留历史。后续结构变更应新增迁移，不要修改已部署的 `1760000008`、`1760000009` 或 `1760000010`。

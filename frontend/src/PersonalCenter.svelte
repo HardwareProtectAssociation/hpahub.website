@@ -21,6 +21,7 @@
   let skillsEditing = false;
   let skillsSaving = false;
   let skillError = '';
+  let skillLikeError = '';
   let skillRows = [];
 
   const proficiencyOptions = ['初学者', '略懂一二', '比较熟练', '非常熟练', '你可以永远信任我', '我是这个领域的神！'];
@@ -164,8 +165,28 @@
     skillRows = skillRows.filter((_, itemIndex) => itemIndex !== index);
   }
 
-  async function saveSkills() {
-    const names = new Set();
+  async function toggleLike(skill) {
+    if (!skill?.userSkillId) return;
+    skillLikeError = '';
+    try {
+      const response = await fetch(`/api/hpahub/skills/${encodeURIComponent(skill.userSkillId)}/like`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error('点赞失败，请重试。');
+      data = {
+        ...data,
+        skills: data.skills.map((item) => item.userSkillId === skill.userSkillId
+          ? { ...item, likedByMe: result.liked, likeCount: result.likeCount, likeTier: result.likeTier }
+          : item),
+      };
+    } catch (err) {
+      skillLikeError = err.message || '点赞失败，请重试。';
+    }
+  }
+
+  async function saveSkills() {    const names = new Set();
     for (const row of skillRows) {
       const name = row.name.trim();
       if (!name) {
@@ -379,6 +400,7 @@
           <div><h2 id="center-skills">{$t('技能展示')}</h2><p>{$t('技能为本人自述，作品与贡献作为依据。')}</p></div>
           {#if !skillsEditing}<button type="button" class="link-button" on:click={startSkillEdit}>{$t('编辑技能')}</button>{/if}
         </div>
+        {#if skillLikeError}<p class="message error" role="alert">{$t(skillLikeError)}</p>{/if}
         {#if skillsEditing}
           <div class="skill-edit">
             {#if skillError}<p class="message error" role="alert">{$t(skillError)}</p>{/if}
@@ -404,6 +426,12 @@
                 <div class="skill-head"><strong>{skill.name}</strong>{#if skill.category}<span class="chip small">{$t(skill.category)}</span>{/if}</div>
                 {#if skill.proficiency}<span class="meta">{$t('熟练程度')}：{$t(skill.proficiency)}</span>{/if}
                 {#if skill.abilityNote}<p>{skill.abilityNote}</p>{/if}
+                <div class="skill-foot">
+                  <button type="button" class:liked={skill.likedByMe} class="like-button" on:click={() => toggleLike(skill)} aria-pressed={skill.likedByMe} aria-label={$t(skill.likedByMe ? '取消点赞' : '点赞')}>
+                    <span aria-hidden="true">{skill.likedByMe ? '♥' : '♡'}</span> {skill.likeCount}
+                  </button>
+                  {#if skill.likeTier > 0}<span class={`recognized tier-${skill.likeTier}`}>{$t('受到认可')}</span>{/if}
+                </div>
               </li>
             {/each}
           </ul>
@@ -497,6 +525,17 @@
   .skill-row .skill-note { grid-column: 1 / -1; }
   .skill-row button { grid-column: 1 / -1; justify-self: start; }
   .skill-edit-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+  .skill-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
+  .like-button { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border: 1px solid #d6ddd2; border-radius: 999px; background: #fff; color: #52695a; font-size: 12px; cursor: pointer; }
+  .like-button.liked { color: #a84358; border-color: #e3bcc4; background: #fff4f6; }
+  .recognized { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border: 1px solid transparent; border-radius: 999px; font-size: 11px; font-weight: 600; letter-spacing: 0.02em; }
+  .recognized::before { content: '✦'; }
+  .tier-1 { color: #4d6b3f; background: #e8f0e0; border-color: #c4d8b4; }
+  .tier-2 { color: #285a78; background: linear-gradient(135deg, #e8f4fb, #d6e9f7); border-color: #a9cde4; }
+  .tier-3 { color: #7a5a12; background: linear-gradient(135deg, #fff7d6, #f2d98b); border-color: #e2c25e; box-shadow: 0 0 0 1px #f6e7b0 inset, 0 2px 6px rgba(180, 140, 20, 0.18); }
+  .tier-4 { color: #fff; background: linear-gradient(120deg, #7c4dff, #d04dff, #ffb84d, #7c4dff); background-size: 300% 300%; border-color: #e0c7ff; box-shadow: 0 0 12px rgba(160, 80, 255, 0.45); animation: recognized-shine 6s linear infinite; }
+  @keyframes recognized-shine { to { background-position: 300% 50%; } }
+  @media (prefers-reduced-motion: reduce) { .tier-4 { animation: none; } }
   @media (max-width: 600px) { .skill-row { grid-template-columns: 1fr; } }
   .reward-note { margin: 12px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
   .center-empty { color: #818b7f; font-size: 13px; }
