@@ -7,6 +7,7 @@ import (
  "net/http"
  "net/url"
  "path"
+ "sort"
  "strings"
  "unicode/utf8"
 
@@ -64,6 +65,30 @@ func records(e *core.RequestEvent, collection, filter string, params dbx.Params)
 func visibleMember(e *core.RequestEvent, id string) (*core.Record, error) {
  r, err := e.App.FindRecordById("users", id); if err != nil || !r.GetBool("profilePublic") || (siteRole(r) != "member" && siteRole(r) != "admin") { return nil, e.NotFoundError("Not found.", nil) }; return r, nil
 }
+func publicMemberSkills(e *core.RequestEvent, member *core.Record) ([]map[string]any, error) {
+ rows, err := e.App.FindRecordsByFilter("user_skills", "user_id = {:user}", "", 0, 0, dbx.Params{"user": member.Id}); if err != nil { return nil, err }
+ skills, err := e.App.FindRecordsByFilter("skills", "", "name", 0, 0); if err != nil { return nil, err }
+ byID := map[string]*core.Record{}; for _, skill := range skills { byID[skill.Id] = skill }
+ viewer := ""
+ if e.Auth != nil { if owner, isMember, err := personalCenterOwner(e.App, e.Auth); err == nil && isMember { viewer = owner.Id } }
+ result := make([]map[string]any, 0, len(rows))
+ for _, row := range rows {
+  skill := byID[row.GetString("skill_id")]; if skill == nil { continue }
+  count, liked, err := centerSkillLikeStats(e.App, row.Id, viewer, member.Id); if err != nil { return nil, err }
+  result = append(result, map[string]any{
+   "userSkillId": row.Id,
+   "name": skill.GetString("name"),
+   "proficiency": centerSkillProficiency(row.GetString("proficiency")),
+   "abilityNote": row.GetString("ability_note"),
+   "likeCount": count,
+   "likeTier": centerLikeTier(count),
+   "likedByMe": liked,
+   "canEndorse": viewer != "" && viewer != member.Id,
+  })
+ }
+ sort.SliceStable(result, func(i, j int) bool { return result[i]["name"].(string) < result[j]["name"].(string) })
+ return result, nil
+}
 func serveContentFile(e *core.RequestEvent, r *core.Record, field, filename string) error {
  noCache(e); if filename == "" || path.Base(filename) != filename { return e.NotFoundError("Not found.", nil) }
  found := false; for _, name := range r.GetStringSlice(field) { if name == filename { found = true; break } }; if !found && r.GetString(field) == filename { found = true }; if !found { return e.NotFoundError("Not found.", nil) }
@@ -104,7 +129,7 @@ func bindPublicRoutes(s *core.ServeEvent) {
   for _,r:=range users { if !r.GetBool("profilePublic") {items=append(items,map[string]any{"name":"匿名成员"})} else {p:=profileData(r,true); items=append(items,map[string]any{"id":r.Id,"name":r.GetString("name"),"avatarUrl":p["avatarUrl"]})} }; return e.JSON(200,map[string]any{"items":items})
  })
  s.Router.GET("/api/hpahub/members/{id}",func(e *core.RequestEvent) error {
-  noCache(e); r,err:=visibleMember(e,e.Request.PathValue("id")); if err!=nil{return err}; cards,err:=records(e,"member_cards","owner = {:owner}",dbx.Params{"owner":r.Id}); if err!=nil{return e.InternalServerError("Unable to load cards.",err)}; list:=[]any{}; for _,c:=range cards { list=append(list,contentData(c,[]string{"members",r.Id,"cards",c.Id})) }; p:=profileData(r,true); delete(p,"profilePublic"); p["cards"]=list; return e.JSON(200,p)
+  noCache(e); r,err:=visibleMember(e,e.Request.PathValue("id")); if err!=nil{return err}; cards,err:=records(e,"member_cards","owner = {:owner}",dbx.Params{"owner":r.Id}); if err!=nil{return e.InternalServerError("Unable to load cards.",err)}; list:=[]any{}; for _,c:=range cards { list=append(list,contentData(c,[]string{"members",r.Id,"cards",c.Id})) }; p:=profileData(r,true); delete(p,"profilePublic"); p["cards"]=list; skills,err:=publicMemberSkills(e,r); if err!=nil{return e.InternalServerError("Unable to load skills.",err)}; p["skills"]=skills; return e.JSON(200,p)
  })
  s.Router.GET("/api/hpahub/members/{id}/avatar",func(e *core.RequestEvent) error { noCache(e); r,err:=visibleMember(e,e.Request.PathValue("id")); if err!=nil{return err}; return serveContentFile(e,r,"avatar",r.GetString("avatar")) })
  s.Router.GET("/api/hpahub/members/{id}/cards/{card}/images/{file}",func(e *core.RequestEvent) error { noCache(e); r,err:=visibleMember(e,e.Request.PathValue("id")); if err!=nil{return err}; card,err:=e.App.FindRecordById("member_cards",e.Request.PathValue("card")); if err!=nil || card.GetString("owner")!=r.Id{return e.NotFoundError("Not found.",nil)}; return serveContentFile(e,card,"images",e.Request.PathValue("file")) })

@@ -2,8 +2,10 @@
   import { onMount } from 'svelte';
   import { locale, t } from './i18n.js';
   export let pathname;
+  export let token = '';
   let data = null;
   let error = '';
+  let skillError = '';
   let loading = true;
   let errorParams = {};
   const parts = pathname.split('/').filter(Boolean);
@@ -13,7 +15,10 @@
     if (!['community', 'showcase'].includes(section)) { loading = false; return; }
     try {
       const endpoint = section === 'community' ? 'members' : 'projects';
-      const response = await fetch(`/api/hpahub/${endpoint}${id ? '/' + encodeURIComponent(id) : ''}`, { cache: 'no-store' });
+      const response = await fetch(`/api/hpahub/${endpoint}${id ? '/' + encodeURIComponent(id) : ''}`, {
+        cache: 'no-store',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
       if (!response.ok) { error = response.status === 404 ? '内容不存在或未公开。' : '加载失败（{status}）'; errorParams = { status: response.status }; return; }
       data = await response.json();
     } catch (e) { error = e.message; } finally { loading = false; }
@@ -25,6 +30,26 @@
     if (!value) return '';
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString($locale);
+  }
+  async function endorseSkill(skill) {
+    if (!token) return;
+    skillError = '';
+    try {
+      const response = await fetch(`/api/hpahub/skills/${encodeURIComponent(skill.userSkillId)}/like`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error('点赞失败，请重试。');
+      data = {
+        ...data,
+        skills: data.skills.map((item) => item.userSkillId === skill.userSkillId
+          ? { ...item, likedByMe: result.liked, likeCount: result.likeCount, likeTier: result.likeTier }
+          : item),
+      };
+    } catch (err) {
+      skillError = err.message || '点赞失败，请重试。';
+    }
   }
 </script>
 
@@ -41,6 +66,31 @@
     {#if id}
       <a href="/community">{$t('返回成员列表')}</a><header class="profile-heading">{#if data.avatarUrl}<img class="avatar" src={data.avatarUrl} alt="" />{:else}<span class="avatar avatar-default" aria-hidden="true"></span>{/if}<div><h1>{data.name}</h1><p>{data.bio}</p></div></header>
       {#if data.cards?.length}<div class="public-grid">{#each data.cards as card}<article class="public-card"><h2>{card.title}</h2><p>{card.text}</p><div class="image-grid">{#each card.imageUrls || [] as url}<a href={url} target="_blank" rel="noreferrer"><img src={url} alt={card.title} loading="lazy" /></a>{/each}</div></article>{/each}</div>{:else}<p>{$t('暂无公开卡片。')}</p>{/if}
+      {#if data.skills?.length}
+        <section class="member-skills" aria-labelledby="member-skills-title">
+          <h2 id="member-skills-title">{$t('技能展示')}</h2>
+          {#if skillError}<p class="message error" role="alert">{$t(skillError)}</p>{/if}
+          <ul class="public-skill-list">
+            {#each data.skills as skill (skill.userSkillId)}
+              <li class="public-skill">
+                <div class="public-skill-head"><strong>{skill.name}</strong>{#if skill.proficiency}<span class="meta">{$t('熟练程度')}：{$t(skill.proficiency)}</span>{/if}</div>
+                {#if skill.abilityNote}<p>{skill.abilityNote}</p>{/if}
+                <div class="public-skill-foot">
+                  {#if skill.canEndorse}
+                    <button type="button" class:liked={skill.likedByMe} class="like-button" on:click={() => endorseSkill(skill)} aria-pressed={skill.likedByMe} aria-label={$t(skill.likedByMe ? '取消点赞' : '点赞')}>
+                      <span aria-hidden="true">{skill.likedByMe ? '♥' : '♡'}</span> {skill.likeCount}
+                    </button>
+                  {:else}
+                    <span class="like-count"><span aria-hidden="true">♥</span> {skill.likeCount}</span>
+                  {/if}
+                  {#if skill.likeTier > 0}<span class={`recognized tier-${skill.likeTier}`}>{$t('受到认可')}</span>{/if}
+                  {#if !token}<span class="meta">{$t('登录后可点赞')}</span>{/if}
+                </div>
+              </li>
+            {/each}
+          </ul>
+        </section>
+      {/if}
     {:else}
       <h1>{$t('成员')}</h1><p>{$t('认识 HPA 的成员。')}</p>{#if items.length}<div class="public-grid">{#each items as member}<article class="public-card member-card">{#if member.avatarUrl}<img class="avatar" src={member.avatarUrl} alt="" />{:else}<span class="avatar avatar-default" aria-hidden="true"></span>{/if}<h2>{#if member.id}<a href={'/community/' + encodeURIComponent(member.id)}>{member.name}</a>{:else}{member.name}{/if}</h2></article>{/each}</div>{:else}<p>{$t('暂无成员。')}</p>{/if}
     {/if}
@@ -121,4 +171,23 @@
   .project-members { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
   .project-members li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
   .project-members span { color: #818b7f; font-size: 13px; }
+  .member-skills { margin: 32px 0; }
+  .member-skills h2 { margin-bottom: 14px; }
+  .public-skill-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 16px; margin: 0; padding: 0; list-style: none; }
+  .public-skill { padding: 16px; border: 1px solid #dcded4; background: #fafbf7; }
+  .public-skill-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+  .public-skill p { margin: 6px 0; color: #6f7b6d; font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .public-skill-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
+  .meta { color: #818b7f; font-size: 12px; }
+  .like-button { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border: 1px solid #d6ddd2; border-radius: 999px; background: #fff; color: #52695a; font-size: 12px; cursor: pointer; }
+  .like-button.liked { color: #a84358; border-color: #e3bcc4; background: #fff4f6; }
+  .like-count { color: #a84358; font-size: 12px; }
+  .recognized { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border: 1px solid transparent; border-radius: 999px; font-size: 11px; font-weight: 600; letter-spacing: 0.02em; }
+  .recognized::before { content: '✦'; }
+  .tier-1 { color: #4d6b3f; background: #e8f0e0; border-color: #c4d8b4; }
+  .tier-2 { color: #285a78; background: linear-gradient(135deg, #e8f4fb, #d6e9f7); border-color: #a9cde4; }
+  .tier-3 { color: #7a5a12; background: linear-gradient(135deg, #fff7d6, #f2d98b); border-color: #e2c25e; box-shadow: 0 0 0 1px #f6e7b0 inset, 0 2px 6px rgba(180, 140, 20, 0.18); }
+  .tier-4 { color: #fff; background: linear-gradient(120deg, #7c4dff, #d04dff, #ffb84d, #7c4dff); background-size: 300% 300%; border-color: #e0c7ff; box-shadow: 0 0 12px rgba(160, 80, 255, 0.45); animation: recognized-shine 6s linear infinite; }
+  @keyframes recognized-shine { to { background-position: 300% 50%; } }
+  @media (prefers-reduced-motion: reduce) { .tier-4 { animation: none; } }
 </style>

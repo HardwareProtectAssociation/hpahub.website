@@ -21,7 +21,6 @@
   let skillsEditing = false;
   let skillsSaving = false;
   let skillError = '';
-  let skillLikeError = '';
   let skillRows = [];
 
   const proficiencyOptions = ['初学者', '略懂一二', '比较熟练', '非常熟练', '你可以永远信任我', '我是这个领域的神！'];
@@ -165,28 +164,8 @@
     skillRows = skillRows.filter((_, itemIndex) => itemIndex !== index);
   }
 
-  async function toggleLike(skill) {
-    if (!skill?.userSkillId) return;
-    skillLikeError = '';
-    try {
-      const response = await fetch(`/api/hpahub/skills/${encodeURIComponent(skill.userSkillId)}/like`, {
-        method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error('点赞失败，请重试。');
-      data = {
-        ...data,
-        skills: data.skills.map((item) => item.userSkillId === skill.userSkillId
-          ? { ...item, likedByMe: result.liked, likeCount: result.likeCount, likeTier: result.likeTier }
-          : item),
-      };
-    } catch (err) {
-      skillLikeError = err.message || '点赞失败，请重试。';
-    }
-  }
-
-  async function saveSkills() {    const names = new Set();
+  async function saveSkills() {
+    const names = new Set();
     for (const row of skillRows) {
       const name = row.name.trim();
       if (!name) {
@@ -397,10 +376,9 @@
 
       <section class="center-section" class:wide={skillsEditing} aria-labelledby="center-skills">
         <div class="section-head">
-          <div><h2 id="center-skills">{$t('技能展示')}</h2><p>{$t('技能为本人自述，作品与贡献作为依据。')}</p></div>
+          <div><h2 id="center-skills">{$t('技能展示')}</h2><p>{$t('技能为本人自述，作品与贡献作为依据。')}</p><p class="skill-hint">{$t('认可由其他成员点赞产生，不能给自己点赞。')}</p></div>
           {#if !skillsEditing}<button type="button" class="link-button" on:click={startSkillEdit}>{$t('编辑技能')}</button>{/if}
         </div>
-        {#if skillLikeError}<p class="message error" role="alert">{$t(skillLikeError)}</p>{/if}
         {#if skillsEditing}
           <div class="skill-edit">
             {#if skillError}<p class="message error" role="alert">{$t(skillError)}</p>{/if}
@@ -427,9 +405,7 @@
                 {#if skill.proficiency}<span class="meta">{$t('熟练程度')}：{$t(skill.proficiency)}</span>{/if}
                 {#if skill.abilityNote}<p>{skill.abilityNote}</p>{/if}
                 <div class="skill-foot">
-                  <button type="button" class:liked={skill.likedByMe} class="like-button" on:click={() => toggleLike(skill)} aria-pressed={skill.likedByMe} aria-label={$t(skill.likedByMe ? '取消点赞' : '点赞')}>
-                    <span aria-hidden="true">{skill.likedByMe ? '♥' : '♡'}</span> {skill.likeCount}
-                  </button>
+                  <span class="like-count"><span aria-hidden="true">♥</span> {skill.likeCount}</span>
                   {#if skill.likeTier > 0}<span class={`recognized tier-${skill.likeTier}`}>{$t('受到认可')}</span>{/if}
                 </div>
               </li>
@@ -526,8 +502,8 @@
   .skill-row button { grid-column: 1 / -1; justify-self: start; }
   .skill-edit-actions { display: flex; flex-wrap: wrap; gap: 10px; }
   .skill-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
-  .like-button { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border: 1px solid #d6ddd2; border-radius: 999px; background: #fff; color: #52695a; font-size: 12px; cursor: pointer; }
-  .like-button.liked { color: #a84358; border-color: #e3bcc4; background: #fff4f6; }
+  .skill-hint { margin: 6px 0 0 !important; font-size: 12px !important; color: #8b9587 !important; }
+  .like-count { color: #a84358; font-size: 12px; }
   .recognized { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border: 1px solid transparent; border-radius: 999px; font-size: 11px; font-weight: 600; letter-spacing: 0.02em; }
   .recognized::before { content: '✦'; }
   .tier-1 { color: #4d6b3f; background: #e8f0e0; border-color: #c4d8b4; }

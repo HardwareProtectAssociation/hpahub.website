@@ -394,10 +394,11 @@ func TestSkillLikes(t *testing.T) {
 	}
 	defer app.Cleanup()
 
-	member := centerTestUser(t, app, "likes@example.com", "member")
+	owner := centerTestUser(t, app, "skill-owner@example.com", "member")
+	other := centerTestUser(t, app, "skill-other@example.com", "member")
 	skill := centerTestSkill(t, app)
 	userSkill := centerTestRecord(t, app, "user_skills")
-	userSkill.Set("user_id", member.Id)
+	userSkill.Set("user_id", owner.Id)
 	userSkill.Set("skill_id", skill.Id)
 	userSkill.Set("proficiency", "初学者")
 	centerTestSave(t, app, userSkill)
@@ -411,11 +412,15 @@ func TestSkillLikes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	token, err := member.NewAuthToken()
+	ownerToken, err := owner.NewAuthToken()
 	if err != nil {
 		t.Fatal(err)
 	}
-	like := func() (int, map[string]any) {
+	otherToken, err := other.NewAuthToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	like := func(token string) (int, map[string]any) {
 		req := httptest.NewRequest("POST", "/api/hpahub/skills/"+userSkill.Id+"/like", nil)
 		req.Header.Set("Authorization", "Bearer "+token)
 		response := httptest.NewRecorder()
@@ -424,11 +429,21 @@ func TestSkillLikes(t *testing.T) {
 		_ = json.Unmarshal(response.Body.Bytes(), &body)
 		return response.Code, body
 	}
-	status, body := like()
-	if status != http.StatusOK || body["liked"] != true || body["likeCount"].(float64) != 1 {
-		t.Fatalf("first like = %d %+v", status, body)
+	if status, _ := like(ownerToken); status != http.StatusForbidden {
+		t.Fatalf("self like status = %d, want 403", status)
 	}
-	status, body = like()
+	status, body := like(otherToken)
+	if status != http.StatusOK || body["liked"] != true || body["likeCount"].(float64) != 1 {
+		t.Fatalf("endorsement = %d %+v", status, body)
+	}
+	data, err := personalCenterData(app, owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(data.Skills) != 1 || data.Skills[0].LikeCount != 1 || data.Skills[0].LikedByMe {
+		t.Fatalf("unexpected owner skill likes: %+v", data.Skills)
+	}
+	status, body = like(otherToken)
 	if status != http.StatusOK || body["liked"] != false || body["likeCount"].(float64) != 0 {
 		t.Fatalf("unlike = %d %+v", status, body)
 	}
@@ -438,6 +453,47 @@ func TestSkillLikes(t *testing.T) {
 		if got := centerLikeTier(count); got != tier {
 			t.Fatalf("tier(%d) = %d, want %d", count, got, tier)
 		}
+	}
+}
+
+func TestPublicMemberSkills(t *testing.T) {
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+
+	owner := centerTestUser(t, app, "owner-skills@example.com", "member")
+	viewer := centerTestUser(t, app, "viewer-skills@example.com", "member")
+	skill := centerTestSkill(t, app)
+	userSkill := centerTestRecord(t, app, "user_skills")
+	userSkill.Set("user_id", owner.Id)
+	userSkill.Set("skill_id", skill.Id)
+	userSkill.Set("proficiency", "比较熟练")
+	userSkill.Set("ability_note", "公开技能说明")
+	centerTestSave(t, app, userSkill)
+
+	like := centerTestRecord(t, app, "user_skill_likes")
+	like.Set("user_skill_id", userSkill.Id)
+	like.Set("user_id", viewer.Id)
+	centerTestSave(t, app, like)
+
+	skills, err := publicMemberSkills(&core.RequestEvent{App: app, Auth: viewer}, owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(skills) != 1 || skills[0]["likeCount"] != 1 || skills[0]["likedByMe"] != true || skills[0]["canEndorse"] != true {
+		t.Fatalf("unexpected viewer skills: %+v", skills)
+	}
+	if skills[0]["proficiency"] != "比较熟练" {
+		t.Fatalf("unexpected proficiency: %+v", skills[0])
+	}
+	skills, err = publicMemberSkills(&core.RequestEvent{App: app, Auth: owner}, owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(skills) != 1 || skills[0]["likeCount"] != 1 || skills[0]["canEndorse"] != false {
+		t.Fatalf("unexpected owner skills: %+v", skills)
 	}
 }
 

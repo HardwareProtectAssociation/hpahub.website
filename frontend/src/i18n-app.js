@@ -163,4 +163,6 @@ export default {
   '点赞': ['點讚', 'いいね', 'Like'],
   '取消点赞': ['取消點讚', 'いいねを取り消す', 'Unlike'],
   '点赞失败，请重试。': ['點讚失敗，請重試。', 'いいねに失敗しました。もう一度お試しください。', 'Failed to like; please try again.'],
+  '认可由其他成员点赞产生，不能给自己点赞。': ['認可由其他成員點讚產生，不能給自己點讚。', '認可は他のメンバーのいいねによってのみ得られ、自分自身にはいいねできません。', 'Recognition comes from other members; you cannot endorse your own skills.'],
+  '登录后可点赞': ['登入後可點讚', 'ログインするといいねできます', 'Sign in to endorse'],
 };

@@ -356,7 +356,7 @@
       </section>
     </main>
   {:else if pathname !== '/' || page === 'home' || !isAdmin}
-    <PublicPages {pathname} />
+    <PublicPages {pathname} {token} />
   {:else}
     <main class="dashboard">
       <div class="breadcrumb">{$t('管理控制台')} <span>/</span> {isOctopus ? $t('备份管理') : $t('邀请码')}</div>

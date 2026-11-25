@@ -145,15 +145,16 @@ type centerLikeStats struct {
 	Mine  int `db:"mine"`
 }
 
-func centerSkillLikeStats(app core.App, userSkillID, userID string) (int, bool, error) {
+func centerSkillLikeStats(app core.App, userSkillID, viewerUserID, ownerUserID string) (int, bool, error) {
 	var stats centerLikeStats
 	err := app.DB().NewQuery(`
 		SELECT COUNT(*) AS total,
-			COALESCE(SUM(CASE WHEN user_id = {:user} THEN 1 ELSE 0 END), 0) AS mine
+			COALESCE(SUM(CASE WHEN user_id = {:viewer} THEN 1 ELSE 0 END), 0) AS mine
 		FROM user_skill_likes
-		WHERE user_skill_id = {:skill}
-	`).Bind(dbx.Params{"skill": userSkillID, "user": userID}).One(&stats)
-	return stats.Total, stats.Mine > 0, err
+		WHERE user_skill_id = {:skill} AND user_id != {:owner}
+	`).Bind(dbx.Params{"skill": userSkillID, "viewer": viewerUserID, "owner": ownerUserID}).One(&stats)
+	likedByMe := stats.Mine > 0 && viewerUserID != "" && viewerUserID != ownerUserID
+	return stats.Total, likedByMe, err
 }
 
 // bindPersonalCenterRoutes exposes the signed-in account's own summary. It is
@@ -322,6 +323,9 @@ func bindPersonalCenterRoutes(e *core.ServeEvent) {
 		if err != nil {
 			return e.NotFoundError("Not found.", nil)
 		}
+		if userSkill.GetString("user_id") == owner.Id {
+			return e.ForbiddenError("You cannot endorse your own skill.", nil)
+		}
 		like, err := e.App.FindFirstRecordByFilter(
 			"user_skill_likes",
 			"user_skill_id = {:skill} && user_id = {:user}",
@@ -345,7 +349,7 @@ func bindPersonalCenterRoutes(e *core.ServeEvent) {
 		} else if err := e.App.Delete(like); err != nil {
 			return e.InternalServerError("Unable to like skill.", err)
 		}
-		count, _, err := centerSkillLikeStats(e.App, userSkill.Id, owner.Id)
+		count, _, err := centerSkillLikeStats(e.App, userSkill.Id, owner.Id, userSkill.GetString("user_id"))
 		if err != nil {
 			return e.InternalServerError("Unable to like skill.", err)
 		}
@@ -503,7 +507,7 @@ func personalCenterData(app core.App, auth *core.Record) (centerResponse, error)
 		if skill == nil {
 			continue
 		}
-		likeCount, likedByMe, err := centerSkillLikeStats(app, row.Id, owner.Id)
+		likeCount, likedByMe, err := centerSkillLikeStats(app, row.Id, owner.Id, row.GetString("user_id"))
 		if err != nil {
 			return response, err
 		}
