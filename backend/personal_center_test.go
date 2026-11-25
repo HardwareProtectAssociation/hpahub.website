@@ -187,6 +187,30 @@ func TestPersonalCenterRoutePermissions(t *testing.T) {
 	}
 }
 
+func TestPersonalCenterSuperuserLinkedMember(t *testing.T) {
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+
+	superuser := centerTestSuperuser(t, app)
+	member := centerTestUser(t, app, "octopus@example.com", "admin")
+	data, err := personalCenterData(app, superuser)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !data.Profile.Member {
+		t.Fatalf("superuser with matching member email should see the member profile: %+v", data.Profile)
+	}
+	if data.Profile.ID != member.Id {
+		t.Fatalf("profile id = %q, want member %q", data.Profile.ID, member.Id)
+	}
+	if data.Profile.Role != "octopus" {
+		t.Fatalf("superuser role = %q, want octopus", data.Profile.Role)
+	}
+}
+
 func centerTestUser(t *testing.T, app core.App, email, role string) *core.Record {
 	t.Helper()
 	record := centerTestRecord(t, app, "users")

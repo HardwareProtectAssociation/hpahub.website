@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
   import { t } from './i18n.js';
 
   export let token;
@@ -7,9 +7,21 @@
   let data = null;
   let loading = true;
   let error = '';
+  let avatarSrc = '';
 
   const rewardLabels = { money: '资金', product: '实物', title: '头衔', credit: '署名', learning: '学习', none: '无', other: '其他' };
   const statusLabels = { ongoing: '进行中', paused: '暂停', terminated: '已中止', completed: '已完成' };
+
+  async function loadAvatar(url) {
+    if (!url) return '';
+    try {
+      const response = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {}, cache: 'no-store' });
+      if (!response.ok) return '';
+      return URL.createObjectURL(await response.blob());
+    } catch {
+      return '';
+    }
+  }
 
   async function load() {
     loading = true;
@@ -21,6 +33,8 @@
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.message || `请求失败（${response.status}）`);
       data = body;
+      if (avatarSrc) URL.revokeObjectURL(avatarSrc);
+      avatarSrc = await loadAvatar(body.profile?.avatarUrl);
     } catch (err) {
       error = err.message || String(err);
     } finally {
@@ -35,6 +49,9 @@
   }
 
   onMount(load);
+  onDestroy(() => {
+    if (avatarSrc) URL.revokeObjectURL(avatarSrc);
+  });
 </script>
 
 <main class="dashboard personal-center">
@@ -47,8 +64,8 @@
     <div class="breadcrumb">{$t('个人中心')} <span>/</span> {$t('个人资料')}</div>
 
     <section class="profile-heading center-profile" aria-labelledby="center-name">
-      {#if data.profile.avatarUrl}
-        <img class="avatar" src={data.profile.avatarUrl} alt="" />
+      {#if avatarSrc}
+        <img class="avatar" src={avatarSrc} alt="" />
       {:else}
         <span class="avatar avatar-default" aria-hidden="true"></span>
       {/if}

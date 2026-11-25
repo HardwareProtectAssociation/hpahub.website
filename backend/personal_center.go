@@ -83,9 +83,11 @@ type centerResponse struct {
 	Preferences *centerPreferences `json:"preferences"`
 }
 
-// bindPersonalCenterRoutes exposes the signed-in member's own summary. It is
+// bindPersonalCenterRoutes exposes the signed-in account's own summary. It is
 // not a public profile endpoint: it returns the caller's email and account
-// details and requires a valid session.
+// details and requires a valid session. A superuser that also has a member
+// record with the same email sees that member profile (used by platform
+// operators that also participate in projects).
 func bindPersonalCenterRoutes(e *core.ServeEvent) {
 	e.Router.GET("/api/hpahub/me/center", func(e *core.RequestEvent) error {
 		noCache(e)
@@ -98,14 +100,50 @@ func bindPersonalCenterRoutes(e *core.ServeEvent) {
 		}
 		return e.JSON(200, data)
 	})
+	e.Router.GET("/api/hpahub/me/center/avatar", func(e *core.RequestEvent) error {
+		noCache(e)
+		if e.Auth == nil {
+			return e.UnauthorizedError("Authentication required.", nil)
+		}
+		owner, member, err := personalCenterOwner(e.App, e.Auth)
+		if err != nil {
+			return e.InternalServerError("Unable to load avatar.", err)
+		}
+		if !member || owner.GetString("avatar") == "" {
+			return e.NotFoundError("Not found.", nil)
+		}
+		return serveContentFile(e, owner, "avatar", owner.GetString("avatar"))
+	})
+}
+
+// personalCenterOwner resolves the record whose member data should be shown.
+// For a superuser this is the users record with the same email, when present.
+func personalCenterOwner(app core.App, auth *core.Record) (*core.Record, bool, error) {
+	if auth.Collection().Name == "users" {
+		return auth, true, nil
+	}
+	if auth.Email() == "" {
+		return auth, false, nil
+	}
+	member, err := app.FindAuthRecordByEmail("users", auth.Email())
+	if errors.Is(err, sql.ErrNoRows) {
+		return auth, false, nil
+	}
+	if err != nil {
+		return auth, false, err
+	}
+	return member, true, nil
 }
 
 func personalCenterData(app core.App, auth *core.Record) (centerResponse, error) {
-	member := auth.Collection().Name == "users"
+	owner, member, err := personalCenterOwner(app, auth)
+	if err != nil {
+		return centerResponse{}, err
+	}
 	response := centerResponse{
 		Profile: centerProfile{
-			ID:     auth.Id,
-			Email:  auth.Email(),
+			ID:     owner.Id,
+			Email:  owner.Email(),
 			Role:   siteRole(auth),
 			Member: member,
 		},
@@ -121,24 +159,24 @@ func personalCenterData(app core.App, auth *core.Record) (centerResponse, error)
 		return response, nil
 	}
 
-	response.Profile.Name = auth.GetString("display_name")
+	response.Profile.Name = owner.GetString("display_name")
 	if response.Profile.Name == "" {
-		response.Profile.Name = auth.GetString("name")
+		response.Profile.Name = owner.GetString("name")
 	}
 	if response.Profile.Name == "" {
-		response.Profile.Name = auth.Email()
+		response.Profile.Name = owner.Email()
 	}
-	response.Profile.Bio = auth.GetString("bio")
-	response.Profile.ProfilePublic = auth.GetBool("profilePublic")
-	if auth.GetString("avatar") != "" {
-		response.Profile.AvatarURL = contentURL("me", "profile", "avatar")
+	response.Profile.Bio = owner.GetString("bio")
+	response.Profile.ProfilePublic = owner.GetBool("profilePublic")
+	if owner.GetString("avatar") != "" {
+		response.Profile.AvatarURL = contentURL("me", "center", "avatar")
 	}
 
 	identities, err := centerIdentityRecords(app)
 	if err != nil {
 		return response, err
 	}
-	identityRows, err := app.FindRecordsByFilter("user_identities", "user_id = {:user}", "", 0, 0, dbx.Params{"user": auth.Id})
+	identityRows, err := app.FindRecordsByFilter("user_identities", "user_id = {:user}", "", 0, 0, dbx.Params{"user": owner.Id})
 	if err != nil {
 		return response, err
 	}
@@ -158,7 +196,7 @@ func personalCenterData(app core.App, auth *core.Record) (centerResponse, error)
 	if err != nil {
 		return response, err
 	}
-	skillRows, err := app.FindRecordsByFilter("user_skills", "user_id = {:user}", "", 0, 0, dbx.Params{"user": auth.Id})
+	skillRows, err := app.FindRecordsByFilter("user_skills", "user_id = {:user}", "", 0, 0, dbx.Params{"user": owner.Id})
 	if err != nil {
 		return response, err
 	}
@@ -179,7 +217,7 @@ func personalCenterData(app core.App, auth *core.Record) (centerResponse, error)
 	preferences, err := app.FindFirstRecordByFilter(
 		"user_collaboration_preferences",
 		"user_id = {:user}",
-		dbx.Params{"user": auth.Id},
+		dbx.Params{"user": owner.Id},
 	)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return response, err
@@ -221,14 +259,14 @@ func personalCenterData(app core.App, auth *core.Record) (centerResponse, error)
 		response.Projects.Participating = append(response.Projects.Participating, item)
 	}
 
-	owned, err := app.FindRecordsByFilter("projects", "owner_user_id = {:user}", "-updated", 0, 0, dbx.Params{"user": auth.Id})
+	owned, err := app.FindRecordsByFilter("projects", "owner_user_id = {:user}", "-updated", 0, 0, dbx.Params{"user": owner.Id})
 	if err != nil {
 		return response, err
 	}
 	for _, project := range owned {
 		addProject(project, "owner", "")
 	}
-	memberships, err := app.FindRecordsByFilter("project_members", `user_id = {:user} && status = "active"`, "", 0, 0, dbx.Params{"user": auth.Id})
+	memberships, err := app.FindRecordsByFilter("project_members", `user_id = {:user} && status = "active"`, "", 0, 0, dbx.Params{"user": owner.Id})
 	if err != nil {
 		return response, err
 	}
@@ -238,7 +276,7 @@ func personalCenterData(app core.App, auth *core.Record) (centerResponse, error)
 			continue // removed project or stale membership
 		}
 		relation := "member"
-		if project.GetString("owner_user_id") == auth.Id {
+		if project.GetString("owner_user_id") == owner.Id {
 			relation = "owner"
 		}
 		addProject(project, relation, membership.GetString("duties"))
@@ -253,7 +291,7 @@ func personalCenterData(app core.App, auth *core.Record) (centerResponse, error)
 	})
 	sort.SliceStable(response.Skills, func(i, j int) bool { return response.Skills[i].Name < response.Skills[j].Name })
 
-	badges, err := centerBadges(app, auth.Id, identities)
+	badges, err := centerBadges(app, owner.Id, identities)
 	if err != nil {
 		return response, err
 	}
