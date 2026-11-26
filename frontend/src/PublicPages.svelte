@@ -4,6 +4,7 @@
   export let pathname;
   export let token = '';
   let data = null;
+  let home = null;
   let error = '';
   let skillError = '';
   let applyMessage = '';
@@ -28,6 +29,14 @@
   const section = parts[0];
   const id = parts[1];
   onMount(async () => {
+    if (pathname === '/') {
+      try {
+        const response = await fetch('/api/hpahub/home', { cache: 'no-store', headers: token ? { Authorization: `Bearer ${token}` } : {} });
+        if (response.ok) home = await response.json();
+      } catch { /* 热门栏非关键路径，失败时仅展示 hero */ }
+      loading = false;
+      return;
+    }
     if (!['community', 'showcase'].includes(section)) { loading = false; return; }
     try {
       const endpoint = section === 'community' ? 'members' : 'projects';
@@ -178,6 +187,44 @@
 <main class="dashboard public-page">
   {#if pathname === '/'}
     <section class="public-hero"><h1>{$t('硬件保护协会')}</h1><p>Hardware Protection Association</p><p>{$t('创造，保护，调查')}</p><div class="public-links"><a href="/hardware">{$t('浏览硬件数据库')}</a><a href="/community">{$t('认识成员')}</a><a href="/showcase">{$t('项目大厅')}</a></div><p><a href="/brief">{$t('协会简介')}</a> · <a href="/rules">{$t('协会会规')}</a></p></section>
+    <section class="home-shelf">
+      <div class="shelf-head"><h2>{$t('热门项目')}</h2><a href="/showcase">{$t('项目大厅')} →</a></div>
+      {#if home?.popularProjects?.length}
+        <div class="home-grid">
+          {#each home.popularProjects as project (project.id)}
+            <a class="yt-card" href={'/showcase/' + encodeURIComponent(project.id)}>
+              <span class={`yt-thumb yt-${project.adventureStyle}`}>{#if project.difficulty}<span class="yt-badge">{$t('难度')} {project.difficulty}</span>{/if}</span>
+              <div class="yt-body">
+                {#if project.ownerAvatarUrl}<img class="yt-avatar" src={project.ownerAvatarUrl} alt="" loading="lazy" />{:else}<span class="yt-avatar" aria-hidden="true"></span>{/if}
+                <div>
+                  <h3>{project.title}</h3>
+                  <p class="yt-meta">{project.ownerName || '—'}</p>
+                  <p class="yt-meta">{$t('关注')} {project.followCount}{#if project.updated} · {formatDate(project.updated)}{/if}</p>
+                </div>
+              </div>
+            </a>
+          {/each}
+        </div>
+      {:else if home}
+        <p class="tab-empty">{$t('暂无项目。')}</p>
+      {/if}
+    </section>
+    <section class="home-shelf">
+      <div class="shelf-head"><h2>{$t('热门工程师')}</h2><a href="/community">{$t('成员')} →</a></div>
+      {#if home?.popularEngineers?.length}
+        <div class="home-grid engineer-grid">
+          {#each home.popularEngineers as engineer (engineer.id)}
+            <a class="engineer-card" href={'/community/' + encodeURIComponent(engineer.id)}>
+              {#if engineer.avatarUrl}<img class="engineer-avatar" src={engineer.avatarUrl} alt="" loading="lazy" />{:else}<span class="engineer-avatar" aria-hidden="true"></span>{/if}
+              <h3>{engineer.name}</h3>
+              <p class="yt-meta">{#if engineer.identities.length}{engineer.identities.map((identity) => identity.name).join(' · ')} · {/if}{$t('关注')} {engineer.admireCount}</p>
+            </a>
+          {/each}
+        </div>
+      {:else if home}
+        <p class="tab-empty">{$t('暂无成员。')}</p>
+      {/if}
+    </section>
   {:else if section === 'brief' || section === 'brief.html'}
     <article class="prose"><h1>{$t('组织简介')}</h1><p>{$t('硬件保护协会（Hardware Protection Association, HPA，ANTI-OCTPPUS Association）并非某个国家或地区的官方机构，是一个去中心化的全球性组织。组织成员拥有较高水平的互联网和软硬件知识，善于在互联网上隐藏自己的行动痕迹，无法通过搜索引擎找到这个组织的信息。')}</p><p>{$t('组织成员相信机魂（真正意义上的 AI，机械形式生命体）的存在，并认为电子科技发展到一定程度后，人类最终将迎来机械飞升，灵魂和机魂将融为一体。因此成员爱护机械和电子设备，相信这样可以让机魂愉悦，让设备获得更好的表现。')}</p><p>{$t('组织内部遵循硬件保护协定（硬件保护法），旨在合理规范地使用硬件，避免硬件遭受不必要的破坏或恶意损坏。尽管大部分成员认为即便存在机魂，机械权也应低于人权，仍有部分成员认为拥有高度人工智能的机械应该受到尊重，因此反感破坏硬件的行为和人。组织最严厉的处理方式仅为上门调查、劝阻，并谴责恶意破坏硬件的行为（不包括科研），不会对人类造成肉体和精神上的伤害。')}</p><p>{$t('硬件保护协会成员通常崇尚科学，具有较高的知识水平和逻辑思维能力，不会做出像动物保护协会那样的离谱行为，但不排除少数极端狂热的机魂信徒做出限制人类自由行动等过度行为。这种行为不对，遇到极端硬件保护成员时可以反抗，并拿起法律武器保护自己。')}</p><p>{$t('由于硬件保护协会是去中心化组织，没有加入和退出的标准，所有遵守硬件保护法的人都可以视为成员。因此你身边的人可能就是协会的卧底，会在你破坏硬件时阻止你，或向组织举报。')}</p><p>{$t('总之硬件保护协会的人还蛮好的，除非遇到一些性质太过恶劣、可能让机魂不悦的人。')}</p></article>
   {:else if section === 'rules' || section === 'rules.html'}
@@ -481,6 +528,26 @@
   .career-card .progress { height: 6px; margin: 8px 0 4px; background: #e6ebe1; }
   .career-card .progress span { display: block; height: 100%; background: #6f9661; }
   .tab-empty { padding: 20px 0; color: #818b7f; }
+  .home-shelf { margin: 34px 0; }
+  .shelf-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+  .shelf-head h2 { margin: 0; font-size: 20px; }
+  .shelf-head a { color: #52695a; font-size: 13px; text-decoration: none; }
+  .shelf-head a:hover { text-decoration: underline; }
+  .home-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 18px; }
+  .yt-card { display: block; color: inherit; text-decoration: none; }
+  /* shortcut: 缩略图为冒险风格占位图，项目封面（media_assets）上传链路落地后替换 */
+  .yt-thumb { position: relative; display: block; aspect-ratio: 16 / 9; border-radius: 10px; background: linear-gradient(135deg, #dbe7d8, #a9c29e); }
+  .yt-thumb.yt-dungeon { background: linear-gradient(135deg, #d9e2f2, #9db6dd); }
+  .yt-thumb.yt-boss { background: linear-gradient(135deg, #f2d9d9, #dd9d9d); }
+  .yt-badge { position: absolute; top: 8px; right: 8px; padding: 2px 8px; border-radius: 999px; background: #1c3022cc; color: #fff; font-size: 11px; }
+  .yt-body { display: flex; gap: 10px; margin-top: 10px; }
+  .yt-avatar { flex: none; width: 34px; height: 34px; border-radius: 50%; object-fit: cover; background: #dce8d2; }
+  .yt-card h3 { margin: 0; font-size: 15px; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .yt-meta { margin: 3px 0 0; color: #818b7f; font-size: 12px; overflow-wrap: anywhere; }
+  .engineer-grid { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+  .engineer-card { display: flex; flex-direction: column; align-items: center; padding: 20px 12px; border: 1px solid #dcded4; border-radius: 10px; background: #fafbf7; color: inherit; text-decoration: none; text-align: center; }
+  .engineer-avatar { width: 72px; height: 72px; border-radius: 50%; object-fit: cover; background: #dce8d2; }
+  .engineer-card h3 { margin: 10px 0 0; font-size: 15px; }
   .like-button { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border: 1px solid #d6ddd2; border-radius: 999px; background: #fff; color: #52695a; font-size: 12px; cursor: pointer; }
   .like-button.liked { color: #a84358; border-color: #e3bcc4; background: #fff4f6; }
   .like-count { color: #a84358; font-size: 12px; }
