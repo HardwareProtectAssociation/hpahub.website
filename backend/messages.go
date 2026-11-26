@@ -54,7 +54,7 @@ func bindMessageRoutes(e *core.ServeEvent) {
 			limit = 100
 		}
 		messages, err := e.App.FindRecordsByFilter("messages",
-			"recipient_user_id = {:user}", "-created", limit, offset, dbx.Params{"user": member.Id})
+			"recipient_user_id = {:user}", "-created,-id", limit, offset, dbx.Params{"user": member.Id})
 		if err != nil {
 			return e.InternalServerError("Unable to load messages.", err)
 		}

@@ -95,6 +95,20 @@ func TestMessaging(t *testing.T) {
 		t.Fatalf("system message: %+v", list.Items)
 	}
 
+	// Pagination must expose older messages without repeating the first page.
+	response = call("GET", "/api/hpahub/me/messages?limit=1&offset=0", bobToken, "")
+	var page1, page2 messageList
+	if err := json.Unmarshal(response.Body.Bytes(), &page1); err != nil {
+		t.Fatal(err)
+	}
+	response = call("GET", "/api/hpahub/me/messages?limit=1&offset=1", bobToken, "")
+	if err := json.Unmarshal(response.Body.Bytes(), &page2); err != nil {
+		t.Fatal(err)
+	}
+	if len(page1.Items) != 1 || len(page2.Items) != 1 || page1.Items[0].ID == page2.Items[0].ID {
+		t.Fatalf("invalid pages: %+v %+v", page1, page2)
+	}
+
 	// Alice cannot read Bob's messages
 	response = call("GET", "/api/hpahub/me/messages", aliceToken, "")
 	json.Unmarshal(response.Body.Bytes(), &list)

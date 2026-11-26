@@ -15,6 +15,8 @@
   let content = '';
   let members = [];
   let activeTab = 'inbox';
+  let hasMore = false;
+  let offset = 0;
 
   const categoryLabels = { user: '用户消息', system: '系统通知', project_approval: '项目审核' };
 
@@ -29,17 +31,21 @@
     return body;
   }
 
-  async function load() {
+  async function load(append = false) {
     loading = true;
     error = '';
     try {
-      const [msgData, memberData] = await Promise.all([
-        request('/api/hpahub/me/messages?limit=50'),
+      const [msgData, memberData, center] = await Promise.all([
+        request(`/api/hpahub/me/messages?limit=51&offset=${append ? offset : 0}`),
         request('/api/hpahub/members'),
+        request('/api/hpahub/me/center'),
       ]);
-      messages = msgData.items || [];
+      const page = msgData.items || [];
+      hasMore = page.length > 50;
+      messages = append ? [...messages, ...page.slice(0, 50)] : page.slice(0, 50);
+      offset = messages.length;
       unreadCount = msgData.unreadCount || 0;
-      members = (memberData.items || []).filter((m) => m.id !== memberData.items?.find((x) => x.id)?.id);
+      members = (memberData.items || []).filter((m) => m.id && m.id !== center.profile.id);
     } catch (err) {
       error = err.message || String(err);
     } finally {
@@ -84,7 +90,7 @@
     }
   }
 
-  onMount(load);
+  onMount(() => load());
 </script>
 
 <main class="dashboard messages-page">
@@ -141,6 +147,7 @@
           </article>
         {/each}
       </div>
+      {#if hasMore}<button type="button" class="secondary" on:click={() => load(true)} disabled={loading}>{$t('加载更多')}</button>{/if}
     {/if}
   {/if}
 </main>
