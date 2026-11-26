@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"errors"
+	"strconv"
 	"time"
 
 	"github.com/pocketbase/dbx"
@@ -40,9 +41,17 @@ func bindAdminConsoleRoutes(e *core.ServeEvent) {
 		if err := requireConsoleAdmin(e); err != nil {
 			return err
 		}
-		rows, err := e.App.FindRecordsByFilter("users", `role = "member" || role = "admin"`, "created", 500, 0)
+		offset, err := adminOffset(e)
+		if err != nil {
+			return err
+		}
+		rows, err := e.App.FindRecordsByFilter("users", `role = "member" || role = "admin"`, "created,id", 101, offset)
 		if err != nil {
 			return e.InternalServerError("Unable to load members.", err)
+		}
+		hasMore := len(rows) > 100
+		if hasMore {
+			rows = rows[:100]
 		}
 		identities, err := e.App.FindRecordsByFilter("collaboration_identities", "", "name", 0, 0)
 		if err != nil {
@@ -83,7 +92,7 @@ func bindAdminConsoleRoutes(e *core.ServeEvent) {
 				Professions:        professionNames,
 			})
 		}
-		return e.JSON(200, map[string]any{"items": items})
+		return e.JSON(200, map[string]any{"items": items, "hasMore": hasMore})
 	})
 
 	e.Router.GET("/api/hpahub/manage/applications", func(e *core.RequestEvent) error {
@@ -91,9 +100,17 @@ func bindAdminConsoleRoutes(e *core.ServeEvent) {
 		if err := requireConsoleAdmin(e); err != nil {
 			return err
 		}
-		rows, err := e.App.FindRecordsByFilter("project_join_requests", `status = "pending"`, "created", 200, 0)
+		offset, err := adminOffset(e)
+		if err != nil {
+			return err
+		}
+		rows, err := e.App.FindRecordsByFilter("project_join_requests", `status = "pending"`, "created,id", 101, offset)
 		if err != nil {
 			return e.InternalServerError("Unable to load applications.", err)
+		}
+		hasMore := len(rows) > 100
+		if hasMore {
+			rows = rows[:100]
 		}
 		items := make([]managedApplication, 0, len(rows))
 		for _, request := range rows {
@@ -116,7 +133,7 @@ func bindAdminConsoleRoutes(e *core.ServeEvent) {
 			}
 			items = append(items, item)
 		}
-		return e.JSON(200, map[string]any{"items": items})
+		return e.JSON(200, map[string]any{"items": items, "hasMore": hasMore})
 	})
 
 	e.Router.PATCH("/api/hpahub/manage/applications/{id}", func(e *core.RequestEvent) error {
@@ -194,4 +211,16 @@ func requireConsoleAdmin(e *core.RequestEvent) error {
 		return e.ForbiddenError("Insufficient permissions.", nil)
 	}
 	return nil
+}
+
+func adminOffset(e *core.RequestEvent) (int, error) {
+	raw := e.Request.URL.Query().Get("offset")
+	if raw == "" {
+		return 0, nil
+	}
+	offset, err := strconv.Atoi(raw)
+	if err != nil || offset < 0 {
+		return 0, e.BadRequestError("Invalid offset.", nil)
+	}
+	return offset, nil
 }

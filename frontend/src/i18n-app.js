@@ -1,4 +1,5 @@
 export default {
+  '加载更多': ['載入更多', 'もっと見る', 'Load more'],
   'Invalid credentials.': ['憑據無效。', '認証情報が正しくありません。', 'Invalid credentials.'],
   'Authentication failed.': ['驗證失敗。', '認証に失敗しました。', 'Authentication failed.'],
   'Authentication required.': ['請先登入。', 'ログインが必要です。', 'Authentication required.'],
