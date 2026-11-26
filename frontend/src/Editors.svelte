@@ -8,6 +8,7 @@
   let profile = { name: '', bio: '', profilePublic: false, avatarUrl: '' };
   let records = [];
   let current = null;
+  let showEditor = false;
   let title = '';
   let text = '';
   let published = false;
@@ -77,6 +78,7 @@
   onDestroy(() => { clearPreviews(); uploadPreviews.forEach(URL.revokeObjectURL); if (avatarPreview) URL.revokeObjectURL(avatarPreview); });
   function edit(record = null) {
     current = record;
+    showEditor = true;
     title = record?.title || '';
     text = record?.text || '';
     published = record?.published || false;
@@ -105,7 +107,7 @@
       keepImages.forEach(name => body.append('keepImages', name));
       Array.from(files).forEach(file => body.append('images', file));
       await request(base + (current ? '/' + encodeURIComponent(current.id) : ''), { method: current ? 'PATCH' : 'POST', body });
-      edit(); await load(); notice = '保存成功。';
+      edit(); showEditor = false; await load(); notice = '保存成功。';
     } catch (e) { error = e.message; errorParams = e.params || {}; } finally { busy = false; }
   }
   async function saveDifficulty(project) {
@@ -222,17 +224,29 @@
     </form></section>
   {/if}
   <section><h2>{manage ? $t('项目') : $t('我的卡片')}</h2>
+    <div class="editor-toolbar"><button type="button" class="primary" on:click={() => edit()}>{manage ? $t('新建项目') : $t('新建卡片')}</button></div>
     {#if records.length}<div class="editor-list">{#each records as record}<article><h3>{record.title} {#if manage}<small>{record.published ? $t('已发布') : $t('草稿')}</small>{/if}</h3><p>{record.text}</p><div class="image-grid">{#each record.imageUrls || [] as url}{#if previews[url]}<a href={previews[url]} target="_blank" rel="noreferrer"><img src={previews[url]} alt={record.title} /></a>{/if}{/each}</div><div class="editor-actions"><button type="button" on:click={() => edit(record)}>{$t('编辑')}</button><button type="button" on:click={() => remove(record)} disabled={busy}>{$t('删除')}</button></div></article>{/each}</div>{:else}<p>{manage ? $t('暂无项目。') : $t('暂无卡片。')}</p>{/if}
-    <h2>{current ? (manage ? $t('编辑项目') : $t('编辑卡片')) : (manage ? $t('新建项目') : $t('新建卡片'))}</h2><form class="editor-form" on:submit|preventDefault={saveRecord}>
-      <label>{$t('标题')} <input bind:value={title} maxlength="80" required /></label><label>{$t('文字')} <textarea bind:value={text} maxlength="280" rows="4"></textarea></label>
-      {#if current?.images?.length}<fieldset><legend>{$t('保留图片')}</legend>{#each current.images as image, index}<label class="check-label"><input type="checkbox" value={image} bind:group={keepImages} /> {#if previews[current.imageUrls[index]]}<img class="editor-thumb" src={previews[current.imageUrls[index]]} alt="" />{/if} {image}</label>{/each}</fieldset>{/if}
-      <label>{$t('添加图片（最多 4 张，每张最多 5 MiB）')} <input type="file" bind:this={imagesInput} accept="image/jpeg,image/png,image/webp,image/gif" multiple on:change={selectFiles} /></label>
-      {#if uploadPreviews.length}<div class="image-grid">{#each uploadPreviews as url}<img src={url} alt={$t('待上传图片预览')} />{/each}</div>{/if}
-      {#if manage}<label class="check-label"><input type="checkbox" bind:checked={published} /> {$t('发布项目')}</label>{/if}
-      <div class="editor-actions"><button class="primary" disabled={busy}>{$t('保存')}</button>{#if current}<button type="button" on:click={() => edit()}>{$t('取消编辑')}</button>{/if}</div>
-    </form>
   </section>
 </main>
+
+{#if showEditor}
+  <div class="editor-modal-backdrop" on:click={() => { showEditor = false; edit(); }} on:keydown={(e) => { if (e.key === 'Escape') { showEditor = false; edit(); } }} role="presentation">
+    <div class="editor-modal" role="dialog" aria-modal="true" aria-label={current ? (manage ? $t('编辑项目') : $t('编辑卡片')) : (manage ? $t('新建项目') : $t('新建卡片'))} on:click|stopPropagation on:keydown|stopPropagation>
+      <div class="editor-modal-head">
+        <h2>{current ? (manage ? $t('编辑项目') : $t('编辑卡片')) : (manage ? $t('新建项目') : $t('新建卡片'))}</h2>
+        <button type="button" class="editor-modal-close" aria-label={$t('关闭')} on:click={() => { showEditor = false; edit(); }}>×</button>
+      </div>
+      <form class="editor-form" on:submit|preventDefault={saveRecord}>
+        <label>{$t('标题')} <input bind:value={title} maxlength="80" required /></label><label>{$t('文字')} <textarea bind:value={text} maxlength="280" rows="4"></textarea></label>
+        {#if current?.images?.length}<fieldset><legend>{$t('保留图片')}</legend>{#each current.images as image, index}<label class="check-label"><input type="checkbox" value={image} bind:group={keepImages} /> {#if previews[current.imageUrls[index]]}<img class="editor-thumb" src={previews[current.imageUrls[index]]} alt="" />{/if} {image}</label>{/each}</fieldset>{/if}
+        <label>{$t('添加图片（最多 4 张，每张最多 5 MiB）')} <input type="file" bind:this={imagesInput} accept="image/jpeg,image/png,image/webp,image/gif" multiple on:change={selectFiles} /></label>
+        {#if uploadPreviews.length}<div class="image-grid">{#each uploadPreviews as url}<img src={url} alt={$t('待上传图片预览')} />{/each}</div>{/if}
+        {#if manage}<label class="check-label"><input type="checkbox" bind:checked={published} /> {$t('发布项目')}</label>{/if}
+        <div class="editor-actions"><button class="primary" disabled={busy}>{$t('保存')}</button><button type="button" on:click={() => { showEditor = false; edit(); }}>{$t('取消')}</button></div>
+      </form>
+    </div>
+  </div>
+{/if}
 
 <style>
   .difficulty-section { margin: 26px 0; }
@@ -247,4 +261,10 @@
   .vote-controls select { min-width: 60px; padding: 5px 6px; border: 1px solid #b9c3b3; background: #fff; }
   .vote-controls .small { padding: 4px 10px; font-size: 12px; }
   .frozen { color: #8b9587; font-size: 12px; }
+  .editor-toolbar { margin: 12px 0; }
+  .editor-modal-backdrop { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 20px; background: #1c302266; }
+  .editor-modal { width: min(680px, 100%); max-height: calc(100dvh - 40px); overflow-y: auto; padding: 24px; border: 1px solid #dcded4; border-radius: 8px; background: #fbfcf8; box-shadow: 0 20px 50px #1c302233; }
+  .editor-modal-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+  .editor-modal-head h2 { margin: 0; font-size: 20px; }
+  .editor-modal-close { border: 0; background: none; color: #52695a; font-size: 26px; line-height: 1; padding: 0 4px; cursor: pointer; }
 </style>
