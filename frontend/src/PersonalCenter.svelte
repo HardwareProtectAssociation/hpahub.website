@@ -1,6 +1,7 @@
 <script>
   import { onDestroy, onMount } from 'svelte';
   import { t } from './i18n.js';
+  import AvatarCrop from './AvatarCrop.svelte';
   import { difficultyRank, levelRank } from './tiers.js';
 
   export let token;
@@ -26,6 +27,8 @@
   let activityDraft = '';
   let removeAvatar = false;
   let avatarFile = null;
+  let avatarThumb = null;
+  let cropPending = false;
   let avatarPreview = '';
   let invitations = [];
   let invitationError = '';
@@ -100,7 +103,7 @@
   async function loadAvatar(url) {
     if (!url) return '';
     try {
-      const response = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {}, cache: 'no-store' });
+      const response = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
       if (!response.ok) return '';
       return URL.createObjectURL(await response.blob());
     } catch {
@@ -151,6 +154,7 @@
     activityDraft = '';
     removeAvatar = false;
     avatarFile = null;
+    avatarThumb = null;
     formError = '';
     notice = '';
     if (avatarPreview) URL.revokeObjectURL(avatarPreview);
@@ -215,19 +219,21 @@
     formError = '';
     removeAvatar = false;
     avatarFile = null;
+    avatarThumb = null;
     if (avatarPreview) URL.revokeObjectURL(avatarPreview);
     avatarPreview = '';
   }
 
   function selectAvatar(event) {
-    const file = event.currentTarget.files?.[0] || null;
-    avatarFile = file;
+    avatarFile = event.detail.avatar;
+    avatarThumb = event.detail.thumb;
     if (avatarPreview) URL.revokeObjectURL(avatarPreview);
-    avatarPreview = file ? URL.createObjectURL(file) : '';
-    if (file) removeAvatar = false;
+    avatarPreview = URL.createObjectURL(avatarThumb);
+    removeAvatar = false;
   }
 
   async function saveProfile() {
+    if (cropPending) return;
     const name = formName.trim();
     if (!name) {
       formError = '请填写昵称。';
@@ -248,7 +254,7 @@
       body.set('contacts', JSON.stringify(formContacts.filter((contact) => contact.value.trim())));
       body.set('activityAreas', JSON.stringify(formActivityAreas));
       body.set('identityIds', JSON.stringify(formIdentityIds));
-      if (avatarFile) body.set('avatar', avatarFile);
+      if (avatarFile && !removeAvatar) { body.set('avatar', avatarFile); body.set('avatarThumb', avatarThumb); }
       if (removeAvatar) body.set('removeAvatar', 'true');
       const response = await fetch('/api/hpahub/me/center/profile', {
         method: 'PATCH',
@@ -478,7 +484,7 @@
             <span class="avatar avatar-default" aria-hidden="true"></span>
           {/if}
           <div class="avatar-controls">
-            <label class="file-label">{$t('更换头像')}<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" on:change={selectAvatar} /></label>
+            <AvatarCrop on:crop={selectAvatar} on:pending={(event) => cropPending = event.detail} />
             {#if avatarSrc || avatarPreview}
               <label class="check-label"><input type="checkbox" bind:checked={removeAvatar} />{$t('删除头像')}</label>
             {/if}
@@ -538,7 +544,7 @@
         </fieldset>
         <label class="check-label"><input type="checkbox" bind:checked={formPublic} />{$t('公开我的个人资料')}</label>
         <div class="edit-actions">
-          <button class="primary" type="submit" disabled={saving}>{saving ? $t('正在保存…') : $t('保存资料')}</button>
+          <button class="primary" type="submit" disabled={saving || cropPending}>{saving ? $t('正在保存…') : $t('保存资料')}</button>
           <button type="button" on:click={cancelEdit} disabled={saving}>{$t('取消')}</button>
         </div>
       </form>
