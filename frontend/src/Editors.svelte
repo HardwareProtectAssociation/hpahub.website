@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { get } from 'svelte/store';
   import { t } from './i18n.js';
+  import AvatarCrop from './AvatarCrop.svelte';
   import { difficultyRank } from './tiers.js';
   export let token;
   export let role;
@@ -16,8 +17,9 @@
   let keepImages = [];
   let files = [];
   let avatar = null;
+  let avatarThumb = null;
+  let cropPending = false;
   let imagesInput;
-  let avatarInput;
   let removeAvatar = false;
   let previews = {};
   let uploadPreviews = [];
@@ -36,10 +38,12 @@
   }
   function selectAvatar(event) {
     if (avatarPreview) URL.revokeObjectURL(avatarPreview);
-    avatar = event.currentTarget.files[0] || null;
-    avatarPreview = avatar ? URL.createObjectURL(avatar) : '';
-    if (avatar) removeAvatar = false;
+    avatar = event.detail.avatar;
+    avatarThumb = event.detail.thumb;
+    avatarPreview = URL.createObjectURL(avatarThumb);
+    removeAvatar = false;
   }
+
   let error = '';
   let notice = '';
   let errorParams = {};
@@ -97,14 +101,15 @@
     error = ''; notice = '';
   }
   async function saveProfile() {
+    if (cropPending) return;
     busy = true; error = ''; notice = '';
     try {
       const body = new FormData();
       body.set('name', profile.name); body.set('bio', profile.bio); body.set('profilePublic', String(profile.profilePublic));
-      if (avatar) body.set('avatar', avatar);
+      if (avatar && !removeAvatar) { body.set('avatar', avatar); body.set('avatarThumb', avatarThumb); }
       if (removeAvatar) body.set('removeAvatar', 'true');
       await request('/api/hpahub/me/profile', { method: 'PATCH', body });
-      avatar = null; avatarInput.value = ''; if (avatarPreview) URL.revokeObjectURL(avatarPreview); avatarPreview = ''; removeAvatar = false; await load(); notice = '资料已保存。';
+      avatar = null; avatarThumb = null; if (avatarPreview) URL.revokeObjectURL(avatarPreview); avatarPreview = ''; removeAvatar = false; await load(); notice = '资料已保存。';
     } catch (e) { error = e.message; errorParams = e.params || {}; } finally { busy = false; }
   }
   async function saveRecord() {
@@ -225,10 +230,10 @@
       {#if avatarPreview && !removeAvatar}<img class="avatar" src={avatarPreview} alt={$t('新头像预览')} />{:else if profile.avatarUrl && previews[profile.avatarUrl] && !removeAvatar}<img class="avatar" src={previews[profile.avatarUrl]} alt={$t('当前头像')} />{/if}
       <label>{$t('昵称')} <input bind:value={profile.name} maxlength="80" required={profile.profilePublic} /></label>
       <label>{$t('简介')} <textarea bind:value={profile.bio} maxlength="600" rows="4"></textarea></label>
-      <label>{$t('头像（JPEG、PNG、WebP 或 GIF，最多 5 MiB）')} <input type="file" bind:this={avatarInput} accept="image/jpeg,image/png,image/webp,image/gif" on:change={selectAvatar} /></label>
-      {#if profile.avatarUrl}<label class="check-label"><input type="checkbox" bind:checked={removeAvatar} on:change={() => { if (removeAvatar) { avatar = null; avatarInput.value = ''; } }} /> {$t('删除头像')}</label>{/if}
+      <AvatarCrop on:crop={selectAvatar} on:pending={(event) => cropPending = event.detail} />
+      {#if profile.avatarUrl}<label class="check-label"><input type="checkbox" bind:checked={removeAvatar} on:change={() => { if (removeAvatar) { avatar = null; avatarThumb = null; } }} /> {$t('删除头像')}</label>{/if}
       <label class="check-label"><input type="checkbox" bind:checked={profile.profilePublic} /> {$t('公开我的资料和卡片')}</label>
-      <button class="primary" disabled={busy}>{$t('保存资料')}</button>
+      <button class="primary" disabled={busy || cropPending}>{$t('保存资料')}</button>
     </form></section>
   {/if}
   <section><h2>{manage ? $t('项目') : $t('我的卡片')}</h2>

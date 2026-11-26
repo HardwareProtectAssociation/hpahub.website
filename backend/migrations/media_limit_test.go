@@ -23,3 +23,19 @@ func TestMediaLimit(t *testing.T) {
 		}
 	}
 }
+
+func TestAvatarThumbnailField(t *testing.T) {
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+	users, err := app.FindCollectionByNameOrId("users")
+	if err != nil {
+		t.Fatal(err)
+	}
+	field, ok := users.Fields.GetByName("avatar_thumb").(*core.FileField)
+	if !ok || !field.Protected || len(field.MimeTypes) != 1 || field.MimeTypes[0] != "image/webp" {
+		t.Fatalf("invalid avatar thumbnail field: %#v", field)
+	}
+}

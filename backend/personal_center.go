@@ -412,7 +412,7 @@ func bindPersonalCenterRoutes(e *core.ServeEvent) {
 		if !member || owner.GetString("avatar") == "" {
 			return e.NotFoundError("Not found.", nil)
 		}
-		return serveContentFile(e, owner, "avatar", owner.GetString("avatar"))
+		return serveAvatar(e, owner)
 	})
 	e.Router.PATCH("/api/hpahub/me/center/profile", func(e *core.RequestEvent) error {
 		noCache(e)
@@ -427,7 +427,7 @@ func bindPersonalCenterRoutes(e *core.ServeEvent) {
 			return e.ForbiddenError("No member profile is linked to this account.", nil)
 		}
 		input, err := readContentInput(e, map[string]bool{
-			"name": true, "bio": true, "profilePublic": true, "avatar": true, "removeAvatar": true,
+			"name": true, "bio": true, "profilePublic": true, "avatar": true, "avatarThumb": true, "removeAvatar": true,
 			"gender": true, "personality": true, "age": true, "contacts": true, "activityAreas": true, "identityIds": true, "currentStatus": true,
 		})
 		if e.Request.MultipartForm != nil {
@@ -486,10 +486,6 @@ func bindPersonalCenterRoutes(e *core.ServeEvent) {
 		hasCurrentStatus, err := inputField(input, "currentStatus", &currentStatus)
 		if err != nil {
 			return e.BadRequestError("Invalid profile.", err)
-		}
-		files := input.files["avatar"]
-		if len(files) > 1 || (removeAvatar && len(files) > 0) {
-			return e.BadRequestError("Invalid profile.", nil)
 		}
 		if hasName {
 			name = strings.TrimSpace(name)
@@ -551,10 +547,8 @@ func bindPersonalCenterRoutes(e *core.ServeEvent) {
 		if hasIdentities && len(identityIDs) > 3 {
 			return e.BadRequestError("Invalid profile.", nil)
 		}
-		if removeAvatar {
-			owner.Set("avatar", "")
-		} else if len(files) == 1 {
-			owner.Set("avatar", files[0])
+		if err := setAvatar(owner, input, removeAvatar); err != nil {
+			return e.BadRequestError("Invalid profile.", err)
 		}
 		if owner.GetBool("profilePublic") && strings.TrimSpace(owner.GetString("name")) == "" {
 			return e.BadRequestError("Invalid profile.", nil)

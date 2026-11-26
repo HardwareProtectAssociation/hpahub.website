@@ -1,4 +1,12 @@
 export default {
+  '裁切头像': ['裁切頭像', 'アバターをトリミング', 'Crop avatar'],
+  '头像裁切预览': ['頭像裁切預覽', 'トリミングのプレビュー', 'Avatar crop preview'],
+  '缩放': ['縮放', '拡大・縮小', 'Zoom'],
+  '水平位置': ['水平位置', '水平位置', 'Horizontal position'],
+  '垂直位置': ['垂直位置', '垂直位置', 'Vertical position'],
+  '确认裁切': ['確認裁切', 'トリミングを確定', 'Confirm crop'],
+  '无法读取图片。': ['無法讀取圖片。', '画像を読み込めません。', 'Could not read the image.'],
+  '无法处理图片，请重试。': ['無法處理圖片，請重試。', '画像を処理できません。もう一度お試しください。', 'Could not process the image. Please try again.'],
   '图片不能超过 2 MiB。': ['圖片不能超過 2 MiB。', '画像は 2 MiB 以下にしてください。', 'Images must not exceed 2 MiB.'],
   '硬件保护协会': ['硬體保護協會', 'ハードウェア保護協会', 'Hardware Protection Association'],
   '创造，保护，调查': ['創造，保護，調查', '創造、保護、調査', 'Create, Protect, Investigate'],

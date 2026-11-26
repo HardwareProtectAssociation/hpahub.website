@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"encoding/base64"
 	"image"
 	"image/png"
 	"io"
@@ -147,6 +148,24 @@ func TestPublicProfilesCardsAndShowcase(t *testing.T) {
 	want(avatarResponse, http.StatusOK)
 	noCache(avatarResponse)
 	if !bytes.Equal(avatarResponse.Body.Bytes(), pngData.Bytes()) { t.Fatal("avatar contents differ") }
+	thumb, err := base64.StdEncoding.DecodeString("UklGRoIAAABXRUJQVlA4IHYAAADQBwCdASqQAJAAPpFIoUylpCMiIGgAsBIJaW7hdVEHHAAAO7NZHVUmyYh1VJsmIdVSbJiHVUmyYh1VJsmIdVSbJiHVUmyCAAD+/r+uf/4DdfFtMv//c4H/c4H/c4H8bbryv8ghV+KyxvbhAHhyu2Hp5iAAAAAA")
+	if err != nil { t.Fatal(err) }
+	uploadAvatar := func(includeAvatar, includeThumb bool) *httptest.ResponseRecorder {
+		var body bytes.Buffer
+		writer := multipart.NewWriter(&body)
+		if includeAvatar { part, err := writer.CreateFormFile("avatar", "avatar.png"); if err != nil { t.Fatal(err) }; if _, err := part.Write(pngData.Bytes()); err != nil { t.Fatal(err) } }
+		if includeThumb { part, err := writer.CreateFormFile("avatarThumb", "avatar.webp"); if err != nil { t.Fatal(err) }; if _, err := part.Write(thumb); err != nil { t.Fatal(err) } }
+		if err := writer.Close(); err != nil { t.Fatal(err) }
+		return request("PATCH", base+"/me/profile", memberToken, writer.FormDataContentType(), &body)
+	}
+	want(uploadAvatar(false, true), http.StatusBadRequest)
+	want(uploadAvatar(true, true), http.StatusOK)
+	if got := jsonRequest("GET", avatar, "", ""); !bytes.Equal(got.Body.Bytes(), thumb) { t.Fatal("avatar thumbnail contents differ") }
+	storedMember, err := app.FindRecordById("users", member.Id); if err != nil { t.Fatal(err) }
+	if storedMember.GetString("avatar") == "" || storedMember.GetString("avatar_thumb") == "" { t.Fatal("avatar files not stored") }
+	want(uploadAvatar(true, false), http.StatusOK)
+	if got := jsonRequest("GET", avatar, "", ""); !bytes.Equal(got.Body.Bytes(), pngData.Bytes()) { t.Fatal("old thumbnail was not cleared") }
+
 	for _, filename := range cardImages {
 		imageResponse := jsonRequest("GET", base+"/members/"+member.Id+"/cards/"+cardID+"/images/"+filename, "", "")
 		want(imageResponse, http.StatusOK)
