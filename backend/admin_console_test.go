@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -85,6 +86,29 @@ func TestAdminConsoleApplications(t *testing.T) {
 	if !foundApplicant || len(members.Items) < 3 {
 		t.Fatalf("members = %+v", members.Items)
 	}
+	baseline := len(members.Items)
+	for i := 0; i < 100; i++ {
+		publicProjectTestUser(t, app, fmt.Sprintf("page-%03d@example.com", i), "分页成员")
+	}
+	response = call("GET", "/api/hpahub/manage/members", adminToken, "")
+	var first struct {
+		Items   []managedMember `json:"items"`
+		HasMore bool            `json:"hasMore"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &first); err != nil || len(first.Items) != 100 || !first.HasMore {
+		t.Fatalf("first page: %s, %v", response.Body.String(), err)
+	}
+	response = call("GET", "/api/hpahub/manage/members?offset=100", adminToken, "")
+	var second struct {
+		Items   []managedMember `json:"items"`
+		HasMore bool            `json:"hasMore"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &second); err != nil || len(second.Items) != baseline || second.HasMore {
+		t.Fatalf("second page: %s, %v", response.Body.String(), err)
+	}
+	if response := call("GET", "/api/hpahub/manage/members?offset=-1", adminToken, ""); response.Code != http.StatusBadRequest {
+		t.Fatalf("invalid offset status = %d", response.Code)
+	}
 	response = call("GET", "/api/hpahub/manage/applications", adminToken, "")
 	if response.Code != http.StatusOK {
 		t.Fatalf("applications status = %d: %s", response.Code, response.Body.String())
@@ -125,4 +149,44 @@ func TestAdminConsoleApplications(t *testing.T) {
 	if membership.GetDateTime("joined_at").Time().IsZero() || membership.GetDateTime("joined_at").Time().After(time.Now().Add(time.Minute)) {
 		t.Fatalf("joined_at = %v", membership.GetDateTime("joined_at"))
 	}
+	users, err := app.FindRecordsByFilter("users", `role = "member"`, "created,id", 101, 0)
+	if err != nil || len(users) != 101 {
+		t.Fatalf("pagination users: %d, %v", len(users), err)
+	}
+	for _, user := range users {
+		item := core.NewRecord(publicProjectTestCollection(t, app, "project_join_requests"))
+		item.Set("project_id", project.Id)
+		item.Set("user_id", user.Id)
+		item.Set("source", "application")
+		item.Set("status", "pending")
+		publicProjectTestSave(t, app, item)
+	}
+	response = call("GET", "/api/hpahub/manage/applications", adminToken, "")
+	var firstApplications struct {
+		Items   []managedApplication `json:"items"`
+		HasMore bool                 `json:"hasMore"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &firstApplications); err != nil || len(firstApplications.Items) != 100 || !firstApplications.HasMore {
+		t.Fatalf("first application page: %s, %v", response.Body.String(), err)
+	}
+	response = call("GET", "/api/hpahub/manage/applications?offset=100", adminToken, "")
+	var lastApplications struct {
+		Items   []managedApplication `json:"items"`
+		HasMore bool                 `json:"hasMore"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &lastApplications); err != nil || len(lastApplications.Items) != 1 || lastApplications.HasMore {
+		t.Fatalf("last application page: %s, %v", response.Body.String(), err)
+	}
+	concurrentID := lastApplications.Items[0].ID
+	results := make(chan int, 2)
+	for _, status := range []string{"accepted", "rejected"} {
+		go func(status string) {
+			results <- call("PATCH", "/api/hpahub/manage/applications/"+concurrentID, adminToken, `{"status":"`+status+`"}`).Code
+		}(status)
+	}
+	firstStatus, secondStatus := <-results, <-results
+	if (firstStatus == http.StatusOK) == (secondStatus == http.StatusOK) {
+		t.Fatalf("concurrent approvals = %d, %d; exactly one must succeed", firstStatus, secondStatus)
+	}
+
 }

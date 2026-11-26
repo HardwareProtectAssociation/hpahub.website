@@ -73,6 +73,10 @@ func TestHardwareNewsReactions(t *testing.T) {
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"likeCount":1`) {
 		t.Fatalf("like = %d: %s", response.Code, response.Body.String())
 	}
+	response = call("GET", "/api/hpahub/news", readerToken, "")
+	if err := json.Unmarshal(response.Body.Bytes(), &list); err != nil || len(list.Items) != 1 || list.Items[0].LikeCount != 1 || list.Items[0].MyReaction != "like" {
+		t.Fatalf("list after reaction = %s, %v", response.Body.String(), err)
+	}
 	response = call("POST", path, readerToken, `{"reaction":"useless"}`)
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"uselessCount":1`) || !strings.Contains(response.Body.String(), `"likeCount":0`) {
 		t.Fatalf("switch reaction = %d: %s", response.Code, response.Body.String())

@@ -140,9 +140,9 @@
     {:else}
       <p>{$t('暂无成员。')}</p>
     {/if}
+    {#if membersMore}<button type="button" class="secondary" on:click={() => loadMore('members')} disabled={loading || moreBusy}>{$t('加载更多')}</button>{/if}
   </section>
 
-    {#if membersMore}<button type="button" class="secondary" on:click={() => loadMore('members')} disabled={loading || moreBusy}>{$t('加载更多')}</button>{/if}
   <section class="admin-block">
     <h3>{$t('待审批申请')} <span class="count">{applications.length}</span></h3>
     {#if applications.length}
@@ -167,9 +167,9 @@
     {:else}
       <p>{$t('暂无待审批申请。')}</p>
     {/if}
+    {#if applicationsMore}<button type="button" class="secondary" on:click={() => loadMore('applications')} disabled={loading || moreBusy}>{$t('加载更多')}</button>{/if}
   </section>
 
-    {#if applicationsMore}<button type="button" class="secondary" on:click={() => loadMore('applications')} disabled={loading || moreBusy}>{$t('加载更多')}</button>{/if}
   <section class="admin-block">
     <h3>{$t('全部项目')} <span class="count">{projects.length}</span></h3>
     {#if projects.length}
