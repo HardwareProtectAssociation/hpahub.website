@@ -5,6 +5,7 @@
   export let token;
   let data = { initiated: [], participated: [], followed: [] };
   let activeTab = 'initiated';
+  let statusFilter = '';
   let loading = true;
   let error = '';
   let showCreate = false;
@@ -15,7 +16,8 @@
   let newStyle = 'project';
   const difficultyLevels = ['D', 'C', 'B', 'A', 'S'];
 
-  const statusLabels = { ongoing: '进行中', paused: '暂停', terminated: '已中止', completed: '已完成' };
+  const statusLabels = { ongoing: '进行中', paused: '已暂停', terminated: '已终止', completed: '已完成' };
+  const statusFilters = ['ongoing', 'completed', 'paused', 'terminated'];
   const reviewLabels = { pending: '待审核', approved: '已通过', rejected: '已拒绝' };
 
   async function load() {
@@ -39,7 +41,8 @@
   }
 
   function projectsFor(tab) {
-    return data[tab] || [];
+    const items = data[tab] || [];
+    return statusFilter ? items.filter((project) => project.status === statusFilter) : items;
   }
 
   async function createProject() {
@@ -94,6 +97,11 @@
       <button type="button" class:active={activeTab === 'participated'} on:click={() => activeTab = 'participated'}>{$t('我参与的项目')}<span>{data.participated.length}</span></button>
       <button type="button" class:active={activeTab === 'followed'} on:click={() => activeTab = 'followed'}>{$t('我关注的项目')}<span>{data.followed.length}</span></button>
     </nav>
+    <div class="status-filters" role="group" aria-label={$t('执行状态')}>
+      {#each statusFilters as status}
+        <button type="button" class:active={statusFilter === status} aria-pressed={statusFilter === status} on:click={() => statusFilter = statusFilter === status ? '' : status}>{$t(statusLabels[status])}</button>
+      {/each}
+    </div>
     {#if projectsFor(activeTab).length}
       <div class="project-list">
         {#each projectsFor(activeTab) as project}
@@ -110,7 +118,7 @@
         {/each}
       </div>
     {:else}
-      <p class="empty">{activeTab === 'initiated' ? $t('还没有发起项目。') : activeTab === 'participated' ? $t('还没有参与项目。') : $t('还没有关注项目。')}</p>
+      <p class="empty">{statusFilter ? $t('该状态下暂无项目。') : activeTab === 'initiated' ? $t('还没有发起项目。') : activeTab === 'participated' ? $t('还没有参与项目。') : $t('还没有关注项目。')}</p>
     {/if}
   {/if}
 </main>
@@ -145,6 +153,10 @@
   .project-tabs button:hover { background: #eef3e8; }
   .project-tabs button.active { background: #274732; color: #fff; }
   .project-tabs button span { margin-left: 5px; opacity: 0.72; }
+  .status-filters { display: flex; flex-wrap: wrap; gap: 8px; margin: -12px 0 20px; }
+  .status-filters button { padding: 4px 12px; border: 1px solid #c8d4c0; border-radius: 999px; background: none; color: #3f5d3a; font-size: 12px; cursor: pointer; }
+  .status-filters button:hover { background: #eef3e8; }
+  .status-filters button.active { background: #274732; border-color: #274732; color: #fff; }
   .project-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 16px; }
   .project-card { padding: 20px; border: 1px solid #dcded4; background: #fafbf7; }
   .project-card h2 { margin: 10px 0 8px; font-size: 20px; }

@@ -262,6 +262,8 @@ export default {
   '我发起的项目': ['我發起的專案', '私が開始したプロジェクト', 'Projects I started'],
   '我参与的项目': ['我參與的專案', '私が参加したプロジェクト', 'Projects I joined'],
   '我关注的项目': ['我關注的專案', 'フォロー中のプロジェクト', 'Projects I follow'],
+  '已终止': ['已終止', '中止', 'Terminated'],
+  '该状态下暂无项目。': ['該狀態下暫無專案。', 'この状態のプロジェクトはありません。', 'No projects with this status.'],
   '还没有发起项目。': ['還沒有發起專案。', '開始したプロジェクトはありません。', 'No projects started yet.'],
   '还没有参与项目。': ['還沒有參與專案。', '参加したプロジェクトはありません。', 'No joined projects yet.'],
   '还没有关注项目。': ['還沒有關注專案。', 'フォロー中のプロジェクトはありません。', 'No followed projects yet.'],
