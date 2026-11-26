@@ -31,6 +31,7 @@
   let invitationNotice = '';
   let generatingInvitation = false;
   let inviteCount = 1;
+  let inviteMaxUses = 1;
   let copiedCode = '';
 
   const genderLabels = { male: '男', female: '女', nonbinary: '非二元', private: '不愿透露' };
@@ -230,7 +231,7 @@
       const response = await fetch('/api/hpahub/invitations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ count: Number(inviteCount) }),
+        body: JSON.stringify({ count: Number(inviteCount), maxUses: Number(inviteMaxUses) }),
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.message || '生成失败，请重试。');
@@ -280,8 +281,10 @@
   }
 
   function invitationStatus(invitation) {
+    if (invitation.maxUses === 0) return '无限次使用';
+    if (invitation.maxUses > 1 && invitation.useCount < invitation.maxUses) return '使用中';
     if (invitation.used) return '已使用';
-    if (invitation.expires * 1000 <= Date.now()) return '已过期';
+    if (invitation.expires > 0 && invitation.expires * 1000 <= Date.now()) return '已过期';
     return '未使用';
   }
 
@@ -570,6 +573,7 @@
             <div><h2 id="center-invitations">{$t('我的邀请码')}</h2><p>{$t('邀请码有效 24 小时，仅可使用一次。')}</p></div>
             <div class="invite-controls">
               <label>{$t('生成数量')}<select bind:value={inviteCount} aria-label={$t('生成数量')}>{#each [1, 2, 3, 4, 5] as count}<option value={count}>{count}</option>{/each}</select></label>
+              <label>{$t('使用次数')}<select bind:value={inviteMaxUses} aria-label={$t('使用次数')}><option value={1}>1</option><option value={5}>5</option><option value={10}>10</option><option value={0}>{$t('无限次')}</option></select></label>
               <button type="button" class="link-button" on:click={generateInvitation} disabled={generatingInvitation}>{generatingInvitation ? $t('正在生成…') : $t('生成邀请码')}</button>
             </div>
           </div>
@@ -581,9 +585,10 @@
                 <article class="invitation-card">
                   <div class="invitation-head">
                     <strong>{invitation.code}</strong>
+                    {#if invitation.maxUses === 0}<span class="unlimited-tag">{$t('无限次')}</span>{/if}
                     <button type="button" class="small copy-button" on:click={() => copyInvitation(invitation.code)}>{copiedCode === invitation.code ? $t('已复制') : $t('复制')}</button>
                   </div>
-                  <div class="invitation-status-line"><span class:used={invitation.used} class="invitation-status">{$t(invitationStatus(invitation))}</span></div>
+                  <div class="invitation-status-line"><span class:used={invitation.used} class="invitation-status">{$t(invitationStatus(invitation))}{#if invitation.maxUses === 0} · {$t('已用')} {invitation.useCount} {$t('次')}{:else if invitation.maxUses > 1} · {$t('已用')} {invitation.useCount}/{invitation.maxUses}{/if}</span></div>
                   <small>{$t('到期时间')}：{invitationDate(invitation.expires)}</small>
                   {#if invitation.used}<small>{$t('使用者')}：{invitation.usedBy || '—'} · {invitationDate(invitation.used)}</small>{/if}
                 </article>
@@ -705,6 +710,7 @@
   .invite-controls select { padding: 6px 8px; border: 1px solid #b9c3b3; background: #fff; color: #252b26; }
   .invitation-code { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
   .copy-button { padding: 2px 8px; }
+  .unlimited-tag { display: inline-block; padding: 1px 8px; border-radius: 999px; background: #fff3df; color: #7a4b12; font-size: 11px; font-weight: 600; }
   .invitation-card { display: grid; gap: 4px; padding: 12px; border: 1px solid #dce3d6; background: #fff; }
   .invitation-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .invitation-status-line { display: flex; align-items: center; }

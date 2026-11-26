@@ -24,6 +24,8 @@ type invitation struct {
 	Used      int64  `json:"used" db:"used"`
 	UsedBy    string `json:"usedBy" db:"used_by"`
 	CreatedBy string `json:"createdBy" db:"created_by"`
+	MaxUses   int    `json:"maxUses" db:"max_uses"`
+	UseCount  int    `json:"useCount" db:"use_count"`
 }
 
 var errInvalidInvitation = errors.New("invalid or expired invitation")
@@ -31,9 +33,27 @@ var errInvalidInvitation = errors.New("invalid or expired invitation")
 func initInvitations(app core.App) error {
 	_, err := app.DB().NewQuery(`CREATE TABLE IF NOT EXISTS hpahub_invitations (
 		code TEXT PRIMARY KEY, created INTEGER NOT NULL, expires INTEGER NOT NULL,
-		used INTEGER NOT NULL DEFAULT 0, used_by TEXT NOT NULL DEFAULT '', created_by TEXT NOT NULL DEFAULT ''
+		used INTEGER NOT NULL DEFAULT 0, used_by TEXT NOT NULL DEFAULT '', created_by TEXT NOT NULL DEFAULT '',
+		max_uses INTEGER NOT NULL DEFAULT 1, use_count INTEGER NOT NULL DEFAULT 0
 	)`).Execute()
 	if err != nil {
+		return err
+	}
+	// Add new columns to existing tables
+	var maxUsesCol int
+	if err := app.DB().NewQuery("SELECT COUNT(*) FROM pragma_table_info('hpahub_invitations') WHERE name = 'max_uses'").Row(&maxUsesCol); err == nil && maxUsesCol == 0 {
+		if _, err := app.DB().NewQuery("ALTER TABLE hpahub_invitations ADD COLUMN max_uses INTEGER NOT NULL DEFAULT 1").Execute(); err != nil {
+			return err
+		}
+	}
+	var useCountCol int
+	if err := app.DB().NewQuery("SELECT COUNT(*) FROM pragma_table_info('hpahub_invitations') WHERE name = 'use_count'").Row(&useCountCol); err == nil && useCountCol == 0 {
+		if _, err := app.DB().NewQuery("ALTER TABLE hpahub_invitations ADD COLUMN use_count INTEGER NOT NULL DEFAULT 0").Execute(); err != nil {
+			return err
+		}
+	}
+	// Initialize use_count for existing used invitations
+	if _, err := app.DB().NewQuery("UPDATE hpahub_invitations SET use_count = 1 WHERE used > 0 AND use_count = 0").Execute(); err != nil {
 		return err
 	}
 	var creatorColumn int
@@ -72,8 +92,16 @@ func allowAuthAttempt(app core.App, kind string, limit int) (bool, error) {
 }
 
 func newInvitation(app core.App, now time.Time, createdBy string) (invitation, error) {
+	return newInvitationWithUses(app, now, createdBy, 1, 24*time.Hour)
+}
+
+func newInvitationWithUses(app core.App, now time.Time, createdBy string, maxUses int, ttl time.Duration) (invitation, error) {
 	// 32 characters allow uniform sampling without modulo bias.
 	const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+	expires := int64(0)
+	if ttl > 0 {
+		expires = now.Add(ttl).Unix()
+	}
 	for range 10 {
 		var random [8]byte
 		if _, err := rand.Read(random[:]); err != nil {
@@ -83,8 +111,8 @@ func newInvitation(app core.App, now time.Time, createdBy string) (invitation, e
 		for j, b := range random {
 			code[j+4] = alphabet[int(b)&31]
 		}
-		item := invitation{Code: string(code), Created: now.Unix(), Expires: now.Add(24 * time.Hour).Unix(), CreatedBy: createdBy}
-		result, err := app.DB().NewQuery("INSERT OR IGNORE INTO hpahub_invitations (code, created, expires, created_by) VALUES ({:code}, {:created}, {:expires}, {:createdBy})").Bind(dbx.Params{"code": item.Code, "created": item.Created, "expires": item.Expires, "createdBy": item.CreatedBy}).Execute()
+		item := invitation{Code: string(code), Created: now.Unix(), Expires: expires, CreatedBy: createdBy, MaxUses: maxUses}
+		result, err := app.DB().NewQuery("INSERT OR IGNORE INTO hpahub_invitations (code, created, expires, created_by, max_uses) VALUES ({:code}, {:created}, {:expires}, {:createdBy}, {:maxUses})").Bind(dbx.Params{"code": item.Code, "created": item.Created, "expires": item.Expires, "createdBy": item.CreatedBy, "maxUses": maxUses}).Execute()
 		if err != nil {
 			return invitation{}, err
 		}
@@ -108,8 +136,9 @@ func registerInvitation(app core.App, email, password, confirm, code string, now
 		} else if !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
-		result, err := tx.DB().NewQuery(`UPDATE hpahub_invitations SET used = {:now}, used_by = {:email}
-			WHERE code = {:code} AND used = 0 AND expires > {:now}`).Bind(dbx.Params{"now": now.Unix(), "email": email, "code": code}).Execute()
+		result, err := tx.DB().NewQuery(`UPDATE hpahub_invitations SET used = CASE WHEN max_uses = 1 THEN {:now} ELSE used END,
+			used_by = {:email}, use_count = use_count + 1
+			WHERE code = {:code} AND (max_uses = 0 OR use_count < max_uses) AND (expires = 0 OR expires > {:now})`).Bind(dbx.Params{"now": now.Unix(), "email": email, "code": code}).Execute()
 		if err != nil {
 			return err
 		}
@@ -283,7 +312,8 @@ func bindInvitationRoutes(e *core.ServeEvent) {
 			return e.ForbiddenError("Insufficient permissions.", nil)
 		}
 		var input struct {
-			Count int `json:"count"`
+			Count   int `json:"count"`
+			MaxUses int `json:"maxUses"`
 		}
 		if e.Request.ContentLength > 0 {
 			if err := e.BindBody(&input); err != nil {
@@ -296,9 +326,16 @@ func bindInvitationRoutes(e *core.ServeEvent) {
 		if input.Count < 1 || input.Count > 5 {
 			return e.BadRequestError("You can generate 1 to 5 invitations at a time.", nil)
 		}
+		if input.MaxUses < 0 || input.MaxUses > 1000 {
+			return e.BadRequestError("Invalid max uses.", nil)
+		}
+		ttl := 24 * time.Hour
+		if input.MaxUses == 0 {
+			ttl = 0 // unlimited codes never expire
+		}
 		items := make([]invitation, 0, input.Count)
 		for range input.Count {
-			item, err := newInvitation(e.App, time.Now(), e.Auth.Id)
+			item, err := newInvitationWithUses(e.App, time.Now(), e.Auth.Id, input.MaxUses, ttl)
 			if err != nil {
 				return e.InternalServerError("Failed to create invitation.", err)
 			}
@@ -315,7 +352,7 @@ func bindInvitationRoutes(e *core.ServeEvent) {
 			return e.ForbiddenError("Insufficient permissions.", nil)
 		}
 		items := []invitation{}
-		sqlText := "SELECT code, created, expires, used, used_by, created_by FROM hpahub_invitations"
+		sqlText := "SELECT code, created, expires, used, used_by, created_by, max_uses, use_count FROM hpahub_invitations"
 		params := dbx.Params{}
 		if role == "member" {
 			sqlText += " WHERE created_by = {:user}"
