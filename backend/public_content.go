@@ -47,8 +47,8 @@ func (in *contentInput) get(key string, value any) (bool, error) { raw, ok := in
 func setAvatar(r *core.Record, input *contentInput, remove bool) error {
  files, thumbs := input.files["avatar"], input.files["avatarThumb"]
  if len(files) > 1 || len(thumbs) > 1 || (remove && (len(files) > 0 || len(thumbs) > 0)) || (len(thumbs) > 0 && len(files) == 0) { return fmt.Errorf("invalid avatar") }
- if remove { r.Set("avatar", ""); r.Set("avatar_thumb", "") } else if len(files) == 1 {
-  r.Set("avatar", files[0]); r.Set("avatar_thumb", "")
+ if remove { r.Set("avatar", ""); r.Set("avatar_thumb", ""); r.Set("avatar_cropped", "") } else if len(files) == 1 {
+  r.Set("avatar", files[0]); r.Set("avatar_thumb", ""); r.Set("avatar_cropped", "")
   if len(thumbs) == 1 { r.Set("avatar_thumb", thumbs[0]) }
  }
  return nil
