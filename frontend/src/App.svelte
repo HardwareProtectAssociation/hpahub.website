@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { locale, languages, t } from './i18n.js';
   import Hardware from './Hardware.svelte';
   import PersonalCenter from './PersonalCenter.svelte';
@@ -18,6 +18,10 @@
   let checking = !!token;
   let page = 'home';
   let menuOpen = false;
+  let accountOpen = false;
+  let accountMenu, accountButton;
+  let accountId = '';
+  let accountAvatar = '';
   let mode = pathname === '/join' ? 'register' : 'login';
   let inviteCode = '';
   let passwordConfirm = '';
@@ -160,6 +164,9 @@
     token = '';
     collection = '';
     role = 'guest';
+    accountOpen = false; accountId = '';
+    if (accountAvatar) URL.revokeObjectURL(accountAvatar);
+    accountAvatar = '';
     sessionStorage.removeItem('authToken');
     sessionStorage.removeItem('authCollection');
     sessionStorage.removeItem('adminToken');
@@ -244,7 +251,10 @@
       token = result.token;
       sessionStorage.setItem('authToken', token);
       scheduleExpiry();
-      role = (await request('/api/hpahub/me')).role;
+      const me = await request('/api/hpahub/me');
+      role = me.role;
+      accountId = me.id;
+      loadAccountAvatar();
       fetchUnreadMessages();
       messagePollTimer = setInterval(fetchUnreadMessages, 60000);
       if (['admin', 'octopus'].includes(role) && new URLSearchParams(location.search).has('console')) await openConsole();
@@ -255,6 +265,17 @@
       checking = false;
     }
   });
+
+  async function loadAccountAvatar() {
+    try {
+      const currentToken = token;
+      const response = await fetch('/api/hpahub/me/center/avatar', { headers: { Authorization: `Bearer ${currentToken}` } });
+      if (!response.ok || token !== currentToken) return;
+      const blob = await response.blob();
+      if (token === currentToken) accountAvatar = URL.createObjectURL(blob);
+    } catch {}
+  }
+  onDestroy(() => { if (accountAvatar) URL.revokeObjectURL(accountAvatar); });
 
   async function fetchUnreadMessages() {
     if (!token) return;
@@ -267,7 +288,7 @@
 
 <svelte:head><title>HPA Hub</title></svelte:head>
 
-<svelte:window on:keydown={(event) => { if (event.key === 'Escape') menuOpen = false; }} />
+<svelte:window on:keydown={(event) => { if (event.key === 'Escape') { if (accountOpen) { accountOpen = false; accountButton?.focus(); } else menuOpen = false; } }} on:click={(event) => { if (accountOpen && accountMenu && !accountMenu.contains(event.target)) accountOpen = false; }} />
 
 <div class="app-shell">
   {#if menuOpen}<button class="menu-backdrop" aria-label={$t('关闭导航菜单')} on:click={() => menuOpen = false}></button>{/if}
@@ -276,13 +297,10 @@
     <nav id="main-navigation" class="topbar-right" aria-label={$t('主导航')}>
       <a class="text-button" href="/" aria-current={pathname === '/' && page === 'home' ? 'page' : undefined}>{$t('首页')}</a>
       <a class="text-button" href="/hardware">{$t('硬件数据库')}</a>
-      <a class="text-button" href="/community">{$t('成员')}</a>
+      <a class="text-button" href="/community">{$t('成员列表')}</a>
       <a class="text-button" href="/showcase">{$t('项目大厅')}</a>
       {#if token && !checking}
-        <a class="text-button" href="/me">{$t('个人中心')}</a>
         {#if ['member', 'admin', 'octopus'].includes(role)}<a class="text-button" href="/messages">{$t('站内消息')}{#if unreadMessages > 0}<span class="nav-badge">{unreadMessages}</span>{/if}</a>{/if}
-        {#if ['member', 'admin', 'octopus'].includes(role)}<a class="text-button" href="/my-projects">{$t('我的项目')}</a>{/if}
-        {#if ['member', 'admin'].includes(role)}<a class="text-button" href="/settings">{$t('个人设置')}</a>{/if}
         {#if isAdmin}
           <a class="text-button" href="/manage/showcase">{$t('项目大厅管理')}</a>
           {#if pathname === '/'}<button class="text-button" on:click={openConsole}>{$t('管理控制台')}</button>
@@ -291,7 +309,20 @@
       {/if}
       <div class="sidebar-footer">
         {#if token && !checking}
-          <button class="text-button" on:click={logout}>{$t('退出登录')}</button>
+          <div class="account-menu" bind:this={accountMenu}>
+            <button type="button" class="account-button" bind:this={accountButton} aria-expanded={accountOpen} aria-controls="account-menu" on:click={() => accountOpen = !accountOpen}>
+              {#if accountAvatar}<img src={accountAvatar} alt="" />{:else}<span class="account-avatar-default" aria-hidden="true"></span>{/if}
+              <span class="account-id">{accountId}</span><span aria-hidden="true">⌃</span>
+            </button>
+            {#if accountOpen}
+              <div id="account-menu" class="account-popover">
+                <a href="/me">{$t('个人中心')}</a>
+                {#if ['member', 'admin'].includes(role)}<a href="/settings">{$t('个人设置')}</a>{/if}
+                {#if ['member', 'admin', 'octopus'].includes(role)}<a href="/my-projects">{$t('我的项目')}</a>{/if}
+                <button type="button" on:click={logout}>{$t('退出登录')}</button>
+              </div>
+            {/if}
+          </div>
         {:else if !checking}
           <a class="text-button" href="/sign-in">{$t('登录')}</a>
         {/if}
