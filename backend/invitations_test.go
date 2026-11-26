@@ -363,4 +363,42 @@ func TestInvitationBatchLimit(t *testing.T) {
 	if response := request(`{"count":6}`); response.Code != http.StatusBadRequest {
 		t.Fatalf("count 6 status = %d, want 400", response.Code)
 	}
+	if response := request(`{"count":4}`); response.Code != http.StatusOK {
+		t.Fatalf("count 4: %d %s", response.Code, response.Body.String())
+	}
+	var wg sync.WaitGroup
+	statuses := make(chan int, 10)
+	for range 10 {
+		wg.Add(1)
+		go func() { defer wg.Done(); statuses <- request(`{}`).Code }()
+	}
+	wg.Wait()
+	close(statuses)
+	success := 0
+	for status := range statuses {
+		if status == http.StatusOK {
+			success++
+		} else if status != http.StatusBadRequest {
+			t.Errorf("concurrent status: %d", status)
+		}
+	}
+	if success != 1 {
+		t.Fatalf("concurrent successes = %d, want 1", success)
+	}
+	if _, err := app.DB().NewQuery("UPDATE hpahub_invitations SET expires = 1 WHERE code = {:code}").Bind(map[string]any{"code": batch.Items[0].Code}).Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if response := request(`{}`); response.Code != http.StatusOK {
+		t.Fatalf("expired invitation occupies slot: %d", response.Code)
+	}
+	if _, err := app.DB().NewQuery("UPDATE hpahub_invitations SET use_count = 1 WHERE code = {:code}").Bind(map[string]any{"code": batch.Items[1].Code}).Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if response := request(`{}`); response.Code != http.StatusOK {
+		t.Fatalf("used invitation occupies slot: %d", response.Code)
+	}
+	var active int
+	if err := app.DB().NewQuery("SELECT count(*) FROM hpahub_invitations WHERE created_by = {:user} AND used = 0 AND use_count = 0 AND expires > {:now}").Bind(map[string]any{"user": member.Id, "now": time.Now().Unix()}).Row(&active); err != nil || active != 10 {
+		t.Fatalf("active count = %d, err = %v", active, err)
+	}
 }

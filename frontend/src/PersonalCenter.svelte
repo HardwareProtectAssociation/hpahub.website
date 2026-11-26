@@ -34,7 +34,6 @@
   let invitationError = '';
   let invitationNotice = '';
   let generatingInvitation = false;
-  let inviteCount = 1;
   let inviteMaxUses = 1;
   let copiedCode = '';
   let hardwareConfig = [];
@@ -296,12 +295,12 @@
       const response = await fetch('/api/hpahub/invitations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ count: Number(inviteCount), maxUses: Number(inviteMaxUses) }),
+        body: JSON.stringify({ count: 1, maxUses: Number(inviteMaxUses) }),
       });
       const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body.message || '生成失败，请重试。');
+      if (!response.ok) throw new Error(body.message === 'You can hold at most 10 unused invitations.' ? $t('最多持有 10 个未使用的邀请码。') : body.message || $t('生成失败，请重试。'));
       await loadInvitations();
-      invitationNotice = $t('已生成 {count} 个邀请码。', { count: Number(inviteCount) });
+      invitationNotice = $t('已生成 {count} 个邀请码。', { count: 1 });
     } catch (err) {
       invitationError = err.message || String(err);
     } finally {
@@ -744,9 +743,8 @@
 
       <section class="center-section wide" aria-labelledby="center-invitations">
           <div class="section-head">
-            <div><h2 id="center-invitations">{$t('我的邀请码')}</h2><p>{$t('邀请码有效 24 小时，仅可使用一次。')}</p></div>
+            <div><h2 id="center-invitations">{$t('我的邀请码')}</h2><p>{$t('邀请码有效 24 小时，最多持有 10 个未使用的邀请码。')}</p></div>
             <div class="invite-controls">
-              <label>{$t('生成数量')}<select bind:value={inviteCount} aria-label={$t('生成数量')}>{#each [1, 2, 3, 4, 5] as count}<option value={count}>{count}</option>{/each}</select></label>
               <label>{$t('使用次数')}<select bind:value={inviteMaxUses} aria-label={$t('使用次数')}><option value={1}>1</option><option value={5}>5</option><option value={10}>10</option></select></label>
               <button type="button" class="link-button" on:click={generateInvitation} disabled={generatingInvitation}>{generatingInvitation ? $t('正在生成…') : $t('生成邀请码')}</button>
             </div>
