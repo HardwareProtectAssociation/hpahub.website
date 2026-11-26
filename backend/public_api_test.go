@@ -78,6 +78,10 @@ func TestPublicProfilesCardsAndShowcase(t *testing.T) {
 		t.Helper()
 		if !strings.Contains(strings.ToLower(res.Header().Get("Cache-Control")), "no-store") { t.Fatalf("missing no-store: %v", res.Header()) }
 	}
+	cacheFile := func(res *httptest.ResponseRecorder) {
+		t.Helper()
+		if res.Header().Get("Cache-Control") != "private, no-cache" || res.Header().Get("ETag") == "" { t.Fatalf("invalid file cache headers: %v", res.Header()) }
+	}
 	object := func(res *httptest.ResponseRecorder) map[string]any {
 		t.Helper()
 		var result map[string]any
@@ -146,7 +150,17 @@ func TestPublicProfilesCardsAndShowcase(t *testing.T) {
 	if !strings.Contains(profile.Body.String(), "private biography") || !strings.Contains(profile.Body.String(), cardID) { t.Fatalf("missing public profile content: %s", profile.Body.String()) }
 	avatarResponse := jsonRequest("GET", avatar, "", "")
 	want(avatarResponse, http.StatusOK)
-	noCache(avatarResponse)
+	cacheFile(avatarResponse)
+	conditional := func(path, token, etag string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("GET", path, nil)
+		if token != "" { req.Header.Set("Authorization", token) }
+		req.Header.Set("If-None-Match", etag)
+		res := httptest.NewRecorder(); mux.ServeHTTP(res, req); return res
+	}
+	oldETag := avatarResponse.Header().Get("ETag")
+	if res := conditional(avatar, "", oldETag); res.Code != http.StatusNotModified || res.Body.Len() != 0 { t.Fatalf("conditional avatar: %d, %d bytes", res.Code, res.Body.Len()) }
+	want(conditional(base+"/me/profile/avatar", otherToken, oldETag), http.StatusNotFound)
+
 	if !bytes.Equal(avatarResponse.Body.Bytes(), pngData.Bytes()) { t.Fatal("avatar contents differ") }
 	thumb, err := base64.StdEncoding.DecodeString("UklGRoIAAABXRUJQVlA4IHYAAADQBwCdASqQAJAAPpFIoUylpCMiIGgAsBIJaW7hdVEHHAAAO7NZHVUmyYh1VJsmIdVSbJiHVUmyYh1VJsmIdVSbJiHVUmyCAAD+/r+uf/4DdfFtMv//c4H/c4H/c4H8bbryv8ghV+KyxvbhAHhyu2Hp5iAAAAAA")
 	if err != nil { t.Fatal(err) }
@@ -160,6 +174,7 @@ func TestPublicProfilesCardsAndShowcase(t *testing.T) {
 	}
 	want(uploadAvatar(false, true), http.StatusBadRequest)
 	want(uploadAvatar(true, true), http.StatusOK)
+	want(conditional(avatar, "", oldETag), http.StatusOK)
 	if got := jsonRequest("GET", avatar, "", ""); !bytes.Equal(got.Body.Bytes(), thumb) { t.Fatal("avatar thumbnail contents differ") }
 	storedMember, err := app.FindRecordById("users", member.Id); if err != nil { t.Fatal(err) }
 	if storedMember.GetString("avatar") == "" || storedMember.GetString("avatar_thumb") == "" { t.Fatal("avatar files not stored") }
@@ -169,7 +184,7 @@ func TestPublicProfilesCardsAndShowcase(t *testing.T) {
 	for _, filename := range cardImages {
 		imageResponse := jsonRequest("GET", base+"/members/"+member.Id+"/cards/"+cardID+"/images/"+filename, "", "")
 		want(imageResponse, http.StatusOK)
-		noCache(imageResponse)
+		cacheFile(imageResponse)
 		if !bytes.Equal(imageResponse.Body.Bytes(), pngData.Bytes()) { t.Fatal("card image contents differ") }
 	}
 	want(jsonRequest("GET", base+"/members/"+member.Id+"/cards/"+cardID+"/images/not-owned.png", "", ""), http.StatusNotFound)
@@ -195,7 +210,7 @@ func TestPublicProfilesCardsAndShowcase(t *testing.T) {
 	noCache(publicProject)
 	imageResponse := jsonRequest("GET", projectImage, "", "")
 	want(imageResponse, http.StatusOK)
-	noCache(imageResponse)
+	cacheFile(imageResponse)
 	if !bytes.Equal(imageResponse.Body.Bytes(), pngData.Bytes()) { t.Fatal("project image contents differ") }
 	want(jsonRequest("GET", base+"/showcase/"+projectID+"/images/not-owned.png", "", ""), http.StatusNotFound)
 	publicProjects := jsonRequest("GET", base+"/showcase", "", "")
@@ -205,7 +220,9 @@ func TestPublicProfilesCardsAndShowcase(t *testing.T) {
 	want(multipartRequest("PATCH", base+"/manage/showcase/"+projectID, adminToken, map[string][]string{"title": {"Project"}, "published": {"false"}, "keepImages": projectImages}, 0), http.StatusOK)
 	want(jsonRequest("GET", base+"/showcase/"+projectID, "", ""), http.StatusNotFound)
 	want(jsonRequest("GET", projectImage, "", ""), http.StatusNotFound)
+	currentETag := jsonRequest("GET", avatar, "", "").Header().Get("ETag")
 	want(jsonRequest("PATCH", base+"/me/profile", memberToken, `{"profilePublic":false}`), http.StatusOK)
+	want(conditional(avatar, "", currentETag), http.StatusNotFound)
 	want(jsonRequest("GET", base+"/members/"+member.Id, "", ""), http.StatusNotFound)
 	want(jsonRequest("GET", cardImage, "", ""), http.StatusNotFound)
 	want(jsonRequest("GET", avatar, "", ""), http.StatusNotFound)

@@ -103,7 +103,7 @@
   async function loadAvatar(url) {
     if (!url) return '';
     try {
-      const response = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {}, cache: 'no-store' });
+      const response = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
       if (!response.ok) return '';
       return URL.createObjectURL(await response.blob());
     } catch {

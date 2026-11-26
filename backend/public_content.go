@@ -8,6 +8,7 @@ import (
  "net/url"
  "path"
  "sort"
+ "strconv"
  "strings"
  "unicode/utf8"
 
@@ -153,6 +154,9 @@ func serveContentFile(e *core.RequestEvent, r *core.Record, field, filename stri
  noCache(e); if filename == "" || path.Base(filename) != filename { return e.NotFoundError("Not found.", nil) }
  found := false; for _, name := range r.GetStringSlice(field) { if name == filename { found = true; break } }; if !found && r.GetString(field) == filename { found = true }; if !found { return e.NotFoundError("Not found.", nil) }
  fs, err := e.App.NewFilesystem(); if err != nil { return e.InternalServerError("File unavailable.", err) }; defer fs.Close()
+ e.Response.Header().Set("Cache-Control", "private, no-cache")
+ e.Response.Header().Set("ETag", strconv.Quote(r.Id + "/" + filename))
+ e.Response.Header().Add("Vary", "Authorization")
  return fs.Serve(e.Response, e.Request, r.BaseFilesPath()+"/"+filename, filename)
 }
 func saveContent(e *core.RequestEvent, r *core.Record, project bool) error {

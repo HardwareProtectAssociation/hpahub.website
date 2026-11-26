@@ -67,7 +67,7 @@
   }
   async function preview(url) {
     if (!url || previews[url]) return;
-    const response = await fetch(url, { headers: headers(), cache: 'no-store' });
+    const response = await fetch(url, { headers: headers() });
     if (response.ok) {
       const blob = await response.blob();
       previews = { ...previews, [url]: URL.createObjectURL(blob) };
