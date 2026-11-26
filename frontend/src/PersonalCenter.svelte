@@ -540,7 +540,7 @@
         <p class="stat-title">{$t('完成项目')}</p>
         <span>{completedProjects.length}</span>
         {#if completedDifficulties.length}
-          <div class="stat-tags">{#each completedDifficulties as tag}<span class={`stat-tag ${tag.level}`}>{tag.level}×{tag.count}</span>{/each}</div>
+          <div class="stat-tags">{#each completedDifficulties as tag}<span class={`stat-tag ${tag.level}`}><span class="tag-level">{tag.level}</span><span class="tag-count">{tag.count}</span></span>{/each}</div>
         {/if}
       </article>
       <article class="stat">
@@ -838,15 +838,17 @@
   .stat p { margin: 4px 0 0; color: #818b7f; font-size: 13px; }
   .stat .stat-title { margin: 0 0 4px; }
   .stat p.stat-note { margin-top: 6px; font-size: 12px; overflow-wrap: anywhere; }
-  .stat-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-  .stat-tag { padding: 2px 8px; border: 1px solid #d7d9cf; border-radius: 999px; font-size: 11px; font-weight: 600; }
-  .stat-tag.S { color: #fff; border-color: transparent; background: linear-gradient(120deg, #7c4dff, #d04dff, #ffb84d, #7c4dff); background-size: 300% 300%; animation: stat-tag-shine 6s linear infinite; }
-  .stat-tag.A { color: #7a3d00; border-color: #eab46e; background: #ffd9a8; }
-  .stat-tag.B { color: #6b5211; border-color: #e2c25e; background: #ffeba8; }
-  .stat-tag.C { color: #454b52; border-color: #c3c9cf; background: #e8ebee; }
-  .stat-tag.D { color: #555c53; border-color: #d7d9cf; background: #fff; }
-  @keyframes stat-tag-shine { to { background-position: 300% 50%; } }
-  @media (prefers-reduced-motion: reduce) { .stat-tag.S { animation: none; } }
+  .stat-tags { display: flex; flex-wrap: nowrap; gap: 12px; margin-top: 8px; }
+  .stat-tag { display: inline-flex; align-items: baseline; gap: 2px; }
+  .tag-level { font-size: 12px; font-weight: 700; background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: stat-tag-shine 4s linear infinite; }
+  .tag-count { font-size: 10px; font-weight: 600; color: #818b7f; }
+  .stat-tag.S .tag-level { background-image: linear-gradient(100deg, #7c4dff, #d04dff, #ffb84d, #4dc9ff, #7c4dff); }
+  .stat-tag.A .tag-level { background-image: linear-gradient(100deg, #aa771c, #fcf6ba, #b38728, #fbf5b7, #aa771c); }
+  .stat-tag.B .tag-level { background-image: linear-gradient(100deg, #9aa2ab, #ffffff, #b8c0c8, #f2f4f6, #9aa2ab); }
+  .stat-tag.C .tag-level { background-image: linear-gradient(100deg, #8c4a21, #e8b88a, #b87333, #f0c9a4, #8c4a21); }
+  .stat-tag.D .tag-level { background-image: none; color: #cfd4dc; animation: none; }
+  @keyframes stat-tag-shine { to { background-position: 200% 0; } }
+  @media (prefers-reduced-motion: reduce) { .tag-level { animation: none; } }
   .center-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
   .center-section { min-width: 0; padding: 24px; border: 1px solid #dcded4; background: #fafbf7; }
   .center-section .section-head { margin-bottom: 16px; }
