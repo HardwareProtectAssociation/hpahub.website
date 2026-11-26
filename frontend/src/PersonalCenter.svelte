@@ -906,10 +906,12 @@
   .tier-1 { color: #4d6b3f; background: #e8f0e0; border-color: #c4d8b4; }
   .tier-2 { color: #285a78; background: linear-gradient(135deg, #e8f4fb, #d6e9f7); border-color: #a9cde4; }
   .tier-3 { color: #7a5a12; background: linear-gradient(135deg, #fff7d6, #f2d98b); border-color: #e2c25e; box-shadow: 0 0 0 1px #f6e7b0 inset, 0 2px 6px rgba(180, 140, 20, 0.18); }
-  .tier-4 { color: #fff; background: linear-gradient(120deg, #7c4dff, #d04dff, #ffb84d, #7c4dff); background-size: 300% 300%; border-color: #e0c7ff; box-shadow: 0 0 12px rgba(160, 80, 255, 0.45); animation: recognized-shine 6s linear infinite; }
-  .tier-5 { color: #fff; background: linear-gradient(120deg, #ff5f6d, #ffc371, #36d1dc, #7c4dff, #ff5f6d); background-size: 300% 300%; border-color: transparent; box-shadow: 0 0 16px rgba(255, 120, 80, 0.6); animation: recognized-shine 5s linear infinite; }
+  .tier-4 { color: #fff; background: linear-gradient(120deg, #ff5cb8, #ff8a5c, #ffd24d, #5ce08a, #4dc9ff, #7c4dff, #ff5cb8); background-size: 300% 300%; border-color: #e0c7ff; box-shadow: 0 0 12px rgba(160, 80, 255, 0.45); animation: recognized-shine 6s linear infinite; }
+  .tier-5 { position: relative; color: #fff; background: linear-gradient(120deg, #ff5cb8, #ff8a5c, #ffd24d, #5ce08a, #4dc9ff, #7c4dff, #ff5cb8); background-size: 300% 300%; border-color: transparent; box-shadow: 0 0 16px rgba(120, 160, 255, 0.6), 0 0 6px rgba(255, 255, 255, 0.7) inset; animation: recognized-shine 5s linear infinite; }
+  .tier-5::after { content: ''; position: absolute; inset: 0; border-radius: inherit; background-image: radial-gradient(2px 2px at 18% 32%, #fff, transparent), radial-gradient(1.5px 1.5px at 68% 22%, #fff, transparent), radial-gradient(2px 2px at 42% 72%, #fff, transparent), radial-gradient(1.5px 1.5px at 86% 62%, #fff, transparent), radial-gradient(1px 1px at 32% 52%, #fff, transparent), radial-gradient(1.5px 1.5px at 58% 82%, #fff, transparent); background-size: 72px 100%; animation: tier5-sparkle 2.4s linear infinite; pointer-events: none; }
+  @keyframes tier5-sparkle { 0% { background-position: 0 0; opacity: 0.25; } 50% { opacity: 1; } 100% { background-position: 72px 0; opacity: 0.25; } }
   @keyframes recognized-shine { to { background-position: 300% 50%; } }
-  @media (prefers-reduced-motion: reduce) { .tier-4, .tier-5 { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { .tier-4, .tier-5, .tier-5::after { animation: none; } }
   @media (max-width: 600px) { .center-grid { grid-template-columns: 1fr; } .edit-grid, .contact-row { grid-template-columns: 1fr; } }
   .reward-note { margin: 12px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
   .center-empty { color: #818b7f; font-size: 13px; }
