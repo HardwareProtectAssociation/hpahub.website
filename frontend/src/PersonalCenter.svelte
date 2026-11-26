@@ -60,6 +60,21 @@
   const demoDifficultyTags = [{ level: 'S', count: 4 }, { level: 'A', count: 3 }, { level: 'B', count: 2 }, { level: 'C', count: 1 }, { level: 'D', count: 1 }];
   $: difficultyTags = ['S', 'A', 'B', 'C', 'D'].map((level) => ({ level, count: completedProjects.filter((project) => (project.difficulty || '').toUpperCase() === level).length })).filter((tag) => tag.count > 0);
   $: completedDifficulties = difficultyTags.length ? difficultyTags : (completedProjects.length ? demoDifficultyTags : []);
+  let showAllRatings = false;
+  function sliceRatingRuns(runs, budget) {
+    const out = [];
+    let left = budget;
+    for (const run of runs) {
+      if (left <= 0) break;
+      out.push({ level: run.level, text: run.text.slice(0, left) });
+      left -= run.text.length;
+    }
+    return out;
+  }
+  $: ratingRuns = completedDifficulties.map((tag) => ({ level: tag.level, text: tag.level.repeat(tag.count) }));
+  $: ratingLetters = ratingRuns.reduce((sum, run) => sum + run.text.length, 0);
+  $: collapsedRatings = !showAllRatings && ratingLetters > 8;
+  $: shownRatingRuns = collapsedRatings ? sliceRatingRuns(ratingRuns, 8) : ratingRuns;
   // shortcut: 演示认可数用于查看五档徽章效果，会覆盖前五个技能的真实计数，看完删除
   const demoLikeCounts = [10, 50, 100, 1000, 5000];
   $: realSkills = data?.skills || [];
@@ -542,7 +557,10 @@
         <p class="stat-title">{$t('完成项目')}</p>
         <span>{completedProjects.length}</span>
         {#if completedDifficulties.length}
-          <div class="stat-tags">{#each completedDifficulties as tag}<span class={`stat-tag ${tag.level}`}><span class="tag-level">{tag.level}</span><span class="tag-count">{tag.count}</span></span>{/each}</div>
+          <div class="stat-tags">
+            {#each shownRatingRuns as run}<span class={`stat-tag ${run.level}`}><span class="tag-level">{run.text}</span></span>{/each}
+            {#if collapsedRatings}<button type="button" class="show-all" on:click={() => showAllRatings = true}>{$t('显示全部')}</button>{/if}
+          </div>
         {/if}
       </article>
       <article class="stat">
@@ -840,10 +858,10 @@
   .stat p { margin: 4px 0 0; color: #818b7f; font-size: 13px; }
   .stat .stat-title { margin: 0 0 4px; }
   .stat p.stat-note { margin-top: 6px; font-size: 12px; overflow-wrap: anywhere; }
-  .stat-tags { display: flex; flex-wrap: nowrap; gap: 12px; margin-top: 8px; }
-  .stat-tag { display: inline-flex; align-items: baseline; gap: 2px; }
-  .tag-level { font-size: 12px; font-weight: 700; background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: stat-tag-shine 4s linear infinite; }
-  .tag-count { font-size: 10px; font-weight: 600; color: #818b7f; }
+  .stat-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; align-items: baseline; }
+  .stat-tag { display: inline-flex; align-items: baseline; }
+  .tag-level { font-size: 12px; font-weight: 700; letter-spacing: 1px; background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: stat-tag-shine 4s linear infinite; }
+  .show-all { border: 0; background: none; padding: 0; color: #818b7f; font-size: 10px; text-decoration: underline; cursor: pointer; white-space: nowrap; }
   .stat-tag.S .tag-level { background-image: linear-gradient(100deg, #7c4dff, #d04dff, #ffb84d, #4dc9ff, #7c4dff); }
   .stat-tag.A .tag-level { background-image: linear-gradient(100deg, #aa771c, #fcf6ba, #b38728, #fbf5b7, #aa771c); }
   .stat-tag.B .tag-level { background-image: linear-gradient(100deg, #9aa2ab, #ffffff, #b8c0c8, #f2f4f6, #9aa2ab); }
