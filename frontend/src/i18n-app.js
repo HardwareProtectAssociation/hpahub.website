@@ -452,4 +452,5 @@ export default {
   '在公开主页展示': ['在公開主頁展示', '公開プロフィールに表示', 'Show on public profile'],
   '勾选后显示在公开主页的技能展示中，数量不限。': ['勾選後顯示在公開主頁的技能展示中，數量不限。', 'チェックしたスキルが公開プロフィールの「スキル」に表示されます。数は自由です。', 'Checked skills appear in the public profile Skills tab; any number allowed.'],
   '公开展示': ['公開展示', '公開中', 'Public'],
+  '待定': ['待定', '未定', 'TBD'],
 };

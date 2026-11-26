@@ -183,11 +183,11 @@
                 <strong>{project.title}</strong>
                 <small>{$t(projectStatusLabels[project.status] || project.status)} · {project.ownerName || '—'}</small>
                 <small>
-                  {#if project.proposedDifficulty}<span>{$t('发起人评级')}：<span class={`rank rank-text rank-${difficultyRank(project.proposedDifficulty)}`}>{project.proposedDifficulty}</span></span>{/if}
+                  {#if project.proposedDifficulty}<span>{$t('发起人评级')}：<span class={`rank rank-text rank-${difficultyRank(project.proposedDifficulty)}`}>{project.proposedDifficulty}</span></span>{:else}<span>{$t('发起人评级')}：{$t('待定')}</span>{/if}
                   <span>{$t('同意')}：{project.approveCount || 0}</span>
                   <span>{$t('反对')}：{project.opposeCount || 0}</span>
                   {#if project.ownerConfirmed}<span class="confirmed">✓ {$t('发起人已确认')}</span>{/if}
-                  {#if project.difficulty}<span class="consensus">共识：<span class={`rank rank-text rank-${difficultyRank(project.difficulty)}`}>{project.difficulty}</span></span>{/if}
+                  {#if project.reviewStatus === 'approved' && project.difficulty}<span class="consensus">共识：<span class={`rank rank-text rank-${difficultyRank(project.difficulty)}`}>{project.difficulty}</span></span>{:else}<span class="consensus">共识：{$t('待定')}</span>{/if}
                 </small>
               </div>
               {#if project.status !== 'completed'}
