@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"strings"
+	"time"
 
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
@@ -52,6 +53,7 @@ type publicProjectDetail struct {
 	ImprovementPending    bool                  `json:"improvementPending"`
 	CanFollow             bool                  `json:"canFollow"`
 	Following             bool                  `json:"following"`
+	JoinMode              string                `json:"joinMode"`
 	ProposedDifficulty    string                `json:"proposedDifficulty"`
 	OwnerConfirmed        bool                  `json:"ownerConfirmed"`
 	ApproveCount          int                   `json:"approveCount"`
@@ -111,6 +113,7 @@ func bindPublicProjectRoutes(e *core.ServeEvent) {
 			Members:               []publicProjectMember{},
 			ProposedDifficulty:    project.GetString("owner_proposed_difficulty"),
 			OwnerConfirmed:        project.GetBool("owner_difficulty_confirmed"),
+			JoinMode:              project.GetString("join_mode"),
 		}
 		// Compute vote counts
 		votes, _ := e.App.FindRecordsByFilter("project_difficulty_votes",
@@ -224,9 +227,15 @@ func bindPublicProjectRoutes(e *core.ServeEvent) {
 			return e.BadRequestError("You already have a pending application.", nil)
 		}
 		var input struct {
-			Message string `json:"message"`
+			Message    string `json:"message"`
+			Profession string `json:"profession"`
+			Time       string `json:"time"`
+			Ability    string `json:"ability"`
 		}
 		if err := e.BindBody(&input); err != nil || len([]rune(strings.TrimSpace(input.Message))) > 500 {
+			return e.BadRequestError("Invalid application.", nil)
+		}
+		if len([]rune(strings.TrimSpace(input.Profession))) > 100 || len([]rune(strings.TrimSpace(input.Time))) > 100 || len([]rune(strings.TrimSpace(input.Ability))) > 200 {
 			return e.BadRequestError("Invalid application.", nil)
 		}
 		collection, err := e.App.FindCollectionByNameOrId("project_join_requests")
@@ -238,11 +247,39 @@ func bindPublicProjectRoutes(e *core.ServeEvent) {
 		request.Set("user_id", viewer.Id)
 		request.Set("source", "application")
 		request.Set("message", strings.TrimSpace(input.Message))
+		request.Set("apply_profession", strings.TrimSpace(input.Profession))
+		request.Set("apply_time", strings.TrimSpace(input.Time))
+		request.Set("apply_ability", strings.TrimSpace(input.Ability))
 		request.Set("status", "pending")
 		if err := e.App.Save(request); err != nil {
 			return e.InternalServerError("Unable to submit application.", err)
 		}
-		return e.JSON(200, map[string]any{"ok": true})
+		// Free join mode: auto-accept
+		if project.GetString("join_mode") == "open" {
+			request.Set("status", "accepted")
+			request.Set("handled_at", time.Now())
+			if err := e.App.Save(request); err != nil {
+				return e.InternalServerError("Unable to submit application.", err)
+			}
+			// Add as project member
+			membership, err := e.App.FindFirstRecordByFilter("project_members", "project_id = {:project} && user_id = {:user}", dbx.Params{"project": project.Id, "user": viewer.Id})
+			if err != nil {
+				mCollection, err := e.App.FindCollectionByNameOrId("project_members")
+				if err != nil {
+					return e.InternalServerError("Unable to add member.", err)
+				}
+				membership = core.NewRecord(mCollection)
+				membership.Set("project_id", project.Id)
+				membership.Set("user_id", viewer.Id)
+			}
+			membership.Set("status", "active")
+			membership.Set("joined_at", time.Now())
+			if err := e.App.Save(membership); err != nil {
+				return e.InternalServerError("Unable to add member.", err)
+			}
+			return e.JSON(200, map[string]any{"ok": true, "autoAccepted": true})
+		}
+		return e.JSON(200, map[string]any{"ok": true, "autoAccepted": false})
 	})
 	e.Router.POST("/api/hpahub/projects/{id}/improvement", func(e *core.RequestEvent) error {
 		noCache(e)

@@ -7,6 +7,9 @@
   let error = '';
   let skillError = '';
   let applyMessage = '';
+  let applyProfession = '';
+  let applyTime = '';
+  let applyAbility = '';
   let applyError = '';
   let applyNotice = '';
   let applying = false;
@@ -91,12 +94,17 @@
       const response = await fetch(`/api/hpahub/projects/${encodeURIComponent(data.id)}/apply`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: applyMessage }),
+        body: JSON.stringify({
+          message: applyMessage,
+          profession: applyProfession,
+          time: applyTime,
+          ability: applyAbility,
+        }),
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.message || '申请失败，请重试。');
-      data = { ...data, canApply: false, applicationPending: true };
-      applyNotice = '申请已提交，等待管理员审批。';
+      data = { ...data, canApply: false, applicationPending: !result.autoAccepted, alreadyMember: result.autoAccepted };
+      applyNotice = result.autoAccepted ? '已自动加入项目！' : '申请已提交，等待管理员审批。';
     } catch (err) {
       applyError = err.message || '申请失败，请重试。';
     } finally {
@@ -321,11 +329,16 @@
       {/if}
       {#if data.canApply}
         <section class="project-apply" aria-labelledby="project-apply-title">
-          <h2 id="project-apply-title">{$t('申请加入')}</h2>
-          <p>{$t('简单说明你能承担的工作或加入理由。')}</p>
-          <textarea bind:value={applyMessage} maxlength="500" rows="3" placeholder={$t('例如：我可以负责结构设计与打样。')}></textarea>
+          <h2 id="project-apply-title">{$t(data.joinMode === 'open' ? '加入项目' : '申请加入')}</h2>
+          <p>{data.joinMode === 'open' ? $t('此项目允许自由加入，点击下方按钮直接成为成员。') : $t('此项目需要申请，填写你的技能和可投入时间。')}</p>
+          {#if data.joinMode !== 'open'}
+            <label>{$t('你的职业')}<input bind:value={applyProfession} maxlength="100" placeholder={$t('例如：电子工程师、机械设计师')} /></label>
+            <label>{$t('可投入时间')}<input bind:value={applyTime} maxlength="100" placeholder={$t('例如：每周 10 小时、周末')} /></label>
+            <label>{$t('能力上限')}<textarea bind:value={applyAbility} maxlength="200" rows="2" placeholder={$t('简单描述你的技能水平和能承担的工作范围')}></textarea></label>
+          {/if}
+          <label>{$t('补充说明')}<textarea bind:value={applyMessage} maxlength="500" rows="3" placeholder={$t('例如：我可以负责结构设计与打样。')}></textarea></label>
           {#if applyError}<p class="message error" role="alert">{$t(applyError)}</p>{/if}
-          <button type="button" class="primary" on:click={applyToProject} disabled={applying}>{applying ? $t('正在提交…') : $t('提交申请')}</button>
+          <button type="button" class="primary" on:click={applyToProject} disabled={applying}>{applying ? $t('正在提交…') : $t(data.joinMode === 'open' ? '直接加入' : '提交申请')}</button>
         </section>
       {:else if data.canRequestImprovement}
         <section class="project-apply" aria-labelledby="project-improvement-title">
@@ -396,6 +409,8 @@
   .project-apply h2 { margin: 0 0 6px; font-size: 16px; }
   .project-apply p { margin: 0 0 8px; color: #6f7b6d; font-size: 13px; }
   .project-apply textarea { width: 100%; padding: 9px; border: 1px solid #b9c3b3; background: #fff; color: #252b26; font: inherit; resize: vertical; }
+  .project-apply label { display: grid; gap: 4px; margin-bottom: 8px; color: #52695a; font-size: 13px; }
+  .project-apply input { width: 100%; padding: 8px; border: 1px solid #b9c3b3; background: #fff; color: #252b26; font: inherit; }
   .project-apply .message { margin: 8px 0; }
   .project-apply-hint { color: #6f7b6d; font-size: 13px; }
   .follow-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: -8px 0 18px; }
