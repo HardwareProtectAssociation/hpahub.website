@@ -269,7 +269,7 @@ func computeDifficultyConsensus(status *difficultyStatus) (string, bool) {
 		return "", false
 	}
 	// Owner must also agree (confirm).
-	if !status.OwnerConfirmed {
+	if !status.OwnerConfirmed || status.ProposedDifficulty != candidates[0] {
 		return "", false
 	}
 	return candidates[0], true
@@ -280,12 +280,10 @@ func updateProjectDifficultyConsensus(app core.App, project *core.Record) error 
 	if err != nil {
 		return err
 	}
-	if status.ConsensusReached {
-		if project.GetString("difficulty") != status.Consensus {
-			project.Set("difficulty", status.Consensus)
-			if err := app.Save(project); err != nil {
-				return err
-			}
+	if project.GetString("difficulty") != status.Consensus {
+		project.Set("difficulty", status.Consensus)
+		if err := app.Save(project); err != nil {
+			return err
 		}
 	}
 	return nil

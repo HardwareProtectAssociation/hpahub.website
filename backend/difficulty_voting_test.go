@@ -110,7 +110,9 @@ func TestDifficultyVoting(t *testing.T) {
 		t.Fatalf("oppose status = %d: %s", response.Code, response.Body.String())
 	}
 	saved, _ = app.FindRecordById("projects", project.Id)
-	// Difficulty should still be A since it was already set, but consensus should be broken
+	if saved.GetString("difficulty") != "" {
+		t.Fatalf("difficulty should be cleared after opposition: %q", saved.GetString("difficulty"))
+	}
 	response = call("GET", "/api/hpahub/projects/"+project.Id+"/difficulty/status", tokenFor(owner), "")
 	json.Unmarshal(response.Body.Bytes(), &status)
 	if status.ConsensusReached {
@@ -130,5 +132,16 @@ func TestDifficultyVoting(t *testing.T) {
 	response = call("POST", "/api/hpahub/projects/"+project.Id+"/difficulty/vote", tokenFor(admin1), `{"difficulty":"A","stance":"approve"}`)
 	if response.Code != http.StatusBadRequest {
 		t.Fatalf("frozen vote status = %d, want 400", response.Code)
+	}
+}
+
+func TestConsensusRequiresMatchingProposal(t *testing.T) {
+	status := &difficultyStatus{ProposedDifficulty: "A", OwnerConfirmed: true, MinApprovals: 3, ApproveCounts: map[string]int{"B": 3}, OpposeCounts: map[string]int{}}
+	if _, ok := computeDifficultyConsensus(status); ok {
+		t.Fatal("accepted votes for a different difficulty")
+	}
+	status.ProposedDifficulty = "B"
+	if level, ok := computeDifficultyConsensus(status); !ok || level != "B" {
+		t.Fatalf("expected B consensus, got %q %v", level, ok)
 	}
 }
