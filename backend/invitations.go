@@ -29,6 +29,7 @@ type invitation struct {
 }
 
 var errInvalidInvitation = errors.New("invalid or expired invitation")
+var errInvitationLimit = errors.New("invitation limit reached")
 
 func initInvitations(app core.App) error {
 	_, err := app.DB().NewQuery(`CREATE TABLE IF NOT EXISTS hpahub_invitations (
@@ -333,14 +334,30 @@ func bindInvitationRoutes(e *core.ServeEvent) {
 		if maxUses < 1 || maxUses > 1000 {
 			return e.BadRequestError("Invalid max uses.", nil)
 		}
-		ttl := 24 * time.Hour
+		now := time.Now()
 		items := make([]invitation, 0, input.Count)
-		for range input.Count {
-			item, err := newInvitationWithUses(e.App, time.Now(), e.Auth.Id, maxUses, ttl)
-			if err != nil {
-				return e.InternalServerError("Failed to create invitation.", err)
+		err := e.App.RunInTransaction(func(tx core.App) error {
+			var count int
+			if err := tx.DB().NewQuery(`SELECT count(*) FROM hpahub_invitations WHERE created_by = {:user} AND use_count = 0 AND used = 0 AND expires > {:now}`).Bind(dbx.Params{"user": e.Auth.Id, "now": now.Unix()}).Row(&count); err != nil {
+				return err
 			}
-			items = append(items, item)
+			if count+input.Count > 10 {
+				return errInvitationLimit
+			}
+			for range input.Count {
+				item, err := newInvitationWithUses(tx, now, e.Auth.Id, maxUses, 24*time.Hour)
+				if err != nil {
+					return err
+				}
+				items = append(items, item)
+			}
+			return nil
+		})
+		if errors.Is(err, errInvitationLimit) {
+			return e.BadRequestError("You can hold at most 10 unused invitations.", nil)
+		}
+		if err != nil {
+			return e.InternalServerError("Failed to create invitation.", err)
 		}
 		return e.JSON(http.StatusOK, map[string]any{"items": items})
 	})
