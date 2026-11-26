@@ -638,7 +638,7 @@
                   {/if}
                   {#if medalLevel(badge.level) >= 10}
                     <div class="milestones" aria-label={$t('徽章占位')}>
-                      <span class={`medal ${medalLevel(badge.level) >= 50 ? `medal-${medalLevel(badge.level)}` : ''}`} title={`Lv.${badge.level} ${$t('徽章占位')}`}>{medalLevel(badge.level)}</span>
+                      <span class={`medal ${medalLevel(badge.level) >= 50 ? `medal-${medalLevel(badge.level)}` : ''}`} title={`Lv.${badge.level} ${$t('徽章占位')}`}><span class="flash-layer" aria-hidden="true"></span>{medalLevel(badge.level)}</span>
                     </div>
                   {/if}
                 </div>
@@ -678,7 +678,7 @@
                 {/if}
                 <div class="skill-foot">
                   <span class="like-count"><span aria-hidden="true">♥</span> {skill.likeCount}</span>
-                  {#if skill.likeTier > 0}<span class={`recognized tier-${skill.likeTier}`}>{$t(recognizedLabels[skill.likeTier])}</span>{/if}
+                  {#if skill.likeTier > 0}<span class={`recognized tier-${skill.likeTier}`}><span class="flash-layer" aria-hidden="true"></span>{$t(recognizedLabels[skill.likeTier])}</span>{/if}
                 </div>
               </li>
             {/each}
@@ -894,7 +894,6 @@
   .medal { display: grid; width: 26px; height: 26px; place-items: center; border: 1px solid #6f9661; border-radius: 50%; background: #e3eddd; color: #3f5d3a; font-size: 10px; font-weight: 600; line-height: 1; }
   .medal-100, .medal-90, .medal-80, .medal-70, .medal-60, .medal-50 { color: #fff; border-color: transparent; background-color: transparent; background-size: 300% 300%; animation: recognized-shine 5s linear infinite; }
   .medal-100 { position: relative; background-image: linear-gradient(120deg, #ff5cb8, #ff8a5c, #ffd24d, #5ce08a, #4dc9ff, #7c4dff, #ff5cb8); box-shadow: 0 0 12px rgba(120, 160, 255, 0.6), 0 0 4px rgba(255, 255, 255, 0.7) inset; }
-  .medal-100::after { content: ''; position: absolute; inset: 0; border-radius: inherit; background-image: radial-gradient(ellipse 5px 1px at 25% 30%, #fff, transparent), radial-gradient(ellipse 1px 4px at 25% 30%, #fff, transparent), radial-gradient(ellipse 4px 1px at 75% 28%, #fff, transparent), radial-gradient(ellipse 1px 3px at 75% 28%, #fff, transparent), radial-gradient(ellipse 4px 1px at 50% 75%, #fff, transparent), radial-gradient(ellipse 1px 3px at 50% 75%, #fff, transparent); background-repeat: no-repeat; background-size: 100% 100%; animation: tier5-twinkle 1.8s ease-in-out infinite; pointer-events: none; }
   .medal-90 { background-image: linear-gradient(120deg, #ff5cb8, #ff8a5c, #ffd24d, #5ce08a, #4dc9ff, #7c4dff, #ff5cb8); }
   .medal-80 { background-image: linear-gradient(120deg, #0f7a4d, #5ce0a0, #0f7a4d, #7ef0c0, #0f7a4d); box-shadow: 0 0 8px rgba(40, 180, 120, 0.5); }
   .medal-70 { background-image: linear-gradient(100deg, #aa771c, #fcf6ba, #b38728, #fbf5b7, #aa771c); }
@@ -934,10 +933,18 @@
   .tier-3 { color: #7a5a12; background: linear-gradient(135deg, #fff7d6, #f2d98b); border-color: #e2c25e; box-shadow: 0 0 0 1px #f6e7b0 inset, 0 2px 6px rgba(180, 140, 20, 0.18); }
   .tier-4 { color: #fff; background: linear-gradient(120deg, #ff5cb8, #ff8a5c, #ffd24d, #5ce08a, #4dc9ff, #7c4dff, #ff5cb8); background-size: 300% 300%; border-color: #e0c7ff; box-shadow: 0 0 12px rgba(160, 80, 255, 0.45); animation: recognized-shine 6s linear infinite; }
   .tier-5 { position: relative; color: #fff; background: linear-gradient(120deg, #ff5cb8, #ff8a5c, #ffd24d, #5ce08a, #4dc9ff, #7c4dff, #ff5cb8); background-size: 300% 300%; border-color: transparent; box-shadow: 0 0 16px rgba(120, 160, 255, 0.6), 0 0 6px rgba(255, 255, 255, 0.7) inset; animation: recognized-shine 5s linear infinite; }
-  .tier-5::after { content: ''; position: absolute; inset: 0; border-radius: inherit; background-image: radial-gradient(ellipse 7px 1px at 18% 35%, #fff, transparent), radial-gradient(ellipse 1px 5px at 18% 35%, #fff, transparent), radial-gradient(ellipse 5px 1px at 72% 25%, #fff, transparent), radial-gradient(ellipse 1px 4px at 72% 25%, #fff, transparent), radial-gradient(ellipse 6px 1px at 45% 70%, #fff, transparent), radial-gradient(ellipse 1px 5px at 45% 70%, #fff, transparent), radial-gradient(ellipse 4px 1px at 88% 62%, #fff, transparent), radial-gradient(ellipse 1px 3px at 88% 62%, #fff, transparent); background-repeat: no-repeat; background-size: 100% 100%; animation: tier5-twinkle 1.8s ease-in-out infinite; pointer-events: none; }
-  @keyframes tier5-twinkle { 0%, 100% { opacity: 0.12; } 20% { opacity: 1; } 45% { opacity: 0.3; } 70% { opacity: 0.9; } }
+  .tier-5::after, .medal-100::before, .medal-100::after { content: ''; }
+  .tier-5::after, .tier-5 .flash-layer, .medal-100::before, .medal-100::after, .medal-100 .flash-layer { position: absolute; border-radius: 999px; background-repeat: no-repeat; background-size: 100% 100%; filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.9)); pointer-events: none; animation: tier5-flash 0.75s linear infinite; }
+  .tier-5::after, .tier-5 .flash-layer { inset: -10px; box-shadow: 0 0 10px 3px rgba(255, 255, 255, 0.25); }
+  .medal-100::before, .medal-100::after, .medal-100 .flash-layer { inset: -8px; box-shadow: 0 0 8px 2px rgba(255, 255, 255, 0.25); }
+  .tier-5::after { background-image: radial-gradient(ellipse 14px 1.5px at 14% 22%, #fff, transparent), radial-gradient(ellipse 1.5px 14px at 14% 22%, #fff, transparent), radial-gradient(ellipse 10px 1.5px at 84% 82%, #fff, transparent), radial-gradient(ellipse 1.5px 10px at 84% 82%, #fff, transparent), radial-gradient(ellipse 12px 1.5px at 55% 4%, #fff, transparent), radial-gradient(ellipse 1.5px 12px at 55% 4%, #fff, transparent); }
+  .tier-5 .flash-layer { background-image: radial-gradient(ellipse 12px 1.5px at 92% 30%, #fff, transparent), radial-gradient(ellipse 1.5px 12px at 92% 30%, #fff, transparent), radial-gradient(ellipse 9px 1.5px at 6% 70%, #fff, transparent), radial-gradient(ellipse 1.5px 9px at 6% 70%, #fff, transparent), radial-gradient(ellipse 11px 1.5px at 40% 96%, #fff, transparent), radial-gradient(ellipse 1.5px 11px at 40% 96%, #fff, transparent); animation-duration: 0.62s; animation-delay: -0.37s; }
+  .medal-100::before { background-image: radial-gradient(ellipse 8px 1px at 18% 22%, #fff, transparent), radial-gradient(ellipse 1px 8px at 18% 22%, #fff, transparent), radial-gradient(ellipse 6px 1px at 84% 80%, #fff, transparent), radial-gradient(ellipse 1px 6px at 84% 80%, #fff, transparent); }
+  .medal-100::after { background-image: radial-gradient(ellipse 7px 1px at 88% 24%, #fff, transparent), radial-gradient(ellipse 1px 7px at 88% 24%, #fff, transparent), radial-gradient(ellipse 5px 1px at 10% 82%, #fff, transparent), radial-gradient(ellipse 1px 5px at 10% 82%, #fff, transparent); animation-duration: 0.62s; animation-delay: -0.37s; }
+  .medal-100 .flash-layer { background-image: radial-gradient(ellipse 6px 1px at 46% 96%, #fff, transparent), radial-gradient(ellipse 1px 6px at 46% 96%, #fff, transparent), radial-gradient(ellipse 5px 1px at 92% 55%, #fff, transparent), radial-gradient(ellipse 1px 5px at 92% 55%, #fff, transparent); animation-duration: 0.55s; animation-delay: -0.18s; }
+  @keyframes tier5-flash { 0% { opacity: 0; } 5% { opacity: 1; } 10% { opacity: 0.1; } 20% { opacity: 0.85; } 26% { opacity: 0; } 55% { opacity: 0; } 60% { opacity: 1; } 66% { opacity: 0.15; } 78% { opacity: 0.7; } 86% { opacity: 0; } 100% { opacity: 0; } }
   @keyframes recognized-shine { to { background-position: 300% 50%; } }
-  @media (prefers-reduced-motion: reduce) { .tier-4, .tier-5, .tier-5::after, .medal-100, .medal-90, .medal-80, .medal-70, .medal-60, .medal-50, .medal-100::after { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { .tier-4, .tier-5, .tier-5::after, .tier-5 .flash-layer, .medal-100, .medal-90, .medal-80, .medal-70, .medal-60, .medal-50, .medal-100::before, .medal-100::after, .medal-100 .flash-layer { animation: none; } }
   @media (max-width: 600px) { .center-grid { grid-template-columns: 1fr; } .edit-grid, .contact-row { grid-template-columns: 1fr; } }
   .reward-note { margin: 12px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
   .center-empty { color: #818b7f; font-size: 13px; }
