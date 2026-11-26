@@ -47,7 +47,7 @@ go run . migrate up --dir <临时数据目录>        # 在空库或已有库上
 8. **可空数值**：NumberField 没有 NULL，未设置为 0。约定 0 表示“未填写/未知”；对 0 有业务含义的字段用伴随字段区分，详见下一节。
 9. **默认值**：PocketBase 字段没有默认值，布尔列固定默认 false。文档中默认为 true 的字段（如 `enabled`、`xp_enabled`、`accepts_sponsorship`、`is_active`、`receive_updates`）以及其余默认值由服务层写入，见“服务层必须补齐的规则”。
 10. **平台角色**：复用现有 `users.role`（`member`/`user` 视为普通会员，`admin` 为平台管理员），超级管理员为 PocketBase `_superusers`，即文档中的 `super_admin`。没有新增 `platform_role` 字段，避免两套角色双写。`display_name` 为新增可选字段，现存量账号未自动生成昵称，服务层应在完善资料时要求填写。
-11. **`users` 其他映射**：`avatar` 文件字段对应 `avatar_url`，`avatar_thumb` 保存头像展示缩略图，`bio` 沿用现有字段，`display_name` 为昵称；`gender`、`personality`、`age`、`contacts`、`activity_areas` 为个人资料扩展字段；`user_identities.featured` 标记“想要展示的职业”，服务层限制最多 3 个；`user_skills.featured` 标记“在公开主页技能展示中列出”，数量不限；`email`/`password` 由 PocketBase 认证管理；`users.createRule/updateRule/deleteRule` 仍为空（仅超级管理员），未在本次迁移放宽。
+11. **`users` 其他映射**：`avatar` 文件字段对应 `avatar_url`，`avatar_thumb` 保存头像展示缩略图，`avatar_cropped` 保存旧头像迁移生成的裁切图，原 `avatar` 保留作为回退，`bio` 沿用现有字段，`display_name` 为昵称；`gender`、`personality`、`age`、`contacts`、`activity_areas` 为个人资料扩展字段；`user_identities.featured` 标记“想要展示的职业”，服务层限制最多 3 个；`user_skills.featured` 标记“在公开主页技能展示中列出”，数量不限；`email`/`password` 由 PocketBase 认证管理；`users.createRule/updateRule/deleteRule` 仍为空（仅超级管理员），未在本次迁移放宽。
 12. **项目难度**：`projects.difficulty` 取值为 `D`、`C`、`B`、`A`、`S`，由管理员在“项目管理”页判定；`1760000013` 为已有项目回填 `C`，公开项目接口返回该等级。
 13. **管理控制台与邀请码**：管理控制台显示成员目录、待审批项目加入申请和全部项目；项目成员申请通过后写入 `project_members`。邀请码从控制台移到个人中心，普通成员只能查看和生成自己的邀请码；`hpahub_invitations` 增加 `created_by`，启动时对旧表自动补列。
 14. **健康评估（已取消）**：功能入口和后端接口已移除；`users.current_status`、`daily_health_enabled` 与 `health_checkins` 表结构保留，避免删除历史数据。

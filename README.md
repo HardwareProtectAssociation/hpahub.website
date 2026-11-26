@@ -83,7 +83,7 @@ go run . superuser create admin@hpahub.local '替换为测试密码' --dir (Join
 # 在相应容器内执行：
 go test ./...
 npm ci && npm run build
-# Go 测试覆盖备份验证与仓库文件安全。
+# Go 测试覆盖备份验证、仓库文件安全与旧头像迁移；测试容器需安装 FFmpeg。
 ```
 
 恢复会停止测试服务，并将原数据保留在测试卷的 `backups/local-restore-*` 目录。恢复后运行启动命令。本地使用 Caddy 反向代理，仅监听本机；应用运行在隔离网络中。生产备份仍包含敏感数据和生产账户，请妥善保管。
