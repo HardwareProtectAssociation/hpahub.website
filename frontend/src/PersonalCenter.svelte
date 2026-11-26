@@ -81,6 +81,9 @@
   $: displaySkills = realSkills.map((skill, index) => (index < demoLikeCounts.length ? { ...skill, likeCount: demoLikeCounts[index], likeTier: index + 1 } : skill));
   $: totalLevel = (data?.badges || []).reduce((sum, badge) => sum + (badge.level || 0), 0);
   $: topSkill = (data?.skills || []).reduce((best, skill) => (!best || (skill.likeCount || 0) > (best.likeCount || 0) ? skill : best), null);
+  // shortcut: 演示等级徽章的分档特效，会覆盖前六个徽章的等级，看完删除
+  const demoBadgeLevels = [100, 90, 80, 70, 60, 50];
+  $: displayBadges = (data?.badges || []).map((badge, index) => (index < demoBadgeLevels.length ? { ...badge, level: demoBadgeLevels[index] } : badge));
 
   const rewardLabels = { money: '资金', product: '实物', title: '头衔', credit: '署名', learning: '学习', none: '无', other: '其他' };
   const statusLabels = { ongoing: '进行中', paused: '已暂停', terminated: '已终止', completed: '已完成' };
@@ -621,7 +624,7 @@
         </div>
         {#if data.badges.length}
           <ul class="badge-list">
-            {#each data.badges as badge (badge.careerId)}
+            {#each displayBadges as badge (badge.careerId)}
               <li class="badge-card">
                 <div class="badge-icon" aria-hidden="true">✦</div>
                 <div class="badge-body">
