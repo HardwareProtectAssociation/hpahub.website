@@ -40,11 +40,12 @@
   $: shown = records.filter(r => (filter === 'all' || filter === r.kind) && (!brandFilter || r.brand === brandFilter) && JSON.stringify(r).toLowerCase().includes(search.trim().toLowerCase()));
   $: hasGames = (typeOf(kind)?.tables || []).some(x => x.key === 'games');
   async function open(k, recordId, edit = false) {
-    kind = k; id = recordId; editing = edit; error = ''; notice = ''; loading = true; gameFilter = resolutionFilter = qualityFilter = ''; media = [];
+    kind = k; id = recordId; editing = edit; error = ''; notice = ''; loading = true; gameFilter = resolutionFilter = qualityFilter = ''; media = []; reviewTitle = ''; reviewContent = '';
     try {
       detail = recordId ? normalize(await request('/records/' + recordId), k) : blank(k);
       view = 'detail';
       if (recordId && canEdit) media = (await request('/records/' + recordId + '/media')).paths || [];
+      if (recordId) await loadReviews();
     } catch (e) { error = e.message; } finally { loading = false; }
   }
   async function save() {
@@ -82,6 +83,33 @@
   async function addGame() { if (!newGame.trim()) return; try { await request('/options/games','POST',{value:newGame.trim()}); gameOptions = await request('/options/games'); newGame = ''; notice = '游戏选项已添加'; } catch (e) { error = e.message; } }
   async function changeMedia(actionName,path) { if (!id || (actionName === 'add' && !path.trim())) return; try { const paths = actionName === 'add' ? (media.includes(path.trim()) ? media : [...media,path.trim()]) : media.filter(p => p !== path); media = (await request('/records/' + id + '/media','PUT',{paths})).paths; mediaPath = ''; } catch (e) { error = e.message; } }
   function mediaUrl(path) { if (typeof path !== 'string') return ''; try { const url = new URL(path, location.origin); return ['http:','https:'].includes(url.protocol) ? url.href : ''; } catch { return ''; } }
+  let reviews = [], reviewTitle = '', reviewContent = '', reviewBusy = false;
+  async function loadReviews() {
+    if (!id) { reviews = []; return; }
+    try { reviews = (await request('/records/' + id + '/reviews')).items || []; } catch { reviews = []; }
+  }
+  async function submitReview() {
+    if (!id || reviewBusy || !reviewTitle.trim() || !reviewContent.trim()) return;
+    reviewBusy = true;
+    try {
+      await request('/records/' + id + '/reviews', 'POST', { title: reviewTitle.trim(), content: reviewContent.trim() });
+      reviewTitle = ''; reviewContent = '';
+      await loadReviews();
+    } catch (e) { error = e.message; } finally { reviewBusy = false; }
+  }
+  async function likeReview(review) {
+    try {
+      const result = await request('/reviews/' + review.id + '/like', 'POST');
+      reviews = reviews.map((r) => (r.id === review.id ? { ...r, likedByMe: result.liked, likeCount: result.likeCount } : r));
+    } catch (e) { error = e.message; }
+  }
+  async function deleteReview(review) {
+    if (!confirm(get(t)('确定删除此评测？'))) return;
+    try {
+      await request('/reviews/' + review.id, 'DELETE');
+      reviews = reviews.filter((r) => r.id !== review.id);
+    } catch (e) { error = e.message; }
+  }
   const unique = values => [...new Set(values.map(v => String(v ?? '')))];
   $: gameRows = detail ? detail.rows?.games || [] : [];
   $: resolutions = unique(gameRows.filter(r => !gameFilter || r.game === gameFilter).map(r => r.resolution));
@@ -153,6 +181,30 @@
     {/each}
     {#if editing && hasGames}<section class="panel"><h3>{$t('游戏选项')}</h3><div class="toolbar"><label>{$t('新游戏名称')}<input bind:value={newGame} /></label><button on:click={addGame}>{$t('添加游戏选项')}</button></div></section>{/if}
     {#if id && canEdit}<section class="panel"><h3>{$t('相关媒体')}</h3>{#if media.length}<ul>{#each media as path}<li>{#if mediaUrl(path)}<a href={mediaUrl(path)} target="_blank" rel="noopener noreferrer">{path}</a>{:else}{typeof path === 'string' ? path : JSON.stringify(path)}{/if}<button class="small" on:click={() => changeMedia('remove',path)}>{$t('移除')}</button></li>{/each}</ul>{:else}<p class="empty">{$t('暂无相关媒体')}</p>{/if}<div class="toolbar"><label>{$t('媒体路径或链接')}<input bind:value={mediaPath} /></label><button on:click={() => changeMedia('add',mediaPath)}>{$t('添加媒体')}</button></div></section>{/if}
+    {#if id && !editing}<section class="panel"><h3>{$t('硬件评测')}</h3>
+      {#if reviews.length}
+        <ul class="review-list">
+          {#each reviews as review (review.id)}
+            <li class="review-item">
+              <strong>{review.title}</strong>
+              <p>{review.content}</p>
+              <div class="review-foot">
+                <span class="hint">{review.authorName || '—'}{#if review.created} · {new Date(review.created).toLocaleDateString()}{/if}</span>
+                {#if review.canLike}<button class="small" on:click={() => likeReview(review)}>{review.likedByMe ? $t('取消点赞') : $t('点赞')} {review.likeCount}</button>{:else}<span class="hint">♥ {review.likeCount}</span>{/if}
+                {#if review.canDelete}<button class="small" on:click={() => deleteReview(review)}>{$t('删除')}</button>{/if}
+              </div>
+            </li>
+          {/each}
+        </ul>
+      {:else}<p class="empty">{$t('暂无评测')}</p>{/if}
+      {#if token}
+        <div class="review-form">
+          <label>{$t('评测标题')}<input bind:value={reviewTitle} maxlength="160" /></label>
+          <label>{$t('评测内容')}<textarea bind:value={reviewContent} rows="3" maxlength="5000"></textarea></label>
+          <button class="primary" disabled={reviewBusy} on:click={submitReview}>{$t('发布评测')}</button>
+        </div>
+      {:else}<p class="hint">{$t('登录后可发布评测。')}</p>{/if}
+    </section>{/if}
     {#if editing}<button class="primary" disabled={busy} on:click={save}>{$t('保存所有更改')}</button>{/if}
   {/if}
   {#each Object.entries(suggestions) as [key,values]}<datalist id={'gpu-option-'+key}>{#each key === 'game' ? unique([...values,...gameOptions]) : values as value}<option {value}></option>{/each}</datalist>{/each}
@@ -161,4 +213,5 @@
 <style>
   .gpu-page{box-sizing:border-box;width:calc(100% - 2rem)}
   .gpu-page{color:#253a30;max-width:1400px;margin:auto;padding:1.5rem 0 3rem}.heading,.toolbar,.detail-actions,.record,.record-actions{display:flex;align-items:center;gap:.75rem;flex-wrap:wrap}.heading{justify-content:space-between;margin-bottom:1.5rem}.heading h1,.heading p,.record p{margin:0}.heading p,.hint,.empty,.record p{color:#5d7065}.heading p{margin-top:.4rem}.summary{padding:1rem 0;border-top:1px solid #d9e3dc;border-bottom:1px solid #d9e3dc;color:#52695a}.tabs{display:flex;gap:.4rem;overflow-x:auto;margin:1.2rem 0}.tabs button{white-space:nowrap}.tabs .active,.primary{background:#315d43;color:white;border-color:#315d43}.toolbar{margin:1rem 0}.toolbar h2{margin:0 auto 0 0}.toolbar label,.search{display:flex;align-items:center;gap:.5rem}.search input{min-width:15rem}.list{border-top:1px solid #d9e3dc}.record{justify-content:space-between;padding:1rem 0;border-bottom:1px solid #d9e3dc}.record-title{display:block;border:0;padding:.35rem 0;background:none;font-size:1.1rem;font-weight:700;text-align:left;color:#203d2c}.badge{font-size:.75rem;font-weight:700;color:#426f51}.record p{font-size:.9rem}.panel{border:1px solid #d9e3dc;background:#fff;border-radius:.5rem;padding:1.1rem;margin:1rem 0}.panel h3{margin:0 0 1rem;font-size:1rem}.panel h3 small{font-weight:400;color:#5d7065}.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem}.fields label,.note{display:flex;flex-direction:column;gap:.35rem;color:#52695a;font-size:.85rem}.fields label span,.note span{font-size:1rem;color:#20372a;overflow-wrap:anywhere}.field{display:flex;align-items:end;gap:.3rem}.field label{flex:1;min-width:0}.note{margin-top:1rem}input,select,textarea,button{font:inherit}input:not([type=checkbox]),select,textarea{box-sizing:border-box;border:1px solid #bbcbbf;border-radius:.3rem;background:white;color:#20372a;padding:.55rem;max-width:100%}textarea{min-height:5rem}button{cursor:pointer;border:1px solid #b7c9bc;border-radius:.3rem;background:#fff;color:#294d35;padding:.5rem .7rem}button:hover{border-color:#315d43}button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,a:focus-visible{outline:3px solid #7caa88;outline-offset:2px}button:disabled{opacity:.55;cursor:wait}.primary{background:#315d43;color:#fff}.danger{color:#a03232}.small{font-size:.75rem;padding:.3rem}.table-wrap{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:.85rem}th,td{border-bottom:1px solid #e1e9e3;padding:.6rem;text-align:left;white-space:nowrap}th{color:#52695a}td input{width:9rem}.empty{font-size:.9rem}.message{padding:.8rem;border:1px solid #aac9b2;background:#eff8f1;margin:1rem 0}.error{border-color:#e2b6b6;background:#fff1f1;color:#8e2929}.comparison{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.75rem}.comparison div{display:flex;flex-direction:column;gap:.5rem;border:1px solid #d9e3dc;padding:1rem}.comparison span{font-size:1.4rem;font-weight:700}.hint{font-size:.85rem}li{margin:.5rem 0;overflow-wrap:anywhere}li button{margin-left:.5rem}@media(max-width:600px){.gpu-page{padding:1rem 0 2rem}.toolbar{align-items:stretch}.toolbar label{width:100%;justify-content:space-between}.toolbar label input,.toolbar label select{flex:1}.fields{grid-template-columns:repeat(2,minmax(0,1fr))}.record-actions{width:100%}}
+.review-list{list-style:none;margin:0 0 1rem;padding:0;display:grid;gap:.75rem}.review-item{border-bottom:1px solid #e1e9e3;padding-bottom:.75rem}.review-item p{margin:.35rem 0;white-space:pre-wrap;overflow-wrap:anywhere}.review-foot{display:flex;align-items:center;gap:.75rem;flex-wrap:wrap}.review-form{display:grid;gap:.75rem;max-width:650px}.review-form label{display:grid;gap:.35rem;color:#52695a;font-size:.85rem}
 </style>
