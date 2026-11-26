@@ -37,6 +37,26 @@ func TestHomeFeed(t *testing.T) {
 	admire.Set("relation", "admire")
 	centerTestSave(t, app, admire)
 
+	hardware := centerTestRecord(t, app, "hardware")
+	hardware.Set("kind", "general")
+	hardware.Set("name", "热门显卡")
+	centerTestSave(t, app, hardware)
+	coldHardware := centerTestRecord(t, app, "hardware")
+	coldHardware.Set("kind", "general")
+	coldHardware.Set("name", "冷门显卡")
+	centerTestSave(t, app, coldHardware)
+
+	review := centerTestRecord(t, app, "hardware_reviews")
+	review.Set("hardware_id", hardware.Id)
+	review.Set("author_user_id", engineer.Id)
+	review.Set("title", "好卡")
+	review.Set("content", "实测很强")
+	centerTestSave(t, app, review)
+	reviewLike := centerTestRecord(t, app, "hardware_review_likes")
+	reviewLike.Set("review_id", review.Id)
+	reviewLike.Set("user_id", fan.Id)
+	centerTestSave(t, app, reviewLike)
+
 	projects, err := homeHotProjects(&core.RequestEvent{App: app})
 	if err != nil {
 		t.Fatal(err)
@@ -50,5 +70,12 @@ func TestHomeFeed(t *testing.T) {
 	}
 	if len(engineers) != 1 || engineers[0].ID != engineer.Id || engineers[0].AdmireCount != 1 {
 		t.Fatalf("unexpected hot engineers: %+v", engineers)
+	}
+	hardwareItems, err := homeHotHardware(&core.RequestEvent{App: app})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hardwareItems) != 2 || hardwareItems[0].ID != hardware.Id || hardwareItems[0].LikeCount != 1 || hardwareItems[1].ID != coldHardware.Id || hardwareItems[1].LikeCount != 0 {
+		t.Fatalf("unexpected hot hardware: %+v", hardwareItems)
 	}
 }

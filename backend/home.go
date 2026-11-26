@@ -20,6 +20,15 @@ type homeEngineer struct {
 	AdmireCount int              `json:"admireCount"`
 }
 
+type homeHardware struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Brand     string `json:"brand"`
+	Subtitle  string `json:"subtitle"`
+	Kind      string `json:"kind"`
+	LikeCount int    `json:"likeCount"`
+}
+
 // bindHomeRoutes serves the home feed: hot projects ranked by active follows
 // and hot engineers ranked by admire relations. Both lists are capped at 8.
 func bindHomeRoutes(e *core.ServeEvent) {
@@ -33,7 +42,11 @@ func bindHomeRoutes(e *core.ServeEvent) {
 		if err != nil {
 			return e.InternalServerError("Unable to load home feed.", err)
 		}
-		return e.JSON(200, map[string]any{"popularProjects": projects, "popularEngineers": engineers})
+		hardware, err := homeHotHardware(e)
+		if err != nil {
+			return e.InternalServerError("Unable to load home feed.", err)
+		}
+		return e.JSON(200, map[string]any{"popularProjects": projects, "popularEngineers": engineers, "popularHardware": hardware})
 	})
 }
 
@@ -124,6 +137,42 @@ func homeHotEngineers(e *core.RequestEvent) ([]homeEngineer, error) {
 		}
 		entry.item.Identities = identities
 		items = append(items, entry.item)
+	}
+	return items, nil
+}
+
+// homeHotHardware ranks hardware by likes on its member reviews; ties keep the
+// curated sort_order.
+func homeHotHardware(e *core.RequestEvent) ([]homeHardware, error) {
+	rows, err := e.App.FindRecordsByFilter("hardware", "", "sort_order,id", 100, 0)
+	if err != nil {
+		return nil, err
+	}
+	var totals []struct {
+		HardwareID string `db:"hardware_id"`
+		Total      int    `db:"total"`
+	}
+	if err := e.App.DB().NewQuery(`SELECT reviews.hardware_id AS hardware_id, COUNT(likes.id) AS total FROM hardware_review_likes AS likes INNER JOIN hardware_reviews AS reviews ON reviews.id = likes.review_id GROUP BY reviews.hardware_id`).All(&totals); err != nil {
+		return nil, err
+	}
+	likeCounts := map[string]int{}
+	for _, row := range totals {
+		likeCounts[row.HardwareID] = row.Total
+	}
+	items := make([]homeHardware, 0, len(rows))
+	for _, record := range rows {
+		items = append(items, homeHardware{
+			ID:        record.Id,
+			Name:      record.GetString("name"),
+			Brand:     record.GetString("brand"),
+			Subtitle:  record.GetString("subtitle"),
+			Kind:      record.GetString("kind"),
+			LikeCount: likeCounts[record.Id],
+		})
+	}
+	sort.SliceStable(items, func(i, j int) bool { return items[i].LikeCount > items[j].LikeCount })
+	if len(items) > 8 {
+		items = items[:8]
 	}
 	return items, nil
 }
