@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"net/url"
 	"strings"
 	"unicode/utf8"
@@ -33,9 +34,19 @@ func bindNewsRoutes(e *core.ServeEvent) {
 		if err != nil {
 			return e.InternalServerError("Unable to load news.", err)
 		}
-		reactions, err := e.App.FindRecordsByFilter("hardware_news_reactions", "", "", 0, 0)
-		if err != nil {
-			return e.InternalServerError("Unable to load news.", err)
+		var reactions []*core.Record
+		if len(rows) > 0 {
+			filters := make([]string, 0, len(rows))
+			params := dbx.Params{}
+			for i, row := range rows {
+				key := fmt.Sprintf("news%d", i)
+				filters = append(filters, "news_id = {:"+key+"}")
+				params[key] = row.Id
+			}
+			reactions, err = e.App.FindRecordsByFilter("hardware_news_reactions", strings.Join(filters, " || "), "", 0, 0, params)
+			if err != nil {
+				return e.InternalServerError("Unable to load news.", err)
+			}
 		}
 		viewerID := ""
 		role := ""
