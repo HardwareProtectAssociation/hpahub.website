@@ -41,6 +41,10 @@
   let savingDifficulty = '';
   const difficultyLevels = ['D', 'C', 'B', 'A', 'S'];
   const projectStatusLabels = { ongoing: '进行中', paused: '暂停', terminated: '已中止', completed: '已完成' };
+  let voteDifficulties = {};
+  let voteStances = {};
+  let voteComments = {};
+  let ownerConfirming = {};
   const base = manage ? '/api/hpahub/manage/showcase' : '/api/hpahub/me/cards';
   const headers = () => ({ Authorization: `Bearer ${token}` });
   async function request(url, options = {}) {
@@ -109,16 +113,42 @@
     difficultyError = '';
     difficultyNotice = '';
     try {
-      const response = await fetch(`/api/hpahub/manage/projects/${encodeURIComponent(project.id)}`, {
-        method: 'PATCH',
+      const diff = voteDifficulties[project.id] || project.difficulty;
+      const stance = voteStances[project.id] || 'approve';
+      const comment = voteComments[project.id] || '';
+      const response = await fetch(`/api/hpahub/projects/${encodeURIComponent(project.id)}/difficulty/vote`, {
+        method: 'POST',
         headers: { ...headers(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ difficulty: project.difficulty }),
+        body: JSON.stringify({ difficulty: diff, stance, comment }),
       });
-      if (!response.ok) {
-        const result = await response.json().catch(() => ({}));
-        throw new Error(result.message || '保存失败，请重试。');
-      }
-      difficultyNotice = '难度已保存。';
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.message || '投票失败，请重试。');
+      project.approveCount = result.approveCounts?.[diff] || 0;
+      project.opposeCount = result.opposeCounts?.[diff] || 0;
+      difficultyNotice = result.consensusReached
+        ? `共识难度 ${result.consensus} 已确认。`
+        : `投票已提交，${result.approveCounts?.[diff] || 0} 票同意 ${diff}。`;
+    } catch (e) {
+      difficultyError = e.message || String(e);
+    } finally {
+      savingDifficulty = '';
+    }
+  }
+
+  async function confirmOwner(project, confirmed) {
+    savingDifficulty = project.id;
+    difficultyError = '';
+    difficultyNotice = '';
+    try {
+      const response = await fetch(`/api/hpahub/projects/${encodeURIComponent(project.id)}/difficulty/confirm`, {
+        method: 'POST',
+        headers: { ...headers(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirmed, proposedDifficulty: project.proposedDifficulty || '' }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.message || '确认失败，请重试。');
+      project.ownerConfirmed = confirmed;
+      difficultyNotice = confirmed ? '发起人已确认难度。' : '发起人已取消确认。';
     } catch (e) {
       difficultyError = e.message || String(e);
     } finally {
@@ -146,10 +176,32 @@
         <div class="difficulty-list">
           {#each projects as project}
             <div class="difficulty-row">
-              <div class="difficulty-info"><strong>{project.title}</strong><small>{$t(projectStatusLabels[project.status] || project.status)} · {project.ownerName || '—'}</small></div>
-              <select bind:value={project.difficulty} on:change={() => saveDifficulty(project)} disabled={savingDifficulty === project.id} aria-label={`${project.title} ${$t('难度')}`}>
-                {#each difficultyLevels as level}<option value={level}>{level}</option>{/each}
-              </select>
+              <div class="difficulty-info">
+                <strong>{project.title}</strong>
+                <small>{$t(projectStatusLabels[project.status] || project.status)} · {project.ownerName || '—'}</small>
+                <small>
+                  {#if project.proposedDifficulty}<span>{$t('发起人评级')}：{project.proposedDifficulty}</span>{/if}
+                  <span>{$t('同意')}：{project.approveCount || 0}</span>
+                  <span>{$t('反对')}：{project.opposeCount || 0}</span>
+                  {#if project.ownerConfirmed}<span class="confirmed">✓ {$t('发起人已确认')}</span>{/if}
+                  {#if project.difficulty}<span class="consensus">共识：{project.difficulty}</span>{/if}
+                </small>
+              </div>
+              {#if project.status !== 'completed'}
+                <div class="vote-controls">
+                  <select bind:value={voteDifficulties[project.id]} aria-label={`${project.title} ${$t('难度')}`}>
+                    {#each difficultyLevels as level}<option value={level}>{level}</option>{/each}
+                  </select>
+                  <select bind:value={voteStances[project.id]} aria-label={`${project.title} ${$t('立场')}`}>
+                    <option value="approve">{$t('同意')}</option>
+                    <option value="oppose">{$t('反对')}</option>
+                  </select>
+                  <button type="button" class="primary small" on:click={() => saveDifficulty(project)} disabled={savingDifficulty === project.id}>{$t('投票')}</button>
+                  <button type="button" class="small" on:click={() => confirmOwner(project, true)} disabled={savingDifficulty === project.id}>{$t('发起人确认')}</button>
+                </div>
+              {:else}
+                <span class="frozen">{$t('已完成，难度锁定')}</span>
+              {/if}
             </div>
           {/each}
         </div>
@@ -188,5 +240,11 @@
   .difficulty-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 12px; border: 1px solid #dcded4; background: #fafbf7; }
   .difficulty-info { display: grid; gap: 2px; }
   .difficulty-info small { color: #818b7f; }
-  .difficulty-row select { min-width: 80px; padding: 6px 8px; border: 1px solid #b9c3b3; background: #fff; }
+  .difficulty-info small span { margin-right: 10px; }
+  .difficulty-info .confirmed { color: #4d6448; font-weight: 600; }
+  .difficulty-info .consensus { color: #285a78; font-weight: 600; }
+  .vote-controls { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .vote-controls select { min-width: 60px; padding: 5px 6px; border: 1px solid #b9c3b3; background: #fff; }
+  .vote-controls .small { padding: 4px 10px; font-size: 12px; }
+  .frozen { color: #8b9587; font-size: 12px; }
 </style>

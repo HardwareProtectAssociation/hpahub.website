@@ -52,18 +52,28 @@ type publicProjectDetail struct {
 	ImprovementPending    bool                  `json:"improvementPending"`
 	CanFollow             bool                  `json:"canFollow"`
 	Following             bool                  `json:"following"`
+	ProposedDifficulty    string                `json:"proposedDifficulty"`
+	OwnerConfirmed        bool                  `json:"ownerConfirmed"`
+	ApproveCount          int                   `json:"approveCount"`
+	OpposeCount           int                   `json:"opposeCount"`
+	IsOwner               bool                  `json:"isOwner"`
 }
 
 type managedProject struct {
-	ID           string `json:"id"`
-	Title        string `json:"title"`
-	Summary      string `json:"summary"`
-	Status       string `json:"status"`
-	Difficulty   string `json:"difficulty"`
-	ReviewStatus string `json:"reviewStatus"`
-	OwnerName    string `json:"ownerName"`
-	Created      string `json:"created"`
-	Updated      string `json:"updated"`
+	ID                 string `json:"id"`
+	Title              string `json:"title"`
+	Summary            string `json:"summary"`
+	Status             string `json:"status"`
+	Difficulty         string `json:"difficulty"`
+	ReviewStatus       string `json:"reviewStatus"`
+	OwnerName          string `json:"ownerName"`
+	OwnerID            string `json:"ownerId"`
+	Created            string `json:"created"`
+	Updated            string `json:"updated"`
+	ProposedDifficulty string `json:"proposedDifficulty"`
+	OwnerConfirmed     bool   `json:"ownerConfirmed"`
+	ApproveCount       int    `json:"approveCount"`
+	OpposeCount        int    `json:"opposeCount"`
 }
 
 // bindPublicProjectRoutes exposes only approved, non-deleted projects. Draft,
@@ -99,6 +109,26 @@ func bindPublicProjectRoutes(e *core.ServeEvent) {
 			EstimatedDurationDays: project.GetInt("estimated_duration_days"),
 			Stages:                []publicProjectStage{},
 			Members:               []publicProjectMember{},
+			ProposedDifficulty:    project.GetString("owner_proposed_difficulty"),
+			OwnerConfirmed:        project.GetBool("owner_difficulty_confirmed"),
+		}
+		// Compute vote counts
+		votes, _ := e.App.FindRecordsByFilter("project_difficulty_votes",
+			"project_id = {:project}", "", 0, 0, dbx.Params{"project": project.Id})
+		for _, v := range votes {
+			if v.GetString("stance") == "approve" {
+				detail.ApproveCount++
+			} else {
+				detail.OpposeCount++
+			}
+		}
+		// Check if viewer is owner
+		if e.Auth != nil {
+			if owner, member, err := personalCenterOwner(e.App, e.Auth); err == nil && member {
+				if project.GetString("owner_user_id") == owner.Id {
+					detail.IsOwner = true
+				}
+			}
 		}
 		stages, err := e.App.FindRecordsByFilter("project_stages", "project_id = {:project}", "sort_order", 0, 0, dbx.Params{"project": project.Id})
 		if err != nil {
@@ -290,43 +320,33 @@ func bindPublicProjectRoutes(e *core.ServeEvent) {
 				ownerName = publicPersonName(owner)
 			}
 			items = append(items, managedProject{
-				ID:           project.Id,
-				Title:        project.GetString("title"),
-				Summary:      project.GetString("summary"),
-				Status:       project.GetString("execution_status"),
-				Difficulty:   project.GetString("difficulty"),
-				ReviewStatus: project.GetString("review_status"),
-				OwnerName:    ownerName,
-				Created:      project.GetString("created"),
-				Updated:      project.GetString("updated"),
+				ID:                 project.Id,
+				Title:              project.GetString("title"),
+				Summary:            project.GetString("summary"),
+				Status:             project.GetString("execution_status"),
+				Difficulty:         project.GetString("difficulty"),
+				ReviewStatus:       project.GetString("review_status"),
+				OwnerName:          ownerName,
+				OwnerID:            ownerID,
+				Created:            project.GetString("created"),
+				Updated:            project.GetString("updated"),
+				ProposedDifficulty: project.GetString("owner_proposed_difficulty"),
+				OwnerConfirmed:     project.GetBool("owner_difficulty_confirmed"),
+				ApproveCount:       0,
+				OpposeCount:        0,
 			})
+			// Compute vote counts
+			votes, _ := e.App.FindRecordsByFilter("project_difficulty_votes",
+				"project_id = {:project}", "", 0, 0, dbx.Params{"project": project.Id})
+			for _, v := range votes {
+				if v.GetString("stance") == "approve" {
+					items[len(items)-1].ApproveCount++
+				} else {
+					items[len(items)-1].OpposeCount++
+				}
+			}
 		}
 		return e.JSON(200, map[string]any{"items": items})
-	})
-	e.Router.PATCH("/api/hpahub/manage/projects/{id}", func(e *core.RequestEvent) error {
-		noCache(e)
-		if e.Auth == nil {
-			return e.UnauthorizedError("Authentication required.", nil)
-		}
-		role := siteRole(e.Auth)
-		if role != "admin" && role != "octopus" {
-			return e.ForbiddenError("Insufficient permissions.", nil)
-		}
-		var input struct {
-			Difficulty string `json:"difficulty"`
-		}
-		if err := e.BindBody(&input); err != nil || !validProjectDifficulty(input.Difficulty) {
-			return e.BadRequestError("Invalid difficulty.", nil)
-		}
-		project, err := e.App.FindRecordById("projects", e.Request.PathValue("id"))
-		if err != nil {
-			return e.NotFoundError("Not found.", nil)
-		}
-		project.Set("difficulty", input.Difficulty)
-		if err := e.App.Save(project); err != nil {
-			return e.InternalServerError("Unable to save difficulty.", err)
-		}
-		return e.JSON(200, map[string]any{"ok": true, "difficulty": input.Difficulty})
 	})
 }
 

@@ -304,6 +304,11 @@
         <p class="project-owner">{$t('负责人')}：{data.ownerName || '—'}{#if data.updated} · {$t('更新于')} {formatDate(data.updated)}{/if}</p>
         {#if data.description && data.description !== data.summary}<p class="project-description">{data.description}</p>{/if}
         {#if data.estimatedDurationDays}<p class="project-owner">{$t('预计周期')}：{data.estimatedDurationDays} {$t('天')}</p>{/if}
+        {#if data.proposedDifficulty}<p class="project-owner">{$t('发起人自评')}：{data.proposedDifficulty}</p>{/if}
+        {#if data.difficulty}<p class="project-owner">{$t('共识')}：{data.difficulty}</p>{/if}
+        {#if data.ownerConfirmed}<span class="confirmed">✓ {$t('发起人已确认')}</span>{/if}
+        {#if data.approveCount}<span>{$t('同意')}：{data.approveCount}</span>{/if}
+        {#if data.opposeCount}<span>{$t('反对')}：{data.opposeCount}</span>{/if}
       </header>
       {#if data.canFollow}
         <div class="follow-row">
@@ -397,6 +402,7 @@
   .follow-button { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border: 1px solid #b9c3b3; border-radius: 999px; background: #fff; color: #34553a; font-size: 13px; }
   .follow-button.following { border-color: #e3bcc4; background: #fff4f6; color: #a84358; }
   .follow-error { color: #9b402c; font-size: 12px; }
+  .confirmed { color: #4d6448; font-size: 12px; font-weight: 600; }
   .difficulty-D { color: #6b6f66; background: #f1f2ed; }
   .difficulty-C { color: #3f5d3a; background: #eef3e8; border-color: #c8d4c0; }
   .difficulty-B { color: #285a78; background: #e8f4fb; border-color: #a9cde4; }

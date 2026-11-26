@@ -117,6 +117,7 @@ func TestProjectDifficultyAdmin(t *testing.T) {
 		t.Fatal(err)
 	}
 	bindPublicProjectRoutes(&core.ServeEvent{App: app, Router: router})
+	bindDifficultyVotingRoutes(&core.ServeEvent{App: app, Router: router})
 	mux, err := router.BuildMux()
 	if err != nil {
 		t.Fatal(err)
@@ -145,19 +146,24 @@ func TestProjectDifficultyAdmin(t *testing.T) {
 	if response := request("GET", "/api/hpahub/manage/projects", adminToken, ""); response.Code != http.StatusOK {
 		t.Fatalf("admin list status = %d: %s", response.Code, response.Body.String())
 	}
-	path := "/api/hpahub/manage/projects/" + project.Id
-	if response := request("PATCH", path, memberToken, `{"difficulty":"S"}`); response.Code != http.StatusForbidden {
-		t.Fatalf("member patch status = %d, want 403", response.Code)
+	// Difficulty is now set via voting, not direct PATCH
+	path := "/api/hpahub/projects/" + project.Id + "/difficulty/vote"
+	if response := request("POST", path, memberToken, `{"difficulty":"S","stance":"approve"}`); response.Code != http.StatusForbidden {
+		t.Fatalf("member vote status = %d, want 403", response.Code)
 	}
-	if response := request("PATCH", path, adminToken, `{"difficulty":"Z"}`); response.Code != http.StatusBadRequest {
-		t.Fatalf("invalid patch status = %d, want 400", response.Code)
+	if response := request("POST", path, adminToken, `{"difficulty":"Z","stance":"approve"}`); response.Code != http.StatusBadRequest {
+		t.Fatalf("invalid vote status = %d, want 400", response.Code)
 	}
-	if response := request("PATCH", path, adminToken, `{"difficulty":"S"}`); response.Code != http.StatusOK {
-		t.Fatalf("admin patch status = %d: %s", response.Code, response.Body.String())
+	if response := request("POST", path, adminToken, `{"difficulty":"S","stance":"approve"}`); response.Code != http.StatusOK {
+		t.Fatalf("admin vote status = %d: %s", response.Code, response.Body.String())
 	}
 	saved, err := app.FindRecordById("projects", project.Id)
-	if err != nil || saved.GetString("difficulty") != "S" {
-		t.Fatalf("saved difficulty = %q, %v", saved.GetString("difficulty"), err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Difficulty not updated yet (needs 3 approvals + owner confirm)
+	if saved.GetString("difficulty") != "" {
+		t.Fatalf("difficulty set before consensus: %q", saved.GetString("difficulty"))
 	}
 	list := request("GET", "/api/hpahub/projects", "", "")
 	if list.Code != http.StatusOK {
@@ -169,8 +175,12 @@ func TestProjectDifficultyAdmin(t *testing.T) {
 	if err := json.Unmarshal(list.Body.Bytes(), &listed); err != nil {
 		t.Fatal(err)
 	}
-	if len(listed.Items) != 1 || listed.Items[0].Difficulty != "S" {
-		t.Fatalf("unexpected public difficulty: %+v", listed.Items)
+	if len(listed.Items) != 1 {
+		t.Fatalf("unexpected public projects: %+v", listed.Items)
+	}
+	// Difficulty should be empty since consensus not reached
+	if listed.Items[0].Difficulty != "" {
+		t.Fatalf("difficulty shown before consensus: %q", listed.Items[0].Difficulty)
 	}
 }
 
