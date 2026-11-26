@@ -74,6 +74,7 @@ func main() {
 		}
 		bindInvitationRoutes(e)
 		bindHardwareRoutes(e)
+		bindHardwareReviewRoutes(e)
 		bindPublicRoutes(e)
 		bindPublicProjectRoutes(e)
 		bindHomeRoutes(e)
