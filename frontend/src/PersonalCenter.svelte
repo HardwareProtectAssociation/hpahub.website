@@ -60,12 +60,10 @@
   const demoDifficultyTags = [{ level: 'S', count: 4 }, { level: 'A', count: 3 }, { level: 'B', count: 2 }, { level: 'C', count: 1 }, { level: 'D', count: 1 }];
   $: difficultyTags = ['S', 'A', 'B', 'C', 'D'].map((level) => ({ level, count: completedProjects.filter((project) => (project.difficulty || '').toUpperCase() === level).length })).filter((tag) => tag.count > 0);
   $: completedDifficulties = difficultyTags.length ? difficultyTags : (completedProjects.length ? demoDifficultyTags : []);
-  // shortcut: 演示认可数用于查看五档徽章效果，真实点赞数据出现后自动失效，之后可删
+  // shortcut: 演示认可数用于查看五档徽章效果，会覆盖前五个技能的真实计数，看完删除
   const demoLikeCounts = [10, 50, 100, 1000, 5000];
   $: realSkills = data?.skills || [];
-  $: displaySkills = realSkills.some((skill) => (skill.likeCount || 0) > 0)
-    ? realSkills
-    : realSkills.map((skill, index) => (index < demoLikeCounts.length ? { ...skill, likeCount: demoLikeCounts[index], likeTier: index + 1 } : skill));
+  $: displaySkills = realSkills.map((skill, index) => (index < demoLikeCounts.length ? { ...skill, likeCount: demoLikeCounts[index], likeTier: index + 1 } : skill));
   $: totalLevel = (data?.badges || []).reduce((sum, badge) => sum + (badge.level || 0), 0);
   $: topSkill = (data?.skills || []).reduce((best, skill) => (!best || (skill.likeCount || 0) > (best.likeCount || 0) ? skill : best), null);
 
