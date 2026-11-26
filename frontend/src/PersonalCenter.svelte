@@ -433,13 +433,6 @@
           <p class="center-email">{data.profile.email}</p>
         {/if}
         {#if data.profile.bio}<p class="center-bio">{data.profile.bio}</p>{/if}
-        {#if featuredIdentities.length}
-          <div class="chips">
-            {#each featuredIdentities as identity}
-              <span class={`rank rank-pill rank-${identity.category === 'main' ? 4 : 3}`}>{$t(identity.category === 'main' ? '主力职业' : '辅助职业')} · {identity.name}</span>
-            {/each}
-          </div>
-        {/if}
         {#if data.profile.gender || data.profile.age || data.profile.activityAreas?.length}
           <p class="profile-meta">
             {#if data.profile.currentStatus}<span class:busy={data.profile.currentStatus === 'busy'} class="current-status">{$t('当前状态')}：{$t(currentStatusLabels[data.profile.currentStatus] || data.profile.currentStatus)}</span>{/if}
@@ -571,6 +564,13 @@
         <p class="stat-title">{$t('职业徽章')}</p>
         <span>{data.badges.length}</span>
         <p class="stat-note">{$t('总等级')} {totalLevel}</p>
+        {#if featuredIdentities.length}
+          <div class="stat-roles">
+            {#each featuredIdentities as identity}
+              <span class={`rank rank-pill rank-${identity.category === 'main' ? 4 : 3}`} title={$t(identity.category === 'main' ? '主力职业' : '辅助职业')}>{identity.name}</span>
+            {/each}
+          </div>
+        {/if}
       </article>
       <article class="stat">
         <p class="stat-title">{$t('技能展示')}</p>
@@ -862,6 +862,8 @@
   .stat p { margin: 4px 0 0; color: #818b7f; font-size: 13px; }
   .stat .stat-title { margin: 0 0 4px; }
   .stat p.stat-note { margin-top: 6px; font-size: 12px; overflow-wrap: anywhere; }
+  .stat-roles { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .stat-roles .rank-pill { font-size: 11px; padding: 2px 7px; }
   .stat-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; align-items: baseline; }
   .stat-tag { display: inline-flex; align-items: baseline; }
   .show-all { border: 0; background: none; padding: 0; color: #818b7f; font-size: 10px; text-decoration: underline; cursor: pointer; white-space: nowrap; }
