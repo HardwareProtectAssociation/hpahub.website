@@ -138,7 +138,7 @@ func registerInvitation(app core.App, email, password, confirm, code string, now
 		}
 		result, err := tx.DB().NewQuery(`UPDATE hpahub_invitations SET used = CASE WHEN max_uses = 1 THEN {:now} ELSE used END,
 			used_by = {:email}, use_count = use_count + 1
-			WHERE code = {:code} AND (max_uses = 0 OR use_count < max_uses) AND (expires = 0 OR expires > {:now})`).Bind(dbx.Params{"now": now.Unix(), "email": email, "code": code}).Execute()
+			WHERE code = {:code} AND max_uses > 0 AND use_count < max_uses AND expires > {:now}`).Bind(dbx.Params{"now": now.Unix(), "email": email, "code": code}).Execute()
 		if err != nil {
 			return err
 		}
@@ -312,8 +312,8 @@ func bindInvitationRoutes(e *core.ServeEvent) {
 			return e.ForbiddenError("Insufficient permissions.", nil)
 		}
 		var input struct {
-			Count   int `json:"count"`
-			MaxUses int `json:"maxUses"`
+			Count   int  `json:"count"`
+			MaxUses *int `json:"maxUses"`
 		}
 		if e.Request.ContentLength > 0 {
 			if err := e.BindBody(&input); err != nil {
@@ -326,16 +326,17 @@ func bindInvitationRoutes(e *core.ServeEvent) {
 		if input.Count < 1 || input.Count > 5 {
 			return e.BadRequestError("You can generate 1 to 5 invitations at a time.", nil)
 		}
-		if input.MaxUses < 0 || input.MaxUses > 1000 {
+		maxUses := 1
+		if input.MaxUses != nil {
+			maxUses = *input.MaxUses
+		}
+		if maxUses < 1 || maxUses > 1000 {
 			return e.BadRequestError("Invalid max uses.", nil)
 		}
 		ttl := 24 * time.Hour
-		if input.MaxUses == 0 {
-			ttl = 0 // unlimited codes never expire
-		}
 		items := make([]invitation, 0, input.Count)
 		for range input.Count {
-			item, err := newInvitationWithUses(e.App, time.Now(), e.Auth.Id, input.MaxUses, ttl)
+			item, err := newInvitationWithUses(e.App, time.Now(), e.Auth.Id, maxUses, ttl)
 			if err != nil {
 				return e.InternalServerError("Failed to create invitation.", err)
 			}

@@ -164,6 +164,25 @@ func TestInvitationAPIRestrictions(t *testing.T) {
 				t.Fatalf("%s %s returned %d: %s", identity.role, method, res.Code, res.Body.String())
 			}
 		}
+		if identity.role == "member" {
+			for _, body := range []string{`{}`, `{"maxUses":0}`} {
+				req := httptest.NewRequest(http.MethodPost, "/api/hpahub/invitations", strings.NewReader(body))
+				req.Header.Set("Authorization", token)
+				req.Header.Set("Content-Type", "application/json")
+				res := httptest.NewRecorder()
+				mux.ServeHTTP(res, req)
+				if body == `{}` {
+					var result struct {
+						Items []invitation `json:"items"`
+					}
+					if err := json.Unmarshal(res.Body.Bytes(), &result); err != nil || res.Code != http.StatusOK || len(result.Items) != 1 || result.Items[0].MaxUses != 1 || result.Items[0].Expires-result.Items[0].Created != 86400 {
+						t.Fatalf("default invitation: %d %s", res.Code, res.Body.String())
+					}
+				} else if res.Code != http.StatusBadRequest {
+					t.Fatalf("unlimited invitation accepted: %d", res.Code)
+				}
+			}
+		}
 		req := httptest.NewRequest(http.MethodGet, "/api/hpahub/me", nil)
 		req.Header.Set("Authorization", token)
 		res := httptest.NewRecorder()

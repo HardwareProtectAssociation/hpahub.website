@@ -340,7 +340,6 @@
   }
 
   function invitationStatus(invitation) {
-    if (invitation.maxUses === 0) return '无限次使用';
     if (invitation.maxUses > 1 && invitation.useCount < invitation.maxUses) return '使用中';
     if (invitation.used) return '已使用';
     if (invitation.expires > 0 && invitation.expires * 1000 <= Date.now()) return '已过期';
@@ -742,7 +741,7 @@
             <div><h2 id="center-invitations">{$t('我的邀请码')}</h2><p>{$t('邀请码有效 24 小时，仅可使用一次。')}</p></div>
             <div class="invite-controls">
               <label>{$t('生成数量')}<select bind:value={inviteCount} aria-label={$t('生成数量')}>{#each [1, 2, 3, 4, 5] as count}<option value={count}>{count}</option>{/each}</select></label>
-              <label>{$t('使用次数')}<select bind:value={inviteMaxUses} aria-label={$t('使用次数')}><option value={1}>1</option><option value={5}>5</option><option value={10}>10</option><option value={0}>{$t('无限次')}</option></select></label>
+              <label>{$t('使用次数')}<select bind:value={inviteMaxUses} aria-label={$t('使用次数')}><option value={1}>1</option><option value={5}>5</option><option value={10}>10</option></select></label>
               <button type="button" class="link-button" on:click={generateInvitation} disabled={generatingInvitation}>{generatingInvitation ? $t('正在生成…') : $t('生成邀请码')}</button>
             </div>
           </div>
@@ -754,10 +753,9 @@
                 <article class="invitation-card">
                   <div class="invitation-head">
                     <strong>{invitation.code}</strong>
-                    {#if invitation.maxUses === 0}<span class="unlimited-tag">{$t('无限次')}</span>{/if}
                     <button type="button" class="small copy-button" on:click={() => copyInvitation(invitation.code)}>{copiedCode === invitation.code ? $t('已复制') : $t('复制')}</button>
                   </div>
-                  <div class="invitation-status-line"><span class:used={invitation.used} class="invitation-status">{$t(invitationStatus(invitation))}{#if invitation.maxUses === 0} · {$t('已用')} {invitation.useCount} {$t('次')}{:else if invitation.maxUses > 1} · {$t('已用')} {invitation.useCount}/{invitation.maxUses}{/if}</span></div>
+                  <div class="invitation-status-line"><span class:used={invitation.used} class="invitation-status">{$t(invitationStatus(invitation))}{#if invitation.maxUses > 1} · {$t('已用')} {invitation.useCount}/{invitation.maxUses}{/if}</span></div>
                   <small>{$t('到期时间')}：{invitationDate(invitation.expires)}</small>
                   {#if invitation.used}<small>{$t('使用者')}：{invitation.usedBy || '—'} · {invitationDate(invitation.used)}</small>{/if}
                 </article>
