@@ -65,7 +65,7 @@
 
   const rewardLabels = { money: '资金', product: '实物', title: '头衔', credit: '署名', learning: '学习', none: '无', other: '其他' };
   const statusLabels = { ongoing: '进行中', paused: '已暂停', terminated: '已终止', completed: '已完成' };
-  const recognizedLabels = { 1: '有点东西', 2: '他不对劲', 3: '他真会啊', 4: '他真会啊！' };
+  const recognizedLabels = { 1: '有点东西', 2: '他不对劲', 3: '他真会啊', 4: '他太强了！', 5: '他是超人！' };
   const projectStatusFilters = ['ongoing', 'completed', 'paused', 'terminated'];
   let projectTab = 'initiated';
   let projectStatusFilter = '';
@@ -903,8 +903,9 @@
   .tier-2 { color: #285a78; background: linear-gradient(135deg, #e8f4fb, #d6e9f7); border-color: #a9cde4; }
   .tier-3 { color: #7a5a12; background: linear-gradient(135deg, #fff7d6, #f2d98b); border-color: #e2c25e; box-shadow: 0 0 0 1px #f6e7b0 inset, 0 2px 6px rgba(180, 140, 20, 0.18); }
   .tier-4 { color: #fff; background: linear-gradient(120deg, #7c4dff, #d04dff, #ffb84d, #7c4dff); background-size: 300% 300%; border-color: #e0c7ff; box-shadow: 0 0 12px rgba(160, 80, 255, 0.45); animation: recognized-shine 6s linear infinite; }
+  .tier-5 { color: #fff; background: linear-gradient(120deg, #ff5f6d, #ffc371, #36d1dc, #7c4dff, #ff5f6d); background-size: 300% 300%; border-color: transparent; box-shadow: 0 0 16px rgba(255, 120, 80, 0.6); animation: recognized-shine 5s linear infinite; }
   @keyframes recognized-shine { to { background-position: 300% 50%; } }
-  @media (prefers-reduced-motion: reduce) { .tier-4 { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { .tier-4, .tier-5 { animation: none; } }
   @media (max-width: 600px) { .center-grid { grid-template-columns: 1fr; } .edit-grid, .contact-row { grid-template-columns: 1fr; } }
   .reward-note { margin: 12px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
   .center-empty { color: #818b7f; font-size: 13px; }

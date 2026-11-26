@@ -350,6 +350,8 @@ func centerOwnedSkill(app core.App, ownerID, id string) (*core.Record, error) {
 
 func centerLikeTier(count int) int {
 	switch {
+	case count >= 5000:
+		return 5
 	case count >= 1000:
 		return 4
 	case count >= 100:
