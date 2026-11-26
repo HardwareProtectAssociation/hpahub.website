@@ -76,6 +76,7 @@ func main() {
 		bindHardwareRoutes(e)
 		bindPublicRoutes(e)
 		bindPublicProjectRoutes(e)
+		bindHomeRoutes(e)
 		bindAdminConsoleRoutes(e)
 		bindMyProjectRoutes(e)
 		bindDifficultyVotingRoutes(e)
