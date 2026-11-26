@@ -61,7 +61,14 @@
   $: topSkill = (data?.skills || []).reduce((best, skill) => (!best || (skill.likeCount || 0) > (best.likeCount || 0) ? skill : best), null);
 
   const rewardLabels = { money: '资金', product: '实物', title: '头衔', credit: '署名', learning: '学习', none: '无', other: '其他' };
-  const statusLabels = { ongoing: '进行中', paused: '暂停', terminated: '已中止', completed: '已完成' };
+  const statusLabels = { ongoing: '进行中', paused: '已暂停', terminated: '已终止', completed: '已完成' };
+  const projectStatusFilters = ['ongoing', 'completed', 'paused', 'terminated'];
+  let projectTab = 'initiated';
+  let projectStatusFilter = '';
+  function projectItems(key) {
+    const items = data?.projects?.[key] || [];
+    return projectStatusFilter ? items.filter((project) => project.status === projectStatusFilter) : items;
+  }
 
   async function loadAvatar(url) {
     if (!url) return '';
@@ -554,30 +561,29 @@
           <div><h2 id="center-projects">{$t('我的项目')}</h2><p>{$t('按角色分类展示你参与的所有项目。')}</p></div>
         </div>
         <div class="project-categories">
-          {#each [
-            { key: 'initiated', label: '我发起的项目', items: data.projects.initiated },
-            { key: 'participated', label: '我参与的项目', items: data.projects.participated },
-            { key: 'completed', label: '我完成的项目', items: data.projects.completed },
-            { key: 'assisted', label: '我辅助的项目', items: data.projects.assisted },
-            { key: 'followed', label: '我关注的项目', items: data.projects.followed }
-          ] as category}
-            <div class="project-category">
-              <h3>{$t(category.label)}<span class="category-count">{category.items.length}</span></h3>
-              {#if category.items.length}
-                <div class="project-mini-list">
-                  {#each category.items as project (project.id)}
-                    <a class="project-mini-card" href={'/showcase/' + encodeURIComponent(project.id)}>
-                      <span class:done={project.status === 'completed'} class="mini-status">{$t(statusLabels[project.status] || project.status)}</span>
-                      <strong>{project.title}</strong>
-                      {#if project.summary}<p>{project.summary}</p>{/if}
-                    </a>
-                  {/each}
-                </div>
-              {:else}
-                <p class="mini-empty">{$t('暂无项目')}</p>
-              {/if}
+          <nav class="project-tabs" aria-label={$t('我的项目分类')}>
+            <button type="button" class:active={projectTab === 'initiated'} on:click={() => projectTab = 'initiated'}>{$t('我发起的项目')}<span>{data.projects.initiated.length}</span></button>
+            <button type="button" class:active={projectTab === 'participated'} on:click={() => projectTab = 'participated'}>{$t('我参与的项目')}<span>{data.projects.participated.length}</span></button>
+            <button type="button" class:active={projectTab === 'followed'} on:click={() => projectTab = 'followed'}>{$t('我关注的项目')}<span>{data.projects.followed.length}</span></button>
+          </nav>
+          <div class="status-filters" role="group" aria-label={$t('执行状态')}>
+            {#each projectStatusFilters as status}
+              <button type="button" class:active={projectStatusFilter === status} aria-pressed={projectStatusFilter === status} on:click={() => projectStatusFilter = projectStatusFilter === status ? '' : status}>{$t(statusLabels[status])}</button>
+            {/each}
+          </div>
+          {#if projectItems(projectTab).length}
+            <div class="project-mini-list">
+              {#each projectItems(projectTab) as project (project.id)}
+                <a class="project-mini-card" href={'/showcase/' + encodeURIComponent(project.id)}>
+                  <span class:done={project.status === 'completed'} class="mini-status">{$t(statusLabels[project.status] || project.status)}</span>
+                  <strong>{project.title}</strong>
+                  {#if project.summary}<p>{project.summary}</p>{/if}
+                </a>
+              {/each}
             </div>
-          {/each}
+          {:else}
+            <p class="mini-empty">{$t(projectStatusFilter ? '该状态下暂无项目。' : projectTab === 'initiated' ? '还没有发起项目。' : projectTab === 'participated' ? '还没有参与项目。' : '还没有关注项目。')}</p>
+          {/if}
         </div>
       </section>
 
@@ -763,10 +769,17 @@
   .current-status { padding: 2px 8px; border-radius: 999px; background: #eef3e8; color: #4d6448; }
   .current-status.busy { background: #fff3df; color: #7a4b12; }
   .personality-presets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: -6px; }
-  .project-categories { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 14px; }
-  .project-category h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; font-size: 14px; }
-  .category-count { display: inline-flex; min-width: 20px; height: 20px; align-items: center; justify-content: center; padding: 0 6px; border-radius: 999px; background: #e9eee4; color: #4d6448; font-size: 11px; font-weight: 600; }
-  .project-mini-list { display: grid; gap: 8px; }
+  .project-categories { display: grid; gap: 10px; }
+  .project-tabs { display: flex; flex-wrap: wrap; gap: 6px; padding-bottom: 8px; border-bottom: 1px solid #dcded4; }
+  .project-tabs button { border: 1px solid transparent; background: none; padding: 7px 12px; color: #52695a; font-size: 13px; cursor: pointer; }
+  .project-tabs button:hover { background: #eef3e8; }
+  .project-tabs button.active { background: #274732; color: #fff; }
+  .project-tabs button span { margin-left: 5px; opacity: 0.72; }
+  .status-filters { display: flex; flex-wrap: wrap; gap: 8px; }
+  .status-filters button { padding: 4px 12px; border: 1px solid #c8d4c0; border-radius: 999px; background: none; color: #3f5d3a; font-size: 12px; cursor: pointer; }
+  .status-filters button:hover { background: #eef3e8; }
+  .status-filters button.active { background: #274732; border-color: #274732; color: #fff; }
+  .project-mini-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; }
   .project-mini-card { display: grid; gap: 3px; padding: 10px 12px; border: 1px solid #dce3d6; border-radius: 6px; background: #fff; text-decoration: none; color: inherit; transition: border-color .15s, box-shadow .15s; }
   .project-mini-card:hover { border-color: #7c9b6c; box-shadow: 0 2px 8px #1c302210; }
   .project-mini-card strong { font-size: 13px; color: #274732; }
