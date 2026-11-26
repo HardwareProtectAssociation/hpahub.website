@@ -81,7 +81,7 @@
   $: realSkills = data?.skills || [];
   $: displaySkills = realSkills.map((skill, index) => (index < demoLikeCounts.length ? { ...skill, likeCount: demoLikeCounts[index], likeTier: index + 1 } : skill));
   $: totalLevel = (data?.badges || []).reduce((sum, badge) => sum + (badge.level || 0), 0);
-  $: topSkill = (data?.skills || []).reduce((best, skill) => (!best || (skill.likeCount || 0) > (best.likeCount || 0) ? skill : best), null);
+  let skillsExpanded = false;
   // shortcut: 演示等级徽章的分档特效，会覆盖前六个徽章的等级，看完删除
   const demoBadgeLevels = [100, 90, 80, 70, 60, 50];
   $: displayBadges = (data?.badges || []).map((badge, index) => (index < demoBadgeLevels.length ? { ...badge, level: demoBadgeLevels[index] } : badge));
@@ -575,7 +575,16 @@
       <article class="stat">
         <p class="stat-title">{$t('技能展示')}</p>
         <span>{data.skills.length}</span>
-        {#if topSkill}<p class="stat-note">{topSkill.name}{#if topSkill.likeCount} ×{topSkill.likeCount}{/if}</p>{/if}
+        {#if data.skills.length}
+          <div class="stat-skills">
+            {#each skillsExpanded ? data.skills : data.skills.slice(0, 3) as skill (skill.id)}
+              <span class="chip small">{skill.name}</span>
+            {/each}
+          </div>
+          {#if data.skills.length > 3}
+            <button type="button" class="show-all" on:click={() => skillsExpanded = !skillsExpanded}>{skillsExpanded ? $t('收起') : $t('查看全部')}</button>
+          {/if}
+        {/if}
       </article>
       <article class="stat">
         <p class="stat-title">{$t('关注人数')}</p>
@@ -864,6 +873,7 @@
   .stat p.stat-note { margin-top: 6px; font-size: 12px; overflow-wrap: anywhere; }
   .stat-roles { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
   .stat-roles .rank-pill { font-size: 11px; padding: 2px 7px; }
+  .stat-skills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
   .stat-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; align-items: baseline; }
   .stat-tag { display: inline-flex; align-items: baseline; }
   .show-all { border: 0; background: none; padding: 0; color: #818b7f; font-size: 10px; text-decoration: underline; cursor: pointer; white-space: nowrap; }
