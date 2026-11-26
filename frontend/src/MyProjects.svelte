@@ -1,6 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import { t } from './i18n.js';
+  import { difficultyRank } from './tiers.js';
 
   export let token;
   let data = { initiated: [], participated: [], followed: [] };
@@ -108,7 +109,7 @@
           <article class="project-card">
             <div class="project-meta">
               <span class:done={project.status === 'completed'} class="project-status">{$t(statusLabels[project.status] || project.status)}</span>
-              {#if project.difficulty}<span class={`project-difficulty difficulty-${project.difficulty}`}>{$t('难度')} {project.difficulty}</span>{/if}
+              {#if project.difficulty}<span class={`rank rank-pill rank-${difficultyRank(project.difficulty)}`}>{$t('难度')} {project.difficulty}</span>{/if}
               {#if activeTab === 'initiated'}<span class="review">{$t(reviewLabels[project.reviewStatus] || project.reviewStatus)}</span>{/if}
             </div>
             <h2><a href={'/showcase/' + encodeURIComponent(project.id)}>{project.title}</a></h2>
@@ -165,12 +166,6 @@
   .project-meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
   .project-status { display: inline-block; padding: 3px 9px; border: 1px solid #c8d4c0; border-radius: 999px; color: #3f5d3a; font-size: 12px; }
   .project-status.done { background: #e3eddd; }
-  .project-difficulty { display: inline-block; padding: 3px 9px; border: 1px solid #d7d9cf; border-radius: 999px; font-size: 12px; font-weight: 600; }
-  .difficulty-D { color: #6b6f66; background: #f1f2ed; }
-  .difficulty-C { color: #3f5d3a; background: #eef3e8; }
-  .difficulty-B { color: #285a78; background: #e8f4fb; }
-  .difficulty-A { color: #7a4b12; background: #fff3df; }
-  .difficulty-S { color: #7b2340; background: #fbe9ef; }
   .review { color: #818b7f; font-size: 12px; }
   .project-owner { margin-bottom: 0 !important; }
   .owner-avatar { width: 22px; height: 22px; margin-right: 6px; border-radius: 50%; object-fit: cover; vertical-align: middle; background: #dce8d2; }

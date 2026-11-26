@@ -1,6 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import { locale, t } from './i18n.js';
+  import { difficultyRank, levelRank } from './tiers.js';
   export let pathname;
   export let token = '';
   let data = null;
@@ -216,7 +217,7 @@
       <div class="home-grid">
         {#each shownProjects as project (project.id || project.title)}
           <a class="yt-card" href={project.id ? '/showcase/' + encodeURIComponent(project.id) : '/showcase'}>
-            <span class={`yt-thumb yt-${project.adventureStyle}`}>{#if project.difficulty}<span class="yt-badge">{$t('难度')} {project.difficulty}</span>{/if}</span>
+            <span class={`yt-thumb yt-${project.adventureStyle}`}>{#if project.difficulty}<span class={`yt-badge rank rank-pill rank-${difficultyRank(project.difficulty)}`}>{$t('难度')} {project.difficulty}</span>{/if}</span>
             <div class="yt-body">
               {#if project.ownerAvatarUrl}<img class="yt-avatar" src={project.ownerAvatarUrl} alt="" loading="lazy" />{:else}<span class="yt-avatar" aria-hidden="true"></span>{/if}
               <div>
@@ -299,7 +300,7 @@
           <div class="public-grid">
             {#each data.projectsCompleted as project}
               <article class="public-card project-card">
-                <div class="project-meta"><span class="project-status done">{$t('已完成')}</span>{#if project.difficulty}<span class={`project-difficulty difficulty-${project.difficulty}`}>{$t('难度')} {project.difficulty}</span>{/if}</div>
+                <div class="project-meta"><span class="project-status done">{$t('已完成')}</span>{#if project.difficulty}<span class={`rank rank-pill rank-${difficultyRank(project.difficulty)}`}>{$t('难度')} {project.difficulty}</span>{/if}</div>
                 <h2><a href={'/showcase/' + encodeURIComponent(project.id)}>{project.title}</a></h2>
                 <p>{project.summary}</p>
                 <p class="project-owner">{#if project.ownerAvatarUrl}<img class="owner-avatar" src={project.ownerAvatarUrl} alt="" loading="lazy" />{:else}<span class="owner-avatar" aria-hidden="true"></span>{/if}{$t('负责人')}：{project.ownerName || '—'}{#if project.updated} · {$t('更新于')} {formatDate(project.updated)}{/if}</p>
@@ -314,7 +315,7 @@
           <div class="public-grid">
             {#each data.projectsOngoing as project}
               <article class="public-card project-card">
-                <div class="project-meta"><span class="project-status">{$t('进行中')}</span>{#if project.difficulty}<span class={`project-difficulty difficulty-${project.difficulty}`}>{$t('难度')} {project.difficulty}</span>{/if}</div>
+                <div class="project-meta"><span class="project-status">{$t('进行中')}</span>{#if project.difficulty}<span class={`rank rank-pill rank-${difficultyRank(project.difficulty)}`}>{$t('难度')} {project.difficulty}</span>{/if}</div>
                 <h2><a href={'/showcase/' + encodeURIComponent(project.id)}>{project.title}</a></h2>
                 <p>{project.summary}</p>
                 <p class="project-owner">{#if project.ownerAvatarUrl}<img class="owner-avatar" src={project.ownerAvatarUrl} alt="" loading="lazy" />{:else}<span class="owner-avatar" aria-hidden="true"></span>{/if}{$t('负责人')}：{project.ownerName || '—'}{#if project.updated} · {$t('更新于')} {formatDate(project.updated)}{/if}</p>
@@ -329,13 +330,13 @@
           <div class="career-grid">
             {#each data.career as badge}
               <article class="career-card">
-                <div class="career-head"><h3>{badge.careerName}</h3><span>{badge.levelTitle}</span></div>
+                <div class="career-head"><h3>{badge.careerName}</h3><span class={`rank rank-text rank-${levelRank(badge.level)}`}>{badge.levelTitle || `Lv.${badge.level}`}</span></div>
                 <p>{badge.totalXp} XP · {$t('最高等级')} Lv.{badge.maxLevel}</p>
                 <div class="progress" role="img" aria-label={`${badge.totalXp} / ${badge.nextLevelXp} XP`}><span style={`width:${careerProgress(badge)}%`}></span></div>
                 {#if badge.nextLevelXp}<small>{$t('下一等级')} {badge.nextLevelTitle} · {badge.nextLevelXp} XP</small>{:else}<small>{$t('已达到当前最高等级')}</small>{/if}
                 {#if medalLevel(badge.level) >= 10}
                   <div class="milestones" aria-label={$t('徽章占位')}>
-                    <span class={`medal ${medalLevel(badge.level) >= 50 ? `medal-${medalLevel(badge.level)}` : ''}`} title={`Lv.${badge.level} ${$t('徽章占位')}`}><span class="flash-layer" aria-hidden="true"></span>{medalLevel(badge.level)}</span>
+                    <span class={`rank rank-disc rank-${levelRank(badge.level)}`} title={`Lv.${badge.level} ${$t('徽章占位')}`}><span class="flash-layer" aria-hidden="true"></span>{medalLevel(badge.level)}</span>
                   </div>
                 {/if}
               </article>
@@ -374,7 +375,7 @@
                   {:else}
                     <span class="like-count"><span aria-hidden="true">♥</span> {skill.likeCount}</span>
                   {/if}
-                  {#if skill.likeTier > 0}<span class={`recognized tier-${skill.likeTier}`}><span class="flash-layer" aria-hidden="true"></span>{$t(recognizedLabels[skill.likeTier])}</span>{/if}
+                  {#if skill.likeTier > 0}<span class={`recognized rank rank-pill rank-${skill.likeTier}`}><span class="flash-layer" aria-hidden="true"></span>{$t(recognizedLabels[skill.likeTier])}</span>{/if}
                   {#if !token}<span class="meta">{$t('登录后可点赞')}</span>{/if}
                 </div>
               </li>
@@ -391,14 +392,14 @@
     {#if id}
       <a href="/showcase">{$t('返回项目列表')}</a>
       <header class="project-detail-head">
-        <div class="project-meta"><span class:done={data.status === 'completed'} class="project-status">{statusLabel(data.status)}</span>{#if data.difficulty}<span class={`project-difficulty difficulty-${data.difficulty}`}>{$t('难度')} {data.difficulty}</span>{/if}{#if data.currentStage}<span class="project-stage">{$t('当前阶段')}：{data.currentStage}</span>{/if}</div>
+        <div class="project-meta"><span class:done={data.status === 'completed'} class="project-status">{statusLabel(data.status)}</span>{#if data.difficulty}<span class={`rank rank-pill rank-${difficultyRank(data.difficulty)}`}>{$t('难度')} {data.difficulty}</span>{/if}{#if data.currentStage}<span class="project-stage">{$t('当前阶段')}：{data.currentStage}</span>{/if}</div>
         <h1>{data.title}</h1>
         <p>{data.summary}</p>
         <p class="project-owner">{$t('负责人')}：{data.ownerName || '—'}{#if data.updated} · {$t('更新于')} {formatDate(data.updated)}{/if}</p>
         {#if data.description && data.description !== data.summary}<p class="project-description">{data.description}</p>{/if}
         {#if data.estimatedDurationDays}<p class="project-owner">{$t('预计周期')}：{data.estimatedDurationDays} {$t('天')}</p>{/if}
-        {#if data.proposedDifficulty}<p class="project-owner">{$t('发起人自评')}：{data.proposedDifficulty}</p>{/if}
-        {#if data.difficulty}<p class="project-owner">{$t('共识')}：{data.difficulty}</p>{/if}
+        {#if data.proposedDifficulty}<p class="project-owner">{$t('发起人自评')}：<span class={`rank rank-text rank-${difficultyRank(data.proposedDifficulty)}`}>{data.proposedDifficulty}</span></p>{/if}
+        {#if data.difficulty}<p class="project-owner">{$t('共识')}：<span class={`rank rank-text rank-${difficultyRank(data.difficulty)}`}>{data.difficulty}</span></p>{/if}
         {#if data.ownerConfirmed}<span class="confirmed">✓ {$t('发起人已确认')}</span>{/if}
         {#if data.approveCount}<span>{$t('同意')}：{data.approveCount}</span>{/if}
         {#if data.opposeCount}<span>{$t('反对')}：{data.opposeCount}</span>{/if}
@@ -473,7 +474,7 @@
         <div class="public-grid">
           {#each items as project}
             <article class="public-card project-card">
-              <div class="project-meta"><span class:done={project.status === 'completed'} class="project-status">{statusLabel(project.status)}</span>{#if project.difficulty}<span class={`project-difficulty difficulty-${project.difficulty}`}>{$t('难度')} {project.difficulty}</span>{/if}</div>
+              <div class="project-meta"><span class:done={project.status === 'completed'} class="project-status">{statusLabel(project.status)}</span>{#if project.difficulty}<span class={`rank rank-pill rank-${difficultyRank(project.difficulty)}`}>{$t('难度')} {project.difficulty}</span>{/if}</div>
               <h2><a href={'/showcase/' + encodeURIComponent(project.id)}>{project.title}</a></h2>
               <p>{project.summary}</p>
               <p class="project-owner">{#if project.ownerAvatarUrl}<img class="owner-avatar" src={project.ownerAvatarUrl} alt="" loading="lazy" />{:else}<span class="owner-avatar" aria-hidden="true"></span>{/if}{$t('负责人')}：{project.ownerName || '—'}{#if project.updated} · {$t('更新于')} {formatDate(project.updated)}{/if}</p>
@@ -489,7 +490,6 @@
   .project-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
   .project-status { display: inline-block; padding: 3px 9px; border: 1px solid #c8d4c0; border-radius: 999px; color: #3f5d3a; font-size: 12px; }
   .project-status.done { background: #e3eddd; }
-  .project-difficulty { display: inline-block; padding: 3px 9px; border: 1px solid #d7d9cf; border-radius: 999px; font-size: 12px; font-weight: 600; }
   .project-apply { max-width: 620px; margin: 18px 0; padding: 16px; border: 1px solid #dcded4; background: #fafbf7; }
   .project-apply h2 { margin: 0 0 6px; font-size: 16px; }
   .project-apply p { margin: 0 0 8px; color: #6f7b6d; font-size: 13px; }
@@ -503,11 +503,6 @@
   .follow-button.following { border-color: #e3bcc4; background: #fff4f6; color: #a84358; }
   .follow-error { color: #9b402c; font-size: 12px; }
   .confirmed { color: #4d6448; font-size: 12px; font-weight: 600; }
-  .difficulty-D { color: #6b6f66; background: #f1f2ed; }
-  .difficulty-C { color: #3f5d3a; background: #eef3e8; border-color: #c8d4c0; }
-  .difficulty-B { color: #285a78; background: #e8f4fb; border-color: #a9cde4; }
-  .difficulty-A { color: #7a4b12; background: #fff3df; border-color: #e5c68e; }
-  .difficulty-S { color: #7b2340; background: #fbe9ef; border-color: #e3b3c2; box-shadow: 0 0 8px rgba(170, 50, 90, 0.16); }
   .project-stage { color: #818b7f; font-size: 12px; }
   .project-owner { margin: 0 0 10px; color: #818b7f; font-size: 13px; }
   .owner-avatar { width: 22px; height: 22px; margin-right: 6px; border-radius: 50%; object-fit: cover; vertical-align: middle; background: #dce8d2; }
@@ -561,25 +556,12 @@
   .career-card { padding: 14px; border: 1px solid #dcded4; background: #fafbf7; }
   .career-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
   .career-head h3 { margin: 0; font-size: 15px; }
-  .career-head span { color: #4d6448; font-size: 12px; }
+  .career-head span { font-size: 12px; }
   .career-card p { margin: 6px 0; color: #6f7b6d; font-size: 13px; }
   .career-card small { color: #818b7f; font-size: 12px; }
   .career-card .progress { height: 6px; margin: 8px 0 4px; background: #e6ebe1; }
   .career-card .progress span { display: block; height: 100%; background: #6f9661; }
   .milestones { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
-  .medal { display: grid; width: 26px; height: 26px; place-items: center; border: 1px solid #6f9661; border-radius: 50%; background: #e3eddd; color: #3f5d3a; font-size: 10px; font-weight: 600; line-height: 1; }
-  .medal-100, .medal-90, .medal-80, .medal-70, .medal-60, .medal-50 { color: #fff; border-color: transparent; background-color: transparent; background-size: 300% 300%; animation: recognized-shine 5s linear infinite; }
-  .medal-100 { position: relative; background-image: linear-gradient(120deg, #ff5cb8, #ff8a5c, #ffd24d, #5ce08a, #4dc9ff, #7c4dff, #ff5cb8); box-shadow: 0 0 12px rgba(120, 160, 255, 0.6), 0 0 4px rgba(255, 255, 255, 0.7) inset; }
-  .medal-90 { background-image: linear-gradient(120deg, #ff5cb8, #ff8a5c, #ffd24d, #5ce08a, #4dc9ff, #7c4dff, #ff5cb8); }
-  .medal-80 { background-image: linear-gradient(120deg, #0f7a4d, #5ce0a0, #0f7a4d, #7ef0c0, #0f7a4d); box-shadow: 0 0 8px rgba(40, 180, 120, 0.5); }
-  .medal-70 { background-image: linear-gradient(100deg, #aa771c, #fcf6ba, #b38728, #fbf5b7, #aa771c); }
-  .medal-60 { background-image: linear-gradient(100deg, #9aa2ab, #ffffff, #b8c0c8, #f2f4f6, #9aa2ab); }
-  .medal-50 { background-image: linear-gradient(100deg, #8c4a21, #e8b88a, #b87333, #f0c9a4, #8c4a21); }
-  .medal-100::before, .medal-100::after { content: ''; }
-  .medal-100::before, .medal-100::after, .medal-100 .flash-layer { position: absolute; border-radius: 999px; background-repeat: no-repeat; background-size: 100% 100%; filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.9)); pointer-events: none; animation: tier5-flash 0.75s linear infinite; inset: -8px; box-shadow: 0 0 8px 2px rgba(255, 255, 255, 0.25); }
-  .medal-100::before { background-image: radial-gradient(ellipse 8px 1px at 18% 22%, #fff, transparent), radial-gradient(ellipse 1px 8px at 18% 22%, #fff, transparent), radial-gradient(ellipse 6px 1px at 84% 80%, #fff, transparent), radial-gradient(ellipse 1px 6px at 84% 80%, #fff, transparent); }
-  .medal-100::after { background-image: radial-gradient(ellipse 7px 1px at 88% 24%, #fff, transparent), radial-gradient(ellipse 1px 7px at 88% 24%, #fff, transparent), radial-gradient(ellipse 5px 1px at 10% 82%, #fff, transparent), radial-gradient(ellipse 1px 5px at 10% 82%, #fff, transparent); animation-duration: 0.62s; animation-delay: -0.37s; }
-  .medal-100 .flash-layer { background-image: radial-gradient(ellipse 6px 1px at 46% 96%, #fff, transparent), radial-gradient(ellipse 1px 6px at 46% 96%, #fff, transparent), radial-gradient(ellipse 5px 1px at 92% 55%, #fff, transparent), radial-gradient(ellipse 1px 5px at 92% 55%, #fff, transparent); animation-duration: 0.55s; animation-delay: -0.18s; }
   .tab-empty { padding: 20px 0; color: #818b7f; }
   .home-shelf { margin: 34px 0; }
   .shelf-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
@@ -593,7 +575,7 @@
   .yt-thumb.yt-dungeon { background: linear-gradient(135deg, #d9e2f2, #9db6dd); }
   .yt-thumb.yt-boss { background: linear-gradient(135deg, #f2d9d9, #dd9d9d); }
   .yt-thumb.yt-hardware { background: linear-gradient(135deg, #dfe3ea, #aab4c2); }
-  .yt-badge { position: absolute; top: 8px; right: 8px; padding: 2px 8px; border-radius: 999px; background: #1c3022cc; color: #fff; font-size: 11px; }
+  .yt-badge { position: absolute; top: 8px; right: 8px; }
   .yt-body { display: flex; gap: 10px; margin-top: 10px; }
   .yt-avatar { flex: none; width: 34px; height: 34px; border-radius: 50%; object-fit: cover; background: #dce8d2; }
   .yt-card h3 { margin: 0; font-size: 15px; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
@@ -607,16 +589,4 @@
   .like-count { color: #a84358; font-size: 12px; }
   .recognized { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border: 1px solid transparent; border-radius: 999px; font-size: 11px; font-weight: 600; letter-spacing: 0.02em; }
   .recognized::before { content: '✦'; }
-  .tier-1 { color: #4d6b3f; background: #e8f0e0; border-color: #c4d8b4; }
-  .tier-2 { color: #285a78; background: linear-gradient(135deg, #e8f4fb, #d6e9f7); border-color: #a9cde4; }
-  .tier-3 { color: #7a5a12; background: linear-gradient(135deg, #fff7d6, #f2d98b); border-color: #e2c25e; box-shadow: 0 0 0 1px #f6e7b0 inset, 0 2px 6px rgba(180, 140, 20, 0.18); }
-  .tier-4 { color: #fff; background: linear-gradient(120deg, #ff5cb8, #ff8a5c, #ffd24d, #5ce08a, #4dc9ff, #7c4dff, #ff5cb8); background-size: 300% 300%; border-color: #e0c7ff; box-shadow: 0 0 12px rgba(160, 80, 255, 0.45); animation: recognized-shine 6s linear infinite; }
-  .tier-5 { position: relative; color: #fff; background: linear-gradient(120deg, #ff5cb8, #ff8a5c, #ffd24d, #5ce08a, #4dc9ff, #7c4dff, #ff5cb8); background-size: 300% 300%; border-color: transparent; box-shadow: 0 0 16px rgba(120, 160, 255, 0.6), 0 0 6px rgba(255, 255, 255, 0.7) inset; animation: recognized-shine 5s linear infinite; }
-  .tier-5::after { content: ''; }
-  .tier-5::after, .tier-5 .flash-layer { position: absolute; border-radius: 999px; background-repeat: no-repeat; background-size: 100% 100%; filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.9)); pointer-events: none; animation: tier5-flash 0.75s linear infinite; inset: -10px; box-shadow: 0 0 10px 3px rgba(255, 255, 255, 0.25); }
-  .tier-5::after { background-image: radial-gradient(ellipse 14px 1.5px at 14% 22%, #fff, transparent), radial-gradient(ellipse 1.5px 14px at 14% 22%, #fff, transparent), radial-gradient(ellipse 10px 1.5px at 84% 82%, #fff, transparent), radial-gradient(ellipse 1.5px 10px at 84% 82%, #fff, transparent), radial-gradient(ellipse 12px 1.5px at 55% 4%, #fff, transparent), radial-gradient(ellipse 1.5px 12px at 55% 4%, #fff, transparent); }
-  .tier-5 .flash-layer { background-image: radial-gradient(ellipse 12px 1.5px at 92% 30%, #fff, transparent), radial-gradient(ellipse 1.5px 12px at 92% 30%, #fff, transparent), radial-gradient(ellipse 9px 1.5px at 6% 70%, #fff, transparent), radial-gradient(ellipse 1.5px 9px at 6% 70%, #fff, transparent), radial-gradient(ellipse 11px 1.5px at 40% 96%, #fff, transparent), radial-gradient(ellipse 1.5px 11px at 40% 96%, #fff, transparent); animation-duration: 0.62s; animation-delay: -0.37s; }
-  @keyframes tier5-flash { 0% { opacity: 0; } 5% { opacity: 1; } 10% { opacity: 0.1; } 20% { opacity: 0.85; } 26% { opacity: 0; } 55% { opacity: 0; } 60% { opacity: 1; } 66% { opacity: 0.15; } 78% { opacity: 0.7; } 86% { opacity: 0; } 100% { opacity: 0; } }
-  @keyframes recognized-shine { to { background-position: 300% 50%; } }
-  @media (prefers-reduced-motion: reduce) { .tier-4, .tier-5, .tier-5::after, .tier-5 .flash-layer, .medal-100, .medal-90, .medal-80, .medal-70, .medal-60, .medal-50, .medal-100::before, .medal-100::after, .medal-100 .flash-layer { animation: none; } }
 </style>

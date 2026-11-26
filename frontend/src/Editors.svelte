@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { get } from 'svelte/store';
   import { t } from './i18n.js';
+  import { difficultyRank } from './tiers.js';
   export let token;
   export let role;
   export let manage = false;
@@ -182,11 +183,11 @@
                 <strong>{project.title}</strong>
                 <small>{$t(projectStatusLabels[project.status] || project.status)} · {project.ownerName || '—'}</small>
                 <small>
-                  {#if project.proposedDifficulty}<span>{$t('发起人评级')}：{project.proposedDifficulty}</span>{/if}
+                  {#if project.proposedDifficulty}<span>{$t('发起人评级')}：<span class={`rank rank-text rank-${difficultyRank(project.proposedDifficulty)}`}>{project.proposedDifficulty}</span></span>{/if}
                   <span>{$t('同意')}：{project.approveCount || 0}</span>
                   <span>{$t('反对')}：{project.opposeCount || 0}</span>
                   {#if project.ownerConfirmed}<span class="confirmed">✓ {$t('发起人已确认')}</span>{/if}
-                  {#if project.difficulty}<span class="consensus">共识：{project.difficulty}</span>{/if}
+                  {#if project.difficulty}<span class="consensus">共识：<span class={`rank rank-text rank-${difficultyRank(project.difficulty)}`}>{project.difficulty}</span></span>{/if}
                 </small>
               </div>
               {#if project.status !== 'completed'}
