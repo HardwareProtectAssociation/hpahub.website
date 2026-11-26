@@ -80,7 +80,6 @@ func main() {
 		bindMyProjectRoutes(e)
 		bindDifficultyVotingRoutes(e)
 		bindMessageRoutes(e)
-		bindNewsRoutes(e)
 		bindMemberRelationRoutes(e)
 		bindPersonalCenterRoutes(e)
 		_, err := app.DB().NewQuery(`CREATE TABLE IF NOT EXISTS hpahub_backup_policy (
