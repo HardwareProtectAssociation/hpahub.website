@@ -296,14 +296,14 @@
     <a class="brand" href="/" aria-label={$t('HPA Hub 首页')}><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span>HPA<span class="brand-light">HUB</span></span></a>
     <nav id="main-navigation" class="topbar-right" aria-label={$t('主导航')}>
       <a class="text-button" href="/" aria-current={pathname === '/' && page === 'home' ? 'page' : undefined}>{$t('首页')}</a>
-      <a class="text-button" href="/hardware">{$t('硬件数据库')}</a>
-      <a class="text-button" href="/community">{$t('成员列表')}</a>
-      <a class="text-button" href="/showcase">{$t('项目大厅')}</a>
+      <a class="text-button" href="/hardware" aria-current={pathname === '/hardware' ? 'page' : undefined}>{$t('硬件数据库')}</a>
+      <a class="text-button" href="/community" aria-current={pathname === '/community' || pathname.startsWith('/community/') ? 'page' : undefined}>{$t('成员列表')}</a>
+      <a class="text-button" href="/showcase" aria-current={pathname === '/showcase' || pathname.startsWith('/showcase/') ? 'page' : undefined}>{$t('项目大厅')}</a>
       {#if token && !checking}
-        {#if ['member', 'admin', 'octopus'].includes(role)}<a class="text-button" href="/messages">{$t('站内消息')}{#if unreadMessages > 0}<span class="nav-badge">{unreadMessages}</span>{/if}</a>{/if}
+        {#if ['member', 'admin', 'octopus'].includes(role)}<a class="text-button" href="/messages" aria-current={pathname === '/messages' ? 'page' : undefined}>{$t('站内消息')}{#if unreadMessages > 0}<span class="nav-badge">{unreadMessages}</span>{/if}</a>{/if}
         {#if isAdmin}
-          <a class="text-button" href="/manage/showcase">{$t('项目大厅管理')}</a>
-          {#if pathname === '/'}<button class="text-button" on:click={openConsole}>{$t('管理控制台')}</button>
+          <a class="text-button" href="/manage/showcase" aria-current={pathname === '/manage/showcase' ? 'page' : undefined}>{$t('项目大厅管理')}</a>
+          {#if pathname === '/'}<button class="text-button" aria-current={page === 'console' ? 'page' : undefined} on:click={openConsole}>{$t('管理控制台')}</button>
           {:else}<a class="text-button" href="/?console=1">{$t('管理控制台')}</a>{/if}
         {/if}
       {/if}

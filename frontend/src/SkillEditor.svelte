@@ -233,23 +233,25 @@
 
 <style>
   .skill-editor { width: min(1000px, 88%); }
-  .skill-editor > a { color: #345d3d; text-underline-offset: 3px; font-size: 13px; }
+  .skill-editor > a { color: var(--accent-deep); text-underline-offset: 3px; font-size: 13px; font-weight: 600; }
   .skill-forms { display: grid; gap: 18px; margin-top: 24px; }
-  .skill-form { display: grid; gap: 14px; padding: 22px; border: 1px solid #dcded4; background: #fafbf7; }
+  .skill-form { display: grid; gap: 14px; padding: 22px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--shadow-sm); }
   .skill-form .message { margin: 0; }
   .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-  .skill-form label { display: grid; gap: 6px; color: #52695a; font-size: 13px; }
+  .skill-form label { display: grid; gap: 6px; color: var(--ink-secondary); font-size: 13px; font-weight: 500; }
   .skill-form label.check-label { display: flex; align-items: center; gap: 8px; }
-  .meta { margin: 6px 0 0; color: #818b7f; font-size: 12px; }
-  .skill-form input:not([type=file]):not([type=checkbox]), .skill-form select, .skill-form textarea { width: 100%; padding: 9px; border: 1px solid #b9c3b3; background: #fff; color: #252b26; font: inherit; }
+  .meta { margin: 6px 0 0; color: var(--ink-subtle); font-size: 12px; }
+  .skill-form input:not([type=file]):not([type=checkbox]), .skill-form select, .skill-form textarea { width: 100%; padding: 9px 11px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--ink-primary); font: inherit; transition: border-color var(--t-fast) var(--ease-out), box-shadow var(--t-fast) var(--ease-out); }
+  .skill-form input:not([type=file]):not([type=checkbox]):focus, .skill-form select:focus, .skill-form textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); outline: none; }
   .skill-form input[type=checkbox] { width: auto; margin: 0; }
   .skill-form textarea { resize: vertical; }
-  .file-label { display: inline-flex; align-items: center; gap: 8px; width: fit-content; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+  .file-label { display: inline-flex; align-items: center; gap: 8px; width: fit-content; color: var(--accent-deep); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
   .image-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
   .image-item { display: grid; gap: 6px; }
-  .image-item img { width: 100%; height: 100px; object-fit: cover; border: 1px solid #dcded4; background: #fff; }
-  .image-item button { justify-self: start; }
+  .image-item img { width: 100%; height: 100px; object-fit: cover; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-elevated); }
+  .image-item button { justify-self: start; padding: 4px 10px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--ink-secondary); font-size: 12px; }
   .form-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+  .form-actions button:not(.primary) { min-height: 44px; padding: 0 16px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--ink-secondary); }
   @media (max-width: 700px) {
     .form-grid { grid-template-columns: 1fr; }
     .skill-editor { width: 90%; }

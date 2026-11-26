@@ -198,22 +198,25 @@
 </section>
 
 <style>
-  .admin-directory { margin: 28px 0; }
+  .admin-directory { margin: 32px 0; }
   .admin-directory .section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
   .admin-directory .section-head .secondary { width: auto; min-height: 42px; padding: 0 16px; justify-content: center; gap: 0; white-space: nowrap; }
-  .admin-directory h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; }
-  .count { display: inline-flex; min-width: 22px; height: 22px; align-items: center; justify-content: center; padding: 0 7px; border-radius: 999px; background: #e9eee4; color: #4d6448; font-size: 12px; }
-  .admin-block { margin-top: 26px; padding-top: 18px; border-top: 1px solid #e1e5dc; }
+  .admin-directory h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; color: var(--ink-primary); }
+  .count { display: inline-flex; min-width: 24px; height: 22px; align-items: center; justify-content: center; padding: 0 8px; border-radius: 999px; background: var(--surface-tint); border: 1px solid var(--border-subtle); color: var(--accent-deep); font-family: var(--font-mono); font-size: 11.5px; }
+  .admin-block { margin-top: 26px; padding: 22px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--shadow-sm); }
   .table-wrap { overflow-x: auto; }
   table { width: 100%; border-collapse: collapse; min-width: 760px; }
-  th, td { padding: 8px 10px; border-bottom: 1px solid #e6e9df; text-align: left; vertical-align: top; font-size: 13px; }
-  th { color: #6b7867; font-weight: 600; white-space: nowrap; }
-  .muted { color: #818b7f; font-size: 12px; }
-  .tag { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 999px; background: #eef3e8; color: #4d6448; font-size: 11px; }
-  .application-list { display: grid; gap: 10px; }
-  .application-card { padding: 14px; border: 1px solid #dcded4; background: #fafbf7; }
+  th, td { padding: 10px 12px; border-bottom: 1px solid var(--border-subtle); text-align: left; vertical-align: top; font-size: 13px; }
+  th { color: var(--ink-muted); font-weight: 600; white-space: nowrap; background: var(--surface-soft); }
+  .muted { color: var(--ink-subtle); font-size: 12px; }
+  .tag { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: var(--surface-tint); color: var(--accent-deep); font-size: 11px; font-weight: 600; }
+  .application-list { display: grid; gap: 12px; }
+  .application-card { padding: 16px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-elevated); transition: border-color var(--t-fast) var(--ease-out), box-shadow var(--t-fast) var(--ease-out); }
+  .application-card:hover { border-color: var(--border-strong); box-shadow: var(--shadow-xs); }
   .application-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; }
   .application-head span { margin-left: 8px; }
-  .application-card p { margin: 8px 0; }
-  .application-actions { display: flex; gap: 8px; }
+  .application-card p { margin: 8px 0; color: var(--ink-secondary); }
+  .application-actions { display: flex; gap: 8px; margin-top: 10px; }
+  .application-actions .danger { min-height: 44px; padding: 0 16px; border: 1px solid var(--danger-border); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--danger); font-weight: 600; transition: background-color var(--t-fast) var(--ease-out), border-color var(--t-fast) var(--ease-out); }
+  .application-actions .danger:hover:not(:disabled) { background: var(--danger-bg); border-color: var(--danger); }
 </style>
