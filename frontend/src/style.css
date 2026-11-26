@@ -40,16 +40,16 @@
 }
 
 /* 统一等级/评分特效：各档位共用同一套流光节奏，最高档为彩虹流光加星芒。 */
-.rank { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 4px; font-weight: 600; letter-spacing: 0.02em; background-size: 300% 300%; animation: rank-shine 5s linear infinite; }
+.rank { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 4px; font-weight: 600; letter-spacing: 0.02em; background-size: 300% 300%; animation: rank-shine 10s linear infinite; }
 .rank-pill { padding: 2px 9px; border: 1px solid transparent; border-radius: 999px; font-size: 12px; color: #fff; text-shadow: 0 1px 2px #000000a6; }
 .rank-disc { width: 26px; height: 26px; border-radius: 50%; font-size: 10px; line-height: 1; color: #fff; text-shadow: 0 1px 2px #000000a6; }
 .rank-text { -webkit-background-clip: text; background-clip: text; color: transparent; text-shadow: none; }
-.rank-1 { background-image: linear-gradient(100deg, #b9bfc5, #e3e6e9, #c9ced3, #eef0f2, #b9bfc5); color: #2f353b; text-shadow: none; }
-.rank-1.rank-text { background-image: linear-gradient(100deg, #4b535c, #8b949c, #5d656e, #a5adb5, #4b535c); color: transparent; }
-.rank-2 { background-image: linear-gradient(100deg, #5c2f10, #946039, #6e3a18, #a8784a, #5c2f10); }
-.rank-3 { background-image: linear-gradient(100deg, #3a424b, #66707a, #4a545f, #74808a, #3a424b); }
-.rank-4 { background-image: linear-gradient(100deg, #4a3303, #8a6a1e, #5e4004, #9e7c28, #4a3303); }
-.rank-5 { background-image: linear-gradient(120deg, #d92f8f, #d9531f, #b8860b, #1f9e57, #1b86b3, #5a2bc4, #d92f8f); }
+.rank-1 { background-image: linear-gradient(90deg, #b9bfc5, #e3e6e9, #c9ced3, #eef0f2, #b9bfc5); color: #2f353b; text-shadow: none; }
+.rank-1.rank-text { background-image: linear-gradient(90deg, #4b535c, #8b949c, #5d656e, #a5adb5, #4b535c); color: transparent; }
+.rank-2 { background-image: linear-gradient(90deg, #5c2f10, #946039, #6e3a18, #a8784a, #5c2f10); }
+.rank-3 { background-image: linear-gradient(90deg, #3a424b, #66707a, #4a545f, #74808a, #3a424b); }
+.rank-4 { background-image: linear-gradient(90deg, #4a3303, #8a6a1e, #5e4004, #9e7c28, #4a3303); }
+.rank-5 { background-image: linear-gradient(90deg, #d92f8f, #d9531f, #b8860b, #1f9e57, #1b86b3, #5a2bc4, #d92f8f); }
 .rank-5:not(.rank-text) { box-shadow: 0 0 12px #78a0ff99, 0 0 4px #ffffffb3 inset; }
 .rank-text.rank-5 { filter: drop-shadow(0 0 3px #78a0ffcc); }
 .rank-5:not(.rank-text)::before, .rank-5:not(.rank-text)::after { content: ''; }
