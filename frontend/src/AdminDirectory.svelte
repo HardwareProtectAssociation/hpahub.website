@@ -6,6 +6,9 @@
 
   let members = [];
   let applications = [];
+  let membersMore = false;
+  let applicationsMore = false;
+  let moreBusy = false;
   let projects = [];
   let loading = true;
   let error = '';
@@ -48,11 +51,33 @@
       ]);
       members = memberData.items || [];
       applications = applicationData.items || [];
+      membersMore = memberData.hasMore;
+      applicationsMore = applicationData.hasMore;
       projects = projectData.items || [];
     } catch (err) {
       error = err.message || String(err);
     } finally {
       loading = false;
+    }
+  }
+
+  async function loadMore(kind) {
+    moreBusy = true;
+    error = '';
+    try {
+      const current = kind === 'members' ? members : applications;
+      const data = await request(`/api/hpahub/manage/${kind}?offset=${current.length}`);
+      if (kind === 'members') {
+        members = [...members, ...data.items];
+        membersMore = data.hasMore;
+      } else {
+        applications = [...applications, ...data.items];
+        applicationsMore = data.hasMore;
+      }
+    } catch (err) {
+      error = err.message || String(err);
+    } finally {
+      moreBusy = false;
     }
   }
 
@@ -115,6 +140,7 @@
     {:else}
       <p>{$t('暂无成员。')}</p>
     {/if}
+    {#if membersMore}<button type="button" class="secondary" on:click={() => loadMore('members')} disabled={loading || moreBusy}>{$t('加载更多')}</button>{/if}
   </section>
 
   <section class="admin-block">
@@ -141,6 +167,7 @@
     {:else}
       <p>{$t('暂无待审批申请。')}</p>
     {/if}
+    {#if applicationsMore}<button type="button" class="secondary" on:click={() => loadMore('applications')} disabled={loading || moreBusy}>{$t('加载更多')}</button>{/if}
   </section>
 
   <section class="admin-block">
