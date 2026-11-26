@@ -93,6 +93,7 @@ type centerProject struct {
 	Summary        string `json:"summary"`
 	Status         string `json:"status"`
 	ReviewStatus   string `json:"reviewStatus"`
+	Difficulty     string `json:"difficulty"`
 	AdventureStyle string `json:"adventureStyle"`
 	Relation       string `json:"relation"`
 	Duties         string `json:"duties"`
@@ -121,13 +122,14 @@ type centerProjects struct {
 }
 
 type centerResponse struct {
-	Profile         centerProfile      `json:"profile"`
-	Identities      []centerIdentity   `json:"identities"`
-	IdentityOptions []centerIdentity   `json:"identityOptions"`
-	Projects        centerProjects     `json:"projects"`
-	Badges          []centerBadge      `json:"badges"`
-	Skills          []centerSkill      `json:"skills"`
-	Preferences     *centerPreferences `json:"preferences"`
+	Profile         centerProfile         `json:"profile"`
+	Identities      []centerIdentity      `json:"identities"`
+	IdentityOptions []centerIdentity      `json:"identityOptions"`
+	Projects        centerProjects        `json:"projects"`
+	Badges          []centerBadge         `json:"badges"`
+	Skills          []centerSkill         `json:"skills"`
+	Preferences     *centerPreferences    `json:"preferences"`
+	Relations       memberRelationSummary `json:"relations"`
 }
 
 func centerSkillProficiency(value string) string {
@@ -1074,6 +1076,7 @@ func personalCenterData(app core.App, auth *core.Record) (centerResponse, error)
 			Summary:        project.GetString("summary"),
 			Status:         project.GetString("execution_status"),
 			ReviewStatus:   project.GetString("review_status"),
+			Difficulty:     project.GetString("difficulty"),
 			AdventureStyle: project.GetString("adventure_style"),
 			Relation:       relation,
 			Duties:         duties,
@@ -1134,6 +1137,7 @@ func personalCenterData(app core.App, auth *core.Record) (centerResponse, error)
 			Summary:        project.GetString("summary"),
 			Status:         project.GetString("execution_status"),
 			ReviewStatus:   project.GetString("review_status"),
+			Difficulty:     project.GetString("difficulty"),
 			AdventureStyle: project.GetString("adventure_style"),
 			Relation:       "followed",
 			Updated:        project.GetString("updated"),
@@ -1158,6 +1162,11 @@ func personalCenterData(app core.App, auth *core.Record) (centerResponse, error)
 		return response, err
 	}
 	response.Badges = badges
+	relations, err := memberRelationSummaryData(app, owner.Id, "")
+	if err != nil {
+		return response, err
+	}
+	response.Relations = relations
 	return response, nil
 }
 

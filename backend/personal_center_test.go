@@ -48,6 +48,8 @@ func TestPersonalCenterData(t *testing.T) {
 	centerTestSave(t, app, preferences)
 
 	completed := centerTestProject(t, app, user, "已完成的键盘项目", "completed")
+	completed.Set("difficulty", "B")
+	centerTestSave(t, app, completed)
 	joined := centerTestProject(t, app, other, "参与的固件项目", "ongoing")
 	membership := centerTestRecord(t, app, "project_members")
 	membership.Set("project_id", joined.Id)
@@ -56,6 +58,12 @@ func TestPersonalCenterData(t *testing.T) {
 	membership.Set("joined_at", time.Now())
 	membership.Set("duties", "负责外壳与结构")
 	centerTestSave(t, app, membership)
+
+	follow := centerTestRecord(t, app, "member_relations")
+	follow.Set("actor_user_id", other.Id)
+	follow.Set("target_user_id", user.Id)
+	follow.Set("relation", "admire")
+	centerTestSave(t, app, follow)
 
 	// A confirmed task contribution and a closed ballot produce one career badge.
 	task := centerTestRecord(t, app, "project_tasks")
@@ -124,11 +132,14 @@ func TestPersonalCenterData(t *testing.T) {
 	if data.Preferences == nil || len(data.Preferences.ExpectedRewardTypes) != 2 {
 		t.Fatalf("unexpected preferences: %+v", data.Preferences)
 	}
-	if len(data.Projects.Completed) != 1 || data.Projects.Completed[0].ID != completed.Id {
+	if len(data.Projects.Completed) != 1 || data.Projects.Completed[0].ID != completed.Id || data.Projects.Completed[0].Difficulty != "B" {
 		t.Fatalf("unexpected completed projects: %+v", data.Projects.Completed)
 	}
 	if len(data.Projects.Participated) != 1 || data.Projects.Participated[0].ID != joined.Id {
 		t.Fatalf("unexpected participating projects: %+v", data.Projects.Participated)
+	}
+	if data.Relations.AdmireCount != 1 {
+		t.Fatalf("unexpected relations: %+v", data.Relations)
 	}
 	if len(data.Badges) != 1 {
 		t.Fatalf("unexpected badges: %+v", data.Badges)
