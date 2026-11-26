@@ -55,6 +55,10 @@
   ];
   const activityOptions = ['线上', '同城', '省内', '全国', '海外'];
   $: featuredIdentities = (data?.identities || []).filter((identity) => identity.featured);
+  $: completedProjects = [...(data?.projects?.completed || []), ...(data?.projects?.assisted || [])];
+  $: completedDifficulties = ['S', 'A', 'B', 'C', 'D'].map((level) => ({ level, count: completedProjects.filter((project) => (project.difficulty || '').toUpperCase() === level).length })).filter((tag) => tag.count > 0);
+  $: totalLevel = (data?.badges || []).reduce((sum, badge) => sum + (badge.level || 0), 0);
+  $: topSkill = (data?.skills || []).reduce((best, skill) => (!best || (skill.likeCount || 0) > (best.likeCount || 0) ? skill : best), null);
 
   const rewardLabels = { money: '资金', product: '实物', title: '头衔', credit: '署名', learning: '学习', none: '无', other: '其他' };
   const statusLabels = { ongoing: '进行中', paused: '暂停', terminated: '已中止', completed: '已完成' };
@@ -521,9 +525,27 @@
     {/if}
 
     <div class="stat-grid">
-      <article class="stat"><span>{data.projects.initiated.length + data.projects.participated.length}</span><p>{$t('我的项目')}</p></article>
-      <article class="stat"><span>{data.badges.length}</span><p>{$t('职业徽章')}</p></article>
-      <article class="stat"><span>{data.skills.length}</span><p>{$t('技能展示')}</p></article>
+      <article class="stat">
+        <span>{completedProjects.length}</span>
+        <p>{$t('完成项目')}</p>
+        {#if completedDifficulties.length}
+          <div class="stat-tags">{#each completedDifficulties as tag}<span class={`stat-tag ${tag.level}`}>{tag.level}×{tag.count}</span>{/each}</div>
+        {/if}
+      </article>
+      <article class="stat">
+        <span>{data.badges.length}</span>
+        <p>{$t('职业徽章')}</p>
+        <p class="stat-note">{$t('总等级')} {totalLevel}</p>
+      </article>
+      <article class="stat">
+        <span>{data.skills.length}</span>
+        <p>{$t('技能展示')}</p>
+        {#if topSkill}<p class="stat-note">{topSkill.name}{#if topSkill.likeCount} ×{topSkill.likeCount}{/if}</p>{/if}
+      </article>
+      <article class="stat">
+        <span>{data.relations?.admireCount || 0}</span>
+        <p>{$t('关注人数')}</p>
+      </article>
     </div>
 
     <div class="content-grid center-grid">
@@ -797,6 +819,14 @@
   .stat { border: 1px solid #dcded4; background: #fafbf7; padding: 18px 20px; }
   .stat span { font-size: 30px; font-weight: 600; letter-spacing: -0.03em; }
   .stat p { margin: 4px 0 0; color: #818b7f; font-size: 13px; }
+  .stat p.stat-note { margin-top: 6px; font-size: 12px; overflow-wrap: anywhere; }
+  .stat-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .stat-tag { padding: 2px 8px; border: 1px solid #d7d9cf; border-radius: 999px; font-size: 11px; font-weight: 600; }
+  .stat-tag.S { color: #7b2340; background: #fbe9ef; }
+  .stat-tag.A { color: #7a4b12; background: #fff3df; }
+  .stat-tag.B { color: #285a78; background: #e8f4fb; }
+  .stat-tag.C { color: #3f5d3a; background: #eef3e8; }
+  .stat-tag.D { color: #6b6f66; background: #f1f2ed; }
   .center-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
   .center-section { min-width: 0; padding: 24px; border: 1px solid #dcded4; background: #fafbf7; }
   .center-section .section-head { margin-bottom: 16px; }
