@@ -127,8 +127,8 @@ func TestPersonalCenterData(t *testing.T) {
 	if len(data.Projects.Completed) != 1 || data.Projects.Completed[0].ID != completed.Id {
 		t.Fatalf("unexpected completed projects: %+v", data.Projects.Completed)
 	}
-	if len(data.Projects.Participating) != 1 || data.Projects.Participating[0].ID != joined.Id {
-		t.Fatalf("unexpected participating projects: %+v", data.Projects.Participating)
+	if len(data.Projects.Participated) != 1 || data.Projects.Participated[0].ID != joined.Id {
+		t.Fatalf("unexpected participating projects: %+v", data.Projects.Participated)
 	}
 	if len(data.Badges) != 1 {
 		t.Fatalf("unexpected badges: %+v", data.Badges)

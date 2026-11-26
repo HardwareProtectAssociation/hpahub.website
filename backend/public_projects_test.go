@@ -253,6 +253,7 @@ func publicProjectTestUser(t *testing.T, app core.App, email, name string) *core
 	record.Set("role", "member")
 	record.Set("display_name", name)
 	record.Set("name", name)
+	record.Set("username", strings.ReplaceAll(email, "@", "_"))
 	publicProjectTestSave(t, app, record)
 	return record
 }

@@ -212,8 +212,6 @@ func bindAdminConsoleRoutes(e *core.ServeEvent) {
 			}
 			return nil
 		})
-			return nil
-		})
 		if err != nil {
 			return err
 		}
