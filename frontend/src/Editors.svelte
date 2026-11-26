@@ -23,8 +23,15 @@
   let uploadPreviews = [];
   let avatarPreview = '';
   function selectFiles(event) {
+    const selected = Array.from(event.currentTarget.files);
+    if (selected.some(file => file.size > 2 * 1024 * 1024)) {
+      error = '图片不能超过 2 MiB。';
+      event.currentTarget.value = '';
+      return;
+    }
+    error = '';
     uploadPreviews.forEach(URL.revokeObjectURL);
-    files = Array.from(event.currentTarget.files);
+    files = selected;
     uploadPreviews = files.map(file => URL.createObjectURL(file));
   }
   function selectAvatar(event) {
@@ -240,7 +247,7 @@
       <form class="editor-form" on:submit|preventDefault={saveRecord}>
         <label>{$t('标题')} <input bind:value={title} maxlength="80" required /></label><label>{$t('文字')} <textarea bind:value={text} maxlength="280" rows="4"></textarea></label>
         {#if current?.images?.length}<fieldset><legend>{$t('保留图片')}</legend>{#each current.images as image, index}<label class="check-label"><input type="checkbox" value={image} bind:group={keepImages} /> {#if previews[current.imageUrls[index]]}<img class="editor-thumb" src={previews[current.imageUrls[index]]} alt="" />{/if} {image}</label>{/each}</fieldset>{/if}
-        <label>{$t('添加图片（最多 4 张，每张最多 5 MiB）')} <input type="file" bind:this={imagesInput} accept="image/jpeg,image/png,image/webp,image/gif" multiple on:change={selectFiles} /></label>
+        <label>{$t('添加图片（最多 4 张，每张最多 2 MiB）')} <input type="file" bind:this={imagesInput} accept="image/jpeg,image/png,image/webp,image/gif" multiple on:change={selectFiles} /></label>
         {#if uploadPreviews.length}<div class="image-grid">{#each uploadPreviews as url}<img src={url} alt={$t('待上传图片预览')} />{/each}</div>{/if}
         {#if manage}<label class="check-label"><input type="checkbox" bind:checked={published} /> {$t('发布项目')}</label>{/if}
         <div class="editor-actions"><button class="primary" disabled={busy}>{$t('保存')}</button><button type="button" on:click={() => { showEditor = false; edit(); }}>{$t('取消')}</button></div>

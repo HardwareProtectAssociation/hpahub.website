@@ -1,4 +1,5 @@
 export default {
+  '图片不能超过 2 MiB。': ['圖片不能超過 2 MiB。', '画像は 2 MiB 以下にしてください。', 'Images must not exceed 2 MiB.'],
   '硬件保护协会': ['硬體保護協會', 'ハードウェア保護協会', 'Hardware Protection Association'],
   '创造，保护，调查': ['創造，保護，調查', '創造、保護、調査', 'Create, Protect, Investigate'],
   '浏览硬件数据库': ['瀏覽硬體資料庫', 'ハードウェアデータベースを見る', 'Browse hardware database'],
@@ -66,7 +67,7 @@ export default {
   '标题': ['標題', 'タイトル', 'Title'],
   '文字': ['文字', '本文', 'Text'],
   '保留图片': ['保留圖片', '画像を保持', 'Keep images'],
-  '添加图片（最多 4 张，每张最多 5 MiB）': ['新增圖片（最多 4 張，每張最多 5 MiB）', '画像を追加（最大 4 枚、各 5 MiB まで）', 'Add images (up to 4, 5 MiB each)'],
+  '添加图片（最多 4 张，每张最多 2 MiB）': ['新增圖片（最多 4 張，每張最多 2 MiB）', '画像を追加（最大 4 枚、各 2 MiB まで）', 'Add images (up to 4, 2 MiB each)'],
   '待上传图片预览': ['待上傳圖片預覽', 'アップロード予定の画像プレビュー', 'Image upload preview'],
   '发布项目': ['發布專案', 'プロジェクトを公開', 'Publish project'],
   '保存': ['儲存', '保存', 'Save'],

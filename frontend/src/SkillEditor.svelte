@@ -70,6 +70,10 @@
     const selected = Array.from(event.currentTarget.files || []);
     event.currentTarget.value = '';
     if (!selected.length) return;
+    if (selected.some((file) => file.size > 2 * 1024 * 1024)) {
+      row.error = '图片不能超过 2 MiB。';
+      return;
+    }
     if (row.images.length + row.files.length + selected.length > 4) {
       row.error = '最多 4 张图片。';
       return;
