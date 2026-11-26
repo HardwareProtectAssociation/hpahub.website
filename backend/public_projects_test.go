@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -294,5 +296,69 @@ func publicProjectTestSave(t *testing.T, app core.App, record *core.Record) {
 	t.Helper()
 	if err := app.Save(record); err != nil {
 		t.Fatalf("save %s: %v", record.Collection().Name, err)
+	}
+}
+
+func TestOpenJoinRollsBackOnMembershipFailure(t *testing.T) {
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+	owner := publicProjectTestUser(t, app, "join-owner@example.com", "owner")
+	user := publicProjectTestUser(t, app, "join-user@example.com", "user")
+	project := publicProjectTestProject(t, app, owner, "project", "approved", "")
+	router, err := apis.NewRouter(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bindPublicProjectRoutes(&core.ServeEvent{App: app, Router: router})
+	mux, err := router.BuildMux()
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, _ := user.NewAuthToken()
+	call := func() *httptest.ResponseRecorder {
+		req := httptest.NewRequest("POST", "/api/hpahub/projects/"+project.Id+"/apply", strings.NewReader(`{"message":"join"}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+token)
+		res := httptest.NewRecorder()
+		mux.ServeHTTP(res, req)
+		return res
+	}
+	if _, err := app.DB().NewQuery(`CREATE TRIGGER fail_join BEFORE INSERT ON project_members BEGIN SELECT RAISE(ABORT, 'test failure'); END`).Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if res := call(); res.Code != http.StatusInternalServerError {
+		t.Fatalf("failed join: %d %s", res.Code, res.Body.String())
+	}
+	rows, err := app.FindRecordsByFilter("project_join_requests", "project_id = {:project}", "", 0, 0, dbx.Params{"project": project.Id})
+	if err != nil || len(rows) != 0 {
+		t.Fatalf("application persisted: %d %v", len(rows), err)
+	}
+	if _, err := app.DB().NewQuery(`DROP TRIGGER fail_join`).Execute(); err != nil {
+		t.Fatal(err)
+	}
+	var successes atomic.Int32
+	var wg sync.WaitGroup
+	for range 6 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if call().Code == http.StatusOK {
+				successes.Add(1)
+			}
+		}()
+	}
+	wg.Wait()
+	if successes.Load() != 1 {
+		t.Fatalf("concurrent joins succeeded %d times", successes.Load())
+	}
+	rows, err = app.FindRecordsByFilter("project_join_requests", "project_id = {:project}", "", 0, 0, dbx.Params{"project": project.Id})
+	if err != nil || len(rows) != 1 || rows[0].GetString("status") != "accepted" {
+		t.Fatalf("concurrent applications: %v %v", rows, err)
+	}
+	if res := call(); res.Code != http.StatusBadRequest {
+		t.Fatalf("duplicate join: %d %s", res.Code, res.Body.String())
 	}
 }

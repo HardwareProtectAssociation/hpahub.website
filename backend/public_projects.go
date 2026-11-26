@@ -1,7 +1,9 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"strings"
 	"time"
 
@@ -221,12 +223,7 @@ func bindPublicProjectRoutes(e *core.ServeEvent) {
 		if project.GetString("execution_status") == "completed" {
 			return e.BadRequestError("Completed projects accept improvement requests instead.", nil)
 		}
-		if _, err := e.App.FindFirstRecordByFilter("project_members", `project_id = {:project} && user_id = {:user} && status = "active"`, dbx.Params{"project": project.Id, "user": viewer.Id}); err == nil {
-			return e.BadRequestError("You are already a project member.", nil)
-		}
-		if _, err := e.App.FindFirstRecordByFilter("project_join_requests", `project_id = {:project} && user_id = {:user} && status = "pending"`, dbx.Params{"project": project.Id, "user": viewer.Id}); err == nil {
-			return e.BadRequestError("You already have a pending application.", nil)
-		}
+
 		var input struct {
 			Message    string `json:"message"`
 			Profession string `json:"profession"`
@@ -239,48 +236,66 @@ func bindPublicProjectRoutes(e *core.ServeEvent) {
 		if len([]rune(strings.TrimSpace(input.Profession))) > 100 || len([]rune(strings.TrimSpace(input.Time))) > 100 || len([]rune(strings.TrimSpace(input.Ability))) > 200 {
 			return e.BadRequestError("Invalid application.", nil)
 		}
-		collection, err := e.App.FindCollectionByNameOrId("project_join_requests")
-		if err != nil {
-			return e.InternalServerError("Unable to submit application.", err)
-		}
-		request := core.NewRecord(collection)
-		request.Set("project_id", project.Id)
-		request.Set("user_id", viewer.Id)
-		request.Set("source", "application")
-		request.Set("message", strings.TrimSpace(input.Message))
-		request.Set("apply_profession", strings.TrimSpace(input.Profession))
-		request.Set("apply_time", strings.TrimSpace(input.Time))
-		request.Set("apply_ability", strings.TrimSpace(input.Ability))
-		request.Set("status", "pending")
-		if err := e.App.Save(request); err != nil {
-			return e.InternalServerError("Unable to submit application.", err)
-		}
-		// Free join mode: auto-accept
-		if project.GetString("join_mode") == "open" {
-			request.Set("status", "accepted")
-			request.Set("handled_at", time.Now())
-			if err := e.App.Save(request); err != nil {
+		err = e.App.RunInTransaction(func(tx core.App) error {
+			if _, err := tx.FindFirstRecordByFilter("project_members", `project_id = {:project} && user_id = {:user} && status = "active"`, dbx.Params{"project": project.Id, "user": viewer.Id}); err == nil {
+				return e.BadRequestError("You are already a project member.", nil)
+			} else if !errors.Is(err, sql.ErrNoRows) {
+				return e.InternalServerError("Unable to load membership.", err)
+			}
+			if _, err := tx.FindFirstRecordByFilter("project_join_requests", `project_id = {:project} && user_id = {:user} && status = "pending"`, dbx.Params{"project": project.Id, "user": viewer.Id}); err == nil {
+				return e.BadRequestError("You already have a pending application.", nil)
+			} else if !errors.Is(err, sql.ErrNoRows) {
+				return e.InternalServerError("Unable to load application.", err)
+			}
+			collection, err := tx.FindCollectionByNameOrId("project_join_requests")
+			if err != nil {
 				return e.InternalServerError("Unable to submit application.", err)
 			}
-			// Add as project member
-			membership, err := e.App.FindFirstRecordByFilter("project_members", "project_id = {:project} && user_id = {:user}", dbx.Params{"project": project.Id, "user": viewer.Id})
-			if err != nil {
-				mCollection, err := e.App.FindCollectionByNameOrId("project_members")
-				if err != nil {
+			request := core.NewRecord(collection)
+			request.Set("project_id", project.Id)
+			request.Set("user_id", viewer.Id)
+			request.Set("source", "application")
+			request.Set("message", strings.TrimSpace(input.Message))
+			request.Set("apply_profession", strings.TrimSpace(input.Profession))
+			request.Set("apply_time", strings.TrimSpace(input.Time))
+			request.Set("apply_ability", strings.TrimSpace(input.Ability))
+			request.Set("status", "pending")
+			if err := tx.Save(request); err != nil {
+				return e.InternalServerError("Unable to submit application.", err)
+			}
+			// Free join mode: auto-accept
+			if project.GetString("join_mode") == "open" {
+				request.Set("status", "accepted")
+				request.Set("handled_at", time.Now())
+				if err := tx.Save(request); err != nil {
+					return e.InternalServerError("Unable to submit application.", err)
+				}
+				// Add as project member
+				membership, err := tx.FindFirstRecordByFilter("project_members", "project_id = {:project} && user_id = {:user}", dbx.Params{"project": project.Id, "user": viewer.Id})
+				if errors.Is(err, sql.ErrNoRows) {
+					mCollection, err := tx.FindCollectionByNameOrId("project_members")
+					if err != nil {
+						return e.InternalServerError("Unable to add member.", err)
+					}
+					membership = core.NewRecord(mCollection)
+					membership.Set("project_id", project.Id)
+					membership.Set("user_id", viewer.Id)
+				} else if err != nil {
 					return e.InternalServerError("Unable to add member.", err)
 				}
-				membership = core.NewRecord(mCollection)
-				membership.Set("project_id", project.Id)
-				membership.Set("user_id", viewer.Id)
+				membership.Set("status", "active")
+				membership.Set("joined_at", time.Now())
+				if err := tx.Save(membership); err != nil {
+					return e.InternalServerError("Unable to add member.", err)
+				}
+				return nil
 			}
-			membership.Set("status", "active")
-			membership.Set("joined_at", time.Now())
-			if err := e.App.Save(membership); err != nil {
-				return e.InternalServerError("Unable to add member.", err)
-			}
-			return e.JSON(200, map[string]any{"ok": true, "autoAccepted": true})
+			return nil
+		})
+		if err != nil {
+			return err
 		}
-		return e.JSON(200, map[string]any{"ok": true, "autoAccepted": false})
+		return e.JSON(200, map[string]any{"ok": true, "autoAccepted": project.GetString("join_mode") == "open"})
 	})
 	e.Router.POST("/api/hpahub/projects/{id}/improvement", func(e *core.RequestEvent) error {
 		noCache(e)
