@@ -61,6 +61,7 @@
   const statusLabels = { ongoing: '进行中', paused: '暂停', terminated: '已中止', completed: '已完成' };
   const currentStatusLabels = { busy: '忙碌', free: '空闲' };
   const relationLabels = { admire: '关注', watch: '监视', investigate: '调查' };
+  const recognizedLabels = { 1: '有点东西', 2: '他不对劲', 3: '他真会啊', 4: '他真会啊！' };
   const relationOptions = Object.entries(relationLabels);
   function statusLabel(status) { return $t(statusLabels[status] || status); }
   function formatDate(value) {
@@ -336,7 +337,7 @@
                   {:else}
                     <span class="like-count"><span aria-hidden="true">♥</span> {skill.likeCount}</span>
                   {/if}
-                  {#if skill.likeTier > 0}<span class={`recognized tier-${skill.likeTier}`}>{$t('受到认可')}</span>{/if}
+                  {#if skill.likeTier > 0}<span class={`recognized tier-${skill.likeTier}`}>{$t(recognizedLabels[skill.likeTier])}</span>{/if}
                   {#if !token}<span class="meta">{$t('登录后可点赞')}</span>{/if}
                 </div>
               </li>

@@ -459,7 +459,7 @@ func TestSkillLikes(t *testing.T) {
 		t.Fatalf("unlike = %d %+v", status, body)
 	}
 
-	cases := map[int]int{0: 0, 10: 0, 11: 1, 29: 1, 30: 2, 59: 2, 60: 3, 99: 3, 100: 4}
+	cases := map[int]int{0: 0, 9: 0, 10: 1, 49: 1, 50: 2, 99: 2, 100: 3, 999: 3, 1000: 4}
 	for count, tier := range cases {
 		if got := centerLikeTier(count); got != tier {
 			t.Fatalf("tier(%d) = %d, want %d", count, got, tier)

@@ -65,6 +65,7 @@
 
   const rewardLabels = { money: '资金', product: '实物', title: '头衔', credit: '署名', learning: '学习', none: '无', other: '其他' };
   const statusLabels = { ongoing: '进行中', paused: '已暂停', terminated: '已终止', completed: '已完成' };
+  const recognizedLabels = { 1: '有点东西', 2: '他不对劲', 3: '他真会啊', 4: '他真会啊！' };
   const projectStatusFilters = ['ongoing', 'completed', 'paused', 'terminated'];
   let projectTab = 'initiated';
   let projectStatusFilter = '';
@@ -654,7 +655,7 @@
                 {/if}
                 <div class="skill-foot">
                   <span class="like-count"><span aria-hidden="true">♥</span> {skill.likeCount}</span>
-                  {#if skill.likeTier > 0}<span class={`recognized tier-${skill.likeTier}`}>{$t('受到认可')}</span>{/if}
+                  {#if skill.likeTier > 0}<span class={`recognized tier-${skill.likeTier}`}>{$t(recognizedLabels[skill.likeTier])}</span>{/if}
                 </div>
               </li>
             {/each}
