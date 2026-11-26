@@ -1,4 +1,6 @@
 export default {
+  '邀请码有效 24 小时，最多持有 10 个未使用的邀请码。': ['邀請碼有效 24 小時，最多持有 10 個未使用的邀請碼。', '招待コードは 24 時間有効で、未使用のコードを最大 10 個まで保有できます。', 'Invitations expire after 24 hours; you may hold up to 10 unused codes.'],
+  '最多持有 10 个未使用的邀请码。': ['最多持有 10 個未使用的邀請碼。', '未使用の招待コードは最大 10 個までです。', 'You can hold at most 10 unused invitations.'],
   '加载更多': ['載入更多', 'もっと見る', 'Load more'],
   'Invalid credentials.': ['憑據無效。', '認証情報が正しくありません。', 'Invalid credentials.'],
   'Authentication failed.': ['驗證失敗。', '認証に失敗しました。', 'Authentication failed.'],
