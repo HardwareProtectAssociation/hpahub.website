@@ -37,6 +37,7 @@
   const genderLabels = { male: '男', female: '女', nonbinary: '非二元', private: '不愿透露' };
   const genderOptions = Object.entries(genderLabels);
   const currentStatusLabels = { busy: '忙碌', free: '空闲' };
+  const personalityPresets = ['外向开朗', '内向沉稳', '理性冷静', '热情奔放', '细心谨慎', '大胆冒险', '幽默风趣', '勤奋踏实', '创新思维', '团队协作', '独立自主', '追求完美', '随和友善', '果断干练'];
   const contactTypes = [
     { value: 'email', label: '邮箱' },
     { value: 'wechat', label: '微信' },
@@ -136,6 +137,21 @@
 
   function removeActivityArea(index) {
     formActivityAreas = formActivityAreas.filter((_, itemIndex) => itemIndex !== index);
+  }
+
+  function togglePersonality(preset) {
+    const parts = formPersonality.split(/[,，、\s]+/).filter(Boolean);
+    const idx = parts.indexOf(preset);
+    if (idx >= 0) {
+      parts.splice(idx, 1);
+    } else {
+      parts.push(preset);
+    }
+    formPersonality = parts.join('、');
+  }
+
+  function isPersonalitySelected(preset) {
+    return formPersonality.split(/[,，、\s]+/).includes(preset);
   }
 
   function toggleIdentity(id) {
@@ -388,7 +404,12 @@
           <label class="edit-field">{$t('性别')}<select bind:value={formGender}><option value="">{$t('未填写')}</option>{#each genderOptions as [value, label]}<option {value}>{$t(label)}</option>{/each}</select></label>
           <label class="edit-field">{$t('年龄')}<input type="number" min="1" max="120" bind:value={formAge} placeholder={$t('可不填')} /></label>
         </div>
-        <label class="edit-field">{$t('性格')}<input bind:value={formPersonality} maxlength="200" placeholder={$t('例如：偏内向，喜欢把复杂问题拆成可执行的小步骤')} /></label>
+        <label class="edit-field">{$t('性格')}<input bind:value={formPersonality} maxlength="200" placeholder={$t('点击下方标签快速选择，或自由输入')} /></label>
+        <div class="personality-presets">
+          {#each personalityPresets as preset}
+            <button type="button" class:active={isPersonalitySelected(preset)} class="preset-chip" on:click={() => togglePersonality(preset)}>{preset}</button>
+          {/each}
+        </div>
         <label class="edit-field">{$t('当前状态')}<select bind:value={formCurrentStatus}><option value="">{$t('未设置')}</option><option value="busy">{$t('忙碌')}</option><option value="free">{$t('空闲')}</option></select></label>
         <fieldset class="edit-block">
           <legend>{$t('联系方式（最多 5 项）')}</legend>
@@ -636,6 +657,10 @@
   .center-contacts strong { color: #2f4534; }
   .current-status { padding: 2px 8px; border-radius: 999px; background: #eef3e8; color: #4d6448; }
   .current-status.busy { background: #fff3df; color: #7a4b12; }
+  .personality-presets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: -6px; }
+  .preset-chip { padding: 4px 12px; border: 1px solid #d6ddd2; border-radius: 999px; background: #fff; color: #52695a; font-size: 12px; cursor: pointer; }
+  .preset-chip:hover { border-color: #7c9b6c; background: #eef3e8; }
+  .preset-chip.active { border-color: #7c9b6c; background: #eef3e8; color: #274732; font-weight: 600; }
   .chips { display: flex; flex-wrap: wrap; gap: 8px; }
   .chip { display: inline-block; padding: 4px 10px; border: 1px solid #c8d4c0; border-radius: 999px; background: #eef3e8; color: #3f5d3a; font-size: 12px; }
   .chip.small { padding: 2px 8px; font-size: 11px; }

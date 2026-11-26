@@ -400,4 +400,5 @@ export default {
   'Boss': ['Boss', 'ボス', 'Boss'],
   '正在创建…': ['正在創建…', '作成中…', 'Creating…'],
   '创建项目': ['創建專案', 'プロジェクトを作成', 'Create project'],
+  '点击下方标签快速选择，或自由输入': ['點擊下方標籤快速選擇，或自由輸入', '下のタグから選択するか自由に入力', 'Tap tags below or type freely'],
 };
