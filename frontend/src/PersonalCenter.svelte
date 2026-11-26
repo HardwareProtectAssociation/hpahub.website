@@ -463,55 +463,42 @@
     {/if}
 
     <div class="stat-grid">
-      <article class="stat"><span>{data.projects.participating.length}</span><p>{$t('参与的项目')}</p></article>
-      <article class="stat"><span>{data.projects.completed.length}</span><p>{$t('自己完成的项目')}</p></article>
+      <article class="stat"><span>{data.projects.initiated.length + data.projects.participated.length}</span><p>{$t('我的项目')}</p></article>
       <article class="stat"><span>{data.badges.length}</span><p>{$t('职业徽章')}</p></article>
       <article class="stat"><span>{data.skills.length}</span><p>{$t('技能展示')}</p></article>
     </div>
 
     <div class="content-grid center-grid">
-      <section class="center-section" aria-labelledby="center-participating">
+      <section class="center-section wide" aria-labelledby="center-projects">
         <div class="section-head">
-          <div><h2 id="center-participating">{$t('参与的项目')}</h2><p>{$t('你正在参与或发起的项目。')}</p></div>
+          <div><h2 id="center-projects">{$t('我的项目')}</h2><p>{$t('按角色分类展示你参与的所有项目。')}</p></div>
         </div>
-        {#if data.projects.participating.length}
-          <ul class="center-list">
-            {#each data.projects.participating as project (project.id)}
-              <li>
-                <div>
-                  <strong>{project.title}</strong>
-                  {#if project.summary}<p>{project.summary}</p>{/if}
-                  <span class="meta">{$t(project.relation === 'owner' ? '发起人' : '协作成员')}{#if project.duties} · {project.duties}{/if}</span>
+        <div class="project-categories">
+          {#each [
+            { key: 'initiated', label: '我发起的项目', items: data.projects.initiated },
+            { key: 'participated', label: '我参与的项目', items: data.projects.participated },
+            { key: 'completed', label: '我完成的项目', items: data.projects.completed },
+            { key: 'assisted', label: '我辅助的项目', items: data.projects.assisted },
+            { key: 'followed', label: '我关注的项目', items: data.projects.followed }
+          ] as category}
+            <div class="project-category">
+              <h3>{$t(category.label)}<span class="category-count">{category.items.length}</span></h3>
+              {#if category.items.length}
+                <div class="project-mini-list">
+                  {#each category.items as project (project.id)}
+                    <a class="project-mini-card" href={'/showcase/' + encodeURIComponent(project.id)}>
+                      <span class:done={project.status === 'completed'} class="mini-status">{$t(statusLabels[project.status] || project.status)}</span>
+                      <strong>{project.title}</strong>
+                      {#if project.summary}<p>{project.summary}</p>{/if}
+                    </a>
+                  {/each}
                 </div>
-                <span class:done={project.status === 'completed'} class="status-pill">{$t(statusLabels[project.status] || project.status)}</span>
-              </li>
-            {/each}
-          </ul>
-        {:else}
-          <div class="center-empty"><p>{$t('还没有参与项目')}</p></div>
-        {/if}
-      </section>
-
-      <section class="center-section" aria-labelledby="center-completed">
-        <div class="section-head">
-          <div><h2 id="center-completed">{$t('自己完成的项目')}</h2><p>{$t('由你发起并已完成的项目。')}</p></div>
+              {:else}
+                <p class="mini-empty">{$t('暂无项目')}</p>
+              {/if}
+            </div>
+          {/each}
         </div>
-        {#if data.projects.completed.length}
-          <ul class="center-list">
-            {#each data.projects.completed as project (project.id)}
-              <li>
-                <div>
-                  <strong>{project.title}</strong>
-                  {#if project.summary}<p>{project.summary}</p>{/if}
-                  <span class="meta">{$t('发起人')} · {$t('已完成')}</span>
-                </div>
-                <span class="status-pill done">{$t('已完成')}</span>
-              </li>
-            {/each}
-          </ul>
-        {:else}
-          <div class="center-empty"><p>{$t('还没有完成项目')}</p></div>
-        {/if}
       </section>
 
       <section class="center-section" aria-labelledby="center-badges">
@@ -658,6 +645,17 @@
   .current-status { padding: 2px 8px; border-radius: 999px; background: #eef3e8; color: #4d6448; }
   .current-status.busy { background: #fff3df; color: #7a4b12; }
   .personality-presets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: -6px; }
+  .project-categories { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 14px; }
+  .project-category h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; font-size: 14px; }
+  .category-count { display: inline-flex; min-width: 20px; height: 20px; align-items: center; justify-content: center; padding: 0 6px; border-radius: 999px; background: #e9eee4; color: #4d6448; font-size: 11px; font-weight: 600; }
+  .project-mini-list { display: grid; gap: 8px; }
+  .project-mini-card { display: grid; gap: 3px; padding: 10px 12px; border: 1px solid #dce3d6; border-radius: 6px; background: #fff; text-decoration: none; color: inherit; transition: border-color .15s, box-shadow .15s; }
+  .project-mini-card:hover { border-color: #7c9b6c; box-shadow: 0 2px 8px #1c302210; }
+  .project-mini-card strong { font-size: 13px; color: #274732; }
+  .project-mini-card p { margin: 0; color: #6f7b6d; font-size: 11px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .mini-status { font-size: 10px; color: #4d6448; }
+  .mini-status.done { color: #6e9a61; }
+  .mini-empty { color: #8b9587; font-size: 12px; margin: 0; }
   .preset-chip { padding: 4px 12px; border: 1px solid #d6ddd2; border-radius: 999px; background: #fff; color: #52695a; font-size: 12px; cursor: pointer; }
   .preset-chip:hover { border-color: #7c9b6c; background: #eef3e8; }
   .preset-chip.active { border-color: #7c9b6c; background: #eef3e8; color: #274732; font-weight: 600; }
