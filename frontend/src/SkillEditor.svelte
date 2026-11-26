@@ -20,6 +20,7 @@
       abilityNote: skill.abilityNote || '',
       linksText: (skill.links || []).join('\n'),
       images: skill.images || [],
+      featured: !!skill.featured,
       files: [],
       previews: [],
       error: '',
@@ -58,6 +59,7 @@
       abilityNote: '',
       linksText: '',
       images: [],
+      featured: false,
       files: [],
       previews: [],
       error: '',
@@ -117,7 +119,7 @@
       const response = await fetch(row.id ? `/api/hpahub/me/skills/${row.id}` : '/api/hpahub/me/skills', {
         method: row.id ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ name, proficiency: row.proficiency, abilityNote: row.abilityNote, links }),
+        body: JSON.stringify({ name, proficiency: row.proficiency, abilityNote: row.abilityNote, links, featured: row.featured }),
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.message || '保存失败，请重试。');
@@ -174,6 +176,7 @@
     <div>
       <h1>{$t('技能管理')}</h1>
       <p>{$t('编辑技能名称、熟练度、说明、图片和网页链接。')}</p>
+      <p class="meta">{$t('勾选后显示在公开主页的技能展示中，数量不限。')}</p>
     </div>
     <button class="primary" type="button" on:click={addRow} disabled={busy}>{$t('新增技能')}</button>
   </div>
@@ -213,6 +216,7 @@
             </div>
           {/if}
           <label class="file-label">{$t('添加图片（最多 4 张）')}<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple on:change={(event) => selectFiles(row, event)} /></label>
+          <label class="check-label"><input type="checkbox" bind:checked={row.featured} /> {$t('在公开主页展示')}</label>
           <div class="form-actions">
             <button class="primary" type="submit" disabled={busy}>{busy ? $t('正在保存…') : $t('保存技能')}</button>
             <button type="button" on:click={() => deleteRow(row)} disabled={busy}>{$t('删除技能')}</button>
@@ -231,7 +235,10 @@
   .skill-form .message { margin: 0; }
   .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
   .skill-form label { display: grid; gap: 6px; color: #52695a; font-size: 13px; }
-  .skill-form input:not([type=file]), .skill-form select, .skill-form textarea { width: 100%; padding: 9px; border: 1px solid #b9c3b3; background: #fff; color: #252b26; font: inherit; }
+  .skill-form label.check-label { display: flex; align-items: center; gap: 8px; }
+  .meta { margin: 6px 0 0; color: #818b7f; font-size: 12px; }
+  .skill-form input:not([type=file]):not([type=checkbox]), .skill-form select, .skill-form textarea { width: 100%; padding: 9px; border: 1px solid #b9c3b3; background: #fff; color: #252b26; font: inherit; }
+  .skill-form input[type=checkbox] { width: auto; margin: 0; }
   .skill-form textarea { resize: vertical; }
   .file-label { display: inline-flex; align-items: center; gap: 8px; width: fit-content; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
   .image-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }

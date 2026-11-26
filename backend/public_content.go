@@ -129,6 +129,7 @@ func publicMemberSkills(e *core.RequestEvent, member *core.Record) ([]map[string
    "likeCount": count,
    "likeTier": centerLikeTier(count),
    "likedByMe": liked,
+   "featured": row.GetBool("featured"),
    "canEndorse": viewer != "" && viewer != member.Id,
   })
  }

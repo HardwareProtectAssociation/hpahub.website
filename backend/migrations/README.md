@@ -47,7 +47,7 @@ go run . migrate up --dir <临时数据目录>        # 在空库或已有库上
 8. **可空数值**：NumberField 没有 NULL，未设置为 0。约定 0 表示“未填写/未知”；对 0 有业务含义的字段用伴随字段区分，详见下一节。
 9. **默认值**：PocketBase 字段没有默认值，布尔列固定默认 false。文档中默认为 true 的字段（如 `enabled`、`xp_enabled`、`accepts_sponsorship`、`is_active`、`receive_updates`）以及其余默认值由服务层写入，见“服务层必须补齐的规则”。
 10. **平台角色**：复用现有 `users.role`（`member`/`user` 视为普通会员，`admin` 为平台管理员），超级管理员为 PocketBase `_superusers`，即文档中的 `super_admin`。没有新增 `platform_role` 字段，避免两套角色双写。`display_name` 为新增可选字段，现存量账号未自动生成昵称，服务层应在完善资料时要求填写。
-11. **`users` 其他映射**：`avatar` 文件字段对应 `avatar_url`，`bio` 沿用现有字段，`display_name` 为昵称；`gender`、`personality`、`age`、`contacts`、`activity_areas` 为个人资料扩展字段；`user_identities.featured` 标记“想要展示的职业”，服务层限制最多 3 个；`email`/`password` 由 PocketBase 认证管理；`users.createRule/updateRule/deleteRule` 仍为空（仅超级管理员），未在本次迁移放宽。
+11. **`users` 其他映射**：`avatar` 文件字段对应 `avatar_url`，`bio` 沿用现有字段，`display_name` 为昵称；`gender`、`personality`、`age`、`contacts`、`activity_areas` 为个人资料扩展字段；`user_identities.featured` 标记“想要展示的职业”，服务层限制最多 3 个；`user_skills.featured` 标记“在公开主页技能展示中列出”，数量不限；`email`/`password` 由 PocketBase 认证管理；`users.createRule/updateRule/deleteRule` 仍为空（仅超级管理员），未在本次迁移放宽。
 12. **项目难度**：`projects.difficulty` 取值为 `D`、`C`、`B`、`A`、`S`，由管理员在“项目管理”页判定；`1760000013` 为已有项目回填 `C`，公开项目接口返回该等级。
 13. **管理控制台与邀请码**：管理控制台显示成员目录、待审批项目加入申请和全部项目；项目成员申请通过后写入 `project_members`。邀请码从控制台移到个人中心，普通成员只能查看和生成自己的邀请码；`hpahub_invitations` 增加 `created_by`，启动时对旧表自动补列。
 14. **健康评估（已取消）**：功能入口和后端接口已移除；`users.current_status`、`daily_health_enabled` 与 `health_checkins` 表结构保留，避免删除历史数据。
@@ -55,6 +55,9 @@ go run . migrate up --dir <临时数据目录>        # 在空库或已有库上
 16. **硬件新闻**：`hardware_news` 保存成员发布的标题、正文和原文链接；`hardware_news_reactions` 每个成员对每条新闻最多一个反应，取值为 `like` 或 `useless`，作者不能给自己投票。
 17. **成员互动关系**：`member_relations` 保存有向关系 `admire`（关注）/`watch`（监视）/`investigate`（调查），同一对成员只能有一条关系；公开成员页显示被关注、被监视、被调查数量及当前访问者的关系。
 18. **硬件通用模板**：删除原显卡/CPU/设备三套字段模板，改为单一 `general` 通用模板（名称、品牌、型号、分类、备注）；已有硬件记录统一转为 `general`，不会删除记录。
+19. **难度投票**：`projects` 新增 `owner_proposed_difficulty`（发起人自评）和 `owner_difficulty_confirmed`（发起人确认）；`project_difficulty_votes` 记录管理员投票（同意/反对某难度等级）。共识难度需 ≥3 票同意、0 票反对、发起人确认；项目完成后难度锁定。
+20. **站内消息**：`messages` 表支持用户间消息和系统通知（项目审核通过/拒绝）；消息带分类（user/system/project_approval）、已读状态和关联项目。
+21. **硬件评测**：`hardware_reviews` 保存成员对硬件记录的评测（标题、正文、作者）；`hardware_review_likes` 每个成员对每篇评测最多点赞一次，作者不能给自己的评测点赞；首页“热门硬件”按评测点赞总数排序，同数按 `hardware.sort_order`。
 12. **0 与未知**：`weekly_hours`、`expected_weekly_hours`、`estimated_duration_days`、`people_needed`、`quantity_limit`、`target_amount_cents`、`target_quantity`、`pledged_*`、`delivered_*`、`allocation_basis_points`、`eligible_count`、`valid_vote_count`、`final_xp` 的 0 都按“未填写”解释。`task_xp_votes.xp_value` 为 0 且有 `voted_at` 时表示投了 0 经验；`task_xp_ballots.final_xp` 为 0 且 `closed_at` 非空时表示有效结果为 0；贡献份额 0 且状态为 `confirmed` 表示确认的 0 份额。`career_level_thresholds.minimum_total_xp` 的 0 是等级 1 的合法门槛，`eligible_count` 为 0 表示合法但无人具备资格的边界；两者因 NumberField 不能表达 NULL 而保持可选。这样不额外增加可空标记字段。
 
 ## 唯一约束与部分唯一索引
@@ -73,6 +76,7 @@ go run . migrate up --dir <临时数据目录>        # 在空库或已有库上
 | `project_permission_requests` | UNIQUE(project_id, user_id, permission_code) WHERE status = 'pending' | 同一权限最多一条待审批申请 |
 | `project_ratings` | UNIQUE(content_id, user_id) | 一人一内容一条评分 |
 | `project_follows` | UNIQUE(project_id, user_id) | 关注关系不重复 |
+| `hardware_review_likes` | UNIQUE(review_id, user_id) | 一篇评测每人最多点一次赞 |
 | `project_union_members` | UNIQUE(union_id, project_id) | 一个项目在一个联合中只出现一次 |
 | `project_takeover_requests` | UNIQUE(project_id, applicant_user_id) WHERE status = 'pending' | 同项目同申请人最多一条待处理接管 |
 | `project_deletion_requests` | UNIQUE(project_id) WHERE status = 'pending' | 同项目最多一条待处理删除 |
@@ -121,4 +125,4 @@ go run . migrate up --dir <临时数据目录>        # 在空库或已有库上
 - 金额以分为单位，接口和前端展示需要统一转换；任何汇总必须使用整数。
 - 0 表示未填写，无法区分“真实的 0 小时”和“未填”；`xp_value`/`final_xp`/贡献份额通过伴随字段区分。
 - 评分分制（D05/D20）、经验投票计票（D16）、贡献分配（D17）、等级曲线（D18）、接管审批（D01—D03）、邀请码配额（D22）、角色确认（D23）等仍待决策；结构已留字段，不把建议值写成已确认规则。
-- 迁移文件已到 18 个；新增 `1760000010`（技能点赞表）、`1760000011`（技能图片与链接）、`1760000012`（个人资料字段与展示职业标记）、`1760000013`（项目难度 D-S）、`1760000014`（当前状态、每日健康评估开关与记录）、`1760000015`（已完成项目的改进申请来源）、`1760000016`（硬件新闻与新闻反应）、`1760000017`（成员互动关系）、`1760000018`（硬件数据库通用空白模板）。现有迁移已在环境中应用，暂保留历史；确需建立新基线时应先核对唯一生产部署和所需备份的迁移记录。后续结构变更应新增迁移，不要修改已部署的 `1760000008` 及之后的迁移。
+- 迁移文件已到 24 个；新增 `1760000010`（技能点赞表）、`1760000011`（技能图片与链接）、`1760000012`（个人资料字段与展示职业标记）、`1760000013`（项目难度 D-S）、`1760000014`（当前状态、每日健康评估开关与记录）、`1760000015`（已完成项目的改进申请来源）、`1760000016`（硬件新闻与新闻反应）、`1760000017`（成员互动关系）、`1760000018`（硬件数据库通用空白模板）、`1760000019`（项目难度投票机制）、`1760000020`（站内消息系统）、`1760000021`（用户硬件配置）、`1760000022`（加入申请增加职业时间能力字段）、`1760000023`（硬件评测与评测点赞）、`1760000024`（技能公开展示标记）。现有迁移已在环境中应用，暂保留历史；确需建立新基线时应先核对唯一生产部署和所需备份的迁移记录。后续结构变更应新增迁移，不要修改已部署的 `1760000008` 及之后的迁移。

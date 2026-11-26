@@ -74,12 +74,16 @@ func main() {
 		}
 		bindInvitationRoutes(e)
 		bindHardwareRoutes(e)
+		bindHardwareReviewRoutes(e)
 		bindPublicRoutes(e)
 		bindPublicProjectRoutes(e)
+		bindHomeRoutes(e)
 		bindAdminConsoleRoutes(e)
 		bindMyProjectRoutes(e)
-		bindNewsRoutes(e)
+		bindDifficultyVotingRoutes(e)
+		bindMessageRoutes(e)
 		bindMemberRelationRoutes(e)
+		bindHardwareConfigRoutes(e)
 		bindPersonalCenterRoutes(e)
 		_, err := app.DB().NewQuery(`CREATE TABLE IF NOT EXISTS hpahub_backup_policy (
 			id INTEGER PRIMARY KEY CHECK (id = 1), interval_hours INTEGER NOT NULL,

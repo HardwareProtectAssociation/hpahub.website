@@ -1,8 +1,11 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"strings"
+	"time"
 
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
@@ -18,6 +21,7 @@ type publicProject struct {
 	AdventureStyle string `json:"adventureStyle"`
 	OwnerID        string `json:"ownerId"`
 	OwnerName      string `json:"ownerName"`
+	OwnerAvatarURL string `json:"ownerAvatarUrl"`
 	PublishedAt    string `json:"publishedAt"`
 	Updated        string `json:"updated"`
 }
@@ -52,18 +56,29 @@ type publicProjectDetail struct {
 	ImprovementPending    bool                  `json:"improvementPending"`
 	CanFollow             bool                  `json:"canFollow"`
 	Following             bool                  `json:"following"`
+	JoinMode              string                `json:"joinMode"`
+	ProposedDifficulty    string                `json:"proposedDifficulty"`
+	OwnerConfirmed        bool                  `json:"ownerConfirmed"`
+	ApproveCount          int                   `json:"approveCount"`
+	OpposeCount           int                   `json:"opposeCount"`
+	IsOwner               bool                  `json:"isOwner"`
 }
 
 type managedProject struct {
-	ID           string `json:"id"`
-	Title        string `json:"title"`
-	Summary      string `json:"summary"`
-	Status       string `json:"status"`
-	Difficulty   string `json:"difficulty"`
-	ReviewStatus string `json:"reviewStatus"`
-	OwnerName    string `json:"ownerName"`
-	Created      string `json:"created"`
-	Updated      string `json:"updated"`
+	ID                 string `json:"id"`
+	Title              string `json:"title"`
+	Summary            string `json:"summary"`
+	Status             string `json:"status"`
+	Difficulty         string `json:"difficulty"`
+	ReviewStatus       string `json:"reviewStatus"`
+	OwnerName          string `json:"ownerName"`
+	OwnerID            string `json:"ownerId"`
+	Created            string `json:"created"`
+	Updated            string `json:"updated"`
+	ProposedDifficulty string `json:"proposedDifficulty"`
+	OwnerConfirmed     bool   `json:"ownerConfirmed"`
+	ApproveCount       int    `json:"approveCount"`
+	OpposeCount        int    `json:"opposeCount"`
 }
 
 // bindPublicProjectRoutes exposes only approved, non-deleted projects. Draft,
@@ -99,6 +114,27 @@ func bindPublicProjectRoutes(e *core.ServeEvent) {
 			EstimatedDurationDays: project.GetInt("estimated_duration_days"),
 			Stages:                []publicProjectStage{},
 			Members:               []publicProjectMember{},
+			ProposedDifficulty:    project.GetString("owner_proposed_difficulty"),
+			OwnerConfirmed:        project.GetBool("owner_difficulty_confirmed"),
+			JoinMode:              project.GetString("join_mode"),
+		}
+		// Compute vote counts
+		votes, _ := e.App.FindRecordsByFilter("project_difficulty_votes",
+			"project_id = {:project}", "", 0, 0, dbx.Params{"project": project.Id})
+		for _, v := range votes {
+			if v.GetString("stance") == "approve" {
+				detail.ApproveCount++
+			} else {
+				detail.OpposeCount++
+			}
+		}
+		// Check if viewer is owner
+		if e.Auth != nil {
+			if owner, member, err := personalCenterOwner(e.App, e.Auth); err == nil && member {
+				if project.GetString("owner_user_id") == owner.Id {
+					detail.IsOwner = true
+				}
+			}
 		}
 		stages, err := e.App.FindRecordsByFilter("project_stages", "project_id = {:project}", "sort_order", 0, 0, dbx.Params{"project": project.Id})
 		if err != nil {
@@ -187,32 +223,79 @@ func bindPublicProjectRoutes(e *core.ServeEvent) {
 		if project.GetString("execution_status") == "completed" {
 			return e.BadRequestError("Completed projects accept improvement requests instead.", nil)
 		}
-		if _, err := e.App.FindFirstRecordByFilter("project_members", `project_id = {:project} && user_id = {:user} && status = "active"`, dbx.Params{"project": project.Id, "user": viewer.Id}); err == nil {
-			return e.BadRequestError("You are already a project member.", nil)
-		}
-		if _, err := e.App.FindFirstRecordByFilter("project_join_requests", `project_id = {:project} && user_id = {:user} && status = "pending"`, dbx.Params{"project": project.Id, "user": viewer.Id}); err == nil {
-			return e.BadRequestError("You already have a pending application.", nil)
-		}
+
 		var input struct {
-			Message string `json:"message"`
+			Message    string `json:"message"`
+			Profession string `json:"profession"`
+			Time       string `json:"time"`
+			Ability    string `json:"ability"`
 		}
 		if err := e.BindBody(&input); err != nil || len([]rune(strings.TrimSpace(input.Message))) > 500 {
 			return e.BadRequestError("Invalid application.", nil)
 		}
-		collection, err := e.App.FindCollectionByNameOrId("project_join_requests")
+		if len([]rune(strings.TrimSpace(input.Profession))) > 100 || len([]rune(strings.TrimSpace(input.Time))) > 100 || len([]rune(strings.TrimSpace(input.Ability))) > 200 {
+			return e.BadRequestError("Invalid application.", nil)
+		}
+		err = e.App.RunInTransaction(func(tx core.App) error {
+			if _, err := tx.FindFirstRecordByFilter("project_members", `project_id = {:project} && user_id = {:user} && status = "active"`, dbx.Params{"project": project.Id, "user": viewer.Id}); err == nil {
+				return e.BadRequestError("You are already a project member.", nil)
+			} else if !errors.Is(err, sql.ErrNoRows) {
+				return e.InternalServerError("Unable to load membership.", err)
+			}
+			if _, err := tx.FindFirstRecordByFilter("project_join_requests", `project_id = {:project} && user_id = {:user} && status = "pending"`, dbx.Params{"project": project.Id, "user": viewer.Id}); err == nil {
+				return e.BadRequestError("You already have a pending application.", nil)
+			} else if !errors.Is(err, sql.ErrNoRows) {
+				return e.InternalServerError("Unable to load application.", err)
+			}
+			collection, err := tx.FindCollectionByNameOrId("project_join_requests")
+			if err != nil {
+				return e.InternalServerError("Unable to submit application.", err)
+			}
+			request := core.NewRecord(collection)
+			request.Set("project_id", project.Id)
+			request.Set("user_id", viewer.Id)
+			request.Set("source", "application")
+			request.Set("message", strings.TrimSpace(input.Message))
+			request.Set("apply_profession", strings.TrimSpace(input.Profession))
+			request.Set("apply_time", strings.TrimSpace(input.Time))
+			request.Set("apply_ability", strings.TrimSpace(input.Ability))
+			request.Set("status", "pending")
+			if err := tx.Save(request); err != nil {
+				return e.InternalServerError("Unable to submit application.", err)
+			}
+			// Free join mode: auto-accept
+			if project.GetString("join_mode") == "open" {
+				request.Set("status", "accepted")
+				request.Set("handled_at", time.Now())
+				if err := tx.Save(request); err != nil {
+					return e.InternalServerError("Unable to submit application.", err)
+				}
+				// Add as project member
+				membership, err := tx.FindFirstRecordByFilter("project_members", "project_id = {:project} && user_id = {:user}", dbx.Params{"project": project.Id, "user": viewer.Id})
+				if errors.Is(err, sql.ErrNoRows) {
+					mCollection, err := tx.FindCollectionByNameOrId("project_members")
+					if err != nil {
+						return e.InternalServerError("Unable to add member.", err)
+					}
+					membership = core.NewRecord(mCollection)
+					membership.Set("project_id", project.Id)
+					membership.Set("user_id", viewer.Id)
+				} else if err != nil {
+					return e.InternalServerError("Unable to add member.", err)
+				}
+				membership.Set("status", "active")
+				membership.Set("joined_at", time.Now())
+				if err := tx.Save(membership); err != nil {
+					return e.InternalServerError("Unable to add member.", err)
+				}
+				return nil
+			}
+			return nil
+		})
 		if err != nil {
-			return e.InternalServerError("Unable to submit application.", err)
+			return err
 		}
-		request := core.NewRecord(collection)
-		request.Set("project_id", project.Id)
-		request.Set("user_id", viewer.Id)
-		request.Set("source", "application")
-		request.Set("message", strings.TrimSpace(input.Message))
-		request.Set("status", "pending")
-		if err := e.App.Save(request); err != nil {
-			return e.InternalServerError("Unable to submit application.", err)
-		}
-		return e.JSON(200, map[string]any{"ok": true})
+		return e.JSON(200, map[string]any{"ok": true, "autoAccepted": project.GetString("join_mode") == "open"})
 	})
 	e.Router.POST("/api/hpahub/projects/{id}/improvement", func(e *core.RequestEvent) error {
 		noCache(e)
@@ -290,43 +373,33 @@ func bindPublicProjectRoutes(e *core.ServeEvent) {
 				ownerName = publicPersonName(owner)
 			}
 			items = append(items, managedProject{
-				ID:           project.Id,
-				Title:        project.GetString("title"),
-				Summary:      project.GetString("summary"),
-				Status:       project.GetString("execution_status"),
-				Difficulty:   project.GetString("difficulty"),
-				ReviewStatus: project.GetString("review_status"),
-				OwnerName:    ownerName,
-				Created:      project.GetString("created"),
-				Updated:      project.GetString("updated"),
+				ID:                 project.Id,
+				Title:              project.GetString("title"),
+				Summary:            project.GetString("summary"),
+				Status:             project.GetString("execution_status"),
+				Difficulty:         project.GetString("difficulty"),
+				ReviewStatus:       project.GetString("review_status"),
+				OwnerName:          ownerName,
+				OwnerID:            ownerID,
+				Created:            project.GetString("created"),
+				Updated:            project.GetString("updated"),
+				ProposedDifficulty: project.GetString("owner_proposed_difficulty"),
+				OwnerConfirmed:     project.GetBool("owner_difficulty_confirmed"),
+				ApproveCount:       0,
+				OpposeCount:        0,
 			})
+			// Compute vote counts
+			votes, _ := e.App.FindRecordsByFilter("project_difficulty_votes",
+				"project_id = {:project}", "", 0, 0, dbx.Params{"project": project.Id})
+			for _, v := range votes {
+				if v.GetString("stance") == "approve" {
+					items[len(items)-1].ApproveCount++
+				} else {
+					items[len(items)-1].OpposeCount++
+				}
+			}
 		}
 		return e.JSON(200, map[string]any{"items": items})
-	})
-	e.Router.PATCH("/api/hpahub/manage/projects/{id}", func(e *core.RequestEvent) error {
-		noCache(e)
-		if e.Auth == nil {
-			return e.UnauthorizedError("Authentication required.", nil)
-		}
-		role := siteRole(e.Auth)
-		if role != "admin" && role != "octopus" {
-			return e.ForbiddenError("Insufficient permissions.", nil)
-		}
-		var input struct {
-			Difficulty string `json:"difficulty"`
-		}
-		if err := e.BindBody(&input); err != nil || !validProjectDifficulty(input.Difficulty) {
-			return e.BadRequestError("Invalid difficulty.", nil)
-		}
-		project, err := e.App.FindRecordById("projects", e.Request.PathValue("id"))
-		if err != nil {
-			return e.NotFoundError("Not found.", nil)
-		}
-		project.Set("difficulty", input.Difficulty)
-		if err := e.App.Save(project); err != nil {
-			return e.InternalServerError("Unable to save difficulty.", err)
-		}
-		return e.JSON(200, map[string]any{"ok": true, "difficulty": input.Difficulty})
 	})
 }
 
@@ -347,8 +420,12 @@ func projectSummary(e *core.RequestEvent, project *core.Record, owners map[strin
 		owners[ownerID] = owner
 	}
 	ownerName := ""
+	ownerAvatarURL := ""
 	if owner != nil {
 		ownerName = publicPersonName(owner)
+		if owner.GetString("avatar") != "" {
+			ownerAvatarURL = contentURL("members", owner.Id, "avatar")
+		}
 	}
 	return publicProject{
 		ID:             project.Id,
@@ -359,6 +436,7 @@ func projectSummary(e *core.RequestEvent, project *core.Record, owners map[strin
 		AdventureStyle: project.GetString("adventure_style"),
 		OwnerID:        ownerID,
 		OwnerName:      ownerName,
+		OwnerAvatarURL: ownerAvatarURL,
 		PublishedAt:    project.GetString("published_at"),
 		Updated:        project.GetString("updated"),
 	}

@@ -1,6 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import { t } from './i18n.js';
+  import { difficultyRank } from './tiers.js';
 
   export let token;
 
@@ -183,7 +184,7 @@
                 <td>{project.ownerName || '—'}</td>
                 <td>{$t(projectStatusLabels[project.status] || project.status || '—')}</td>
                 <td>{$t(reviewLabels[project.reviewStatus] || project.reviewStatus || '—')}</td>
-                <td>{#if project.difficulty}<span class={`difficulty difficulty-${project.difficulty}`}>{project.difficulty}</span>{:else}—{/if}</td>
+                <td>{#if project.reviewStatus === 'approved' && project.difficulty}<span class={`rank rank-pill rank-${difficultyRank(project.difficulty)}`}>{project.difficulty}</span>{:else}<span class="rank-pending">{$t('待定')}</span>{/if}</td>
                 <td>{formatDate(project.updated)}</td>
               </tr>
             {/each}
@@ -215,10 +216,4 @@
   .application-head span { margin-left: 8px; }
   .application-card p { margin: 8px 0; }
   .application-actions { display: flex; gap: 8px; }
-  .difficulty { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; }
-  .difficulty-D { color: #6b6f66; background: #f1f2ed; }
-  .difficulty-C { color: #3f5d3a; background: #eef3e8; }
-  .difficulty-B { color: #285a78; background: #e8f4fb; }
-  .difficulty-A { color: #7a4b12; background: #fff3df; }
-  .difficulty-S { color: #7b2340; background: #fbe9ef; }
 </style>

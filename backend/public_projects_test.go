@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -117,6 +119,7 @@ func TestProjectDifficultyAdmin(t *testing.T) {
 		t.Fatal(err)
 	}
 	bindPublicProjectRoutes(&core.ServeEvent{App: app, Router: router})
+	bindDifficultyVotingRoutes(&core.ServeEvent{App: app, Router: router})
 	mux, err := router.BuildMux()
 	if err != nil {
 		t.Fatal(err)
@@ -145,19 +148,24 @@ func TestProjectDifficultyAdmin(t *testing.T) {
 	if response := request("GET", "/api/hpahub/manage/projects", adminToken, ""); response.Code != http.StatusOK {
 		t.Fatalf("admin list status = %d: %s", response.Code, response.Body.String())
 	}
-	path := "/api/hpahub/manage/projects/" + project.Id
-	if response := request("PATCH", path, memberToken, `{"difficulty":"S"}`); response.Code != http.StatusForbidden {
-		t.Fatalf("member patch status = %d, want 403", response.Code)
+	// Difficulty is now set via voting, not direct PATCH
+	path := "/api/hpahub/projects/" + project.Id + "/difficulty/vote"
+	if response := request("POST", path, memberToken, `{"difficulty":"S","stance":"approve"}`); response.Code != http.StatusForbidden {
+		t.Fatalf("member vote status = %d, want 403", response.Code)
 	}
-	if response := request("PATCH", path, adminToken, `{"difficulty":"Z"}`); response.Code != http.StatusBadRequest {
-		t.Fatalf("invalid patch status = %d, want 400", response.Code)
+	if response := request("POST", path, adminToken, `{"difficulty":"Z","stance":"approve"}`); response.Code != http.StatusBadRequest {
+		t.Fatalf("invalid vote status = %d, want 400", response.Code)
 	}
-	if response := request("PATCH", path, adminToken, `{"difficulty":"S"}`); response.Code != http.StatusOK {
-		t.Fatalf("admin patch status = %d: %s", response.Code, response.Body.String())
+	if response := request("POST", path, adminToken, `{"difficulty":"S","stance":"approve"}`); response.Code != http.StatusOK {
+		t.Fatalf("admin vote status = %d: %s", response.Code, response.Body.String())
 	}
 	saved, err := app.FindRecordById("projects", project.Id)
-	if err != nil || saved.GetString("difficulty") != "S" {
-		t.Fatalf("saved difficulty = %q, %v", saved.GetString("difficulty"), err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Difficulty not updated yet (needs 3 approvals + owner confirm)
+	if saved.GetString("difficulty") != "" {
+		t.Fatalf("difficulty set before consensus: %q", saved.GetString("difficulty"))
 	}
 	list := request("GET", "/api/hpahub/projects", "", "")
 	if list.Code != http.StatusOK {
@@ -169,8 +177,12 @@ func TestProjectDifficultyAdmin(t *testing.T) {
 	if err := json.Unmarshal(list.Body.Bytes(), &listed); err != nil {
 		t.Fatal(err)
 	}
-	if len(listed.Items) != 1 || listed.Items[0].Difficulty != "S" {
-		t.Fatalf("unexpected public difficulty: %+v", listed.Items)
+	if len(listed.Items) != 1 {
+		t.Fatalf("unexpected public projects: %+v", listed.Items)
+	}
+	// Difficulty should be empty since consensus not reached
+	if listed.Items[0].Difficulty != "" {
+		t.Fatalf("difficulty shown before consensus: %q", listed.Items[0].Difficulty)
 	}
 }
 
@@ -243,6 +255,7 @@ func publicProjectTestUser(t *testing.T, app core.App, email, name string) *core
 	record.Set("role", "member")
 	record.Set("display_name", name)
 	record.Set("name", name)
+	record.Set("username", strings.ReplaceAll(email, "@", "_"))
 	publicProjectTestSave(t, app, record)
 	return record
 }
@@ -283,5 +296,69 @@ func publicProjectTestSave(t *testing.T, app core.App, record *core.Record) {
 	t.Helper()
 	if err := app.Save(record); err != nil {
 		t.Fatalf("save %s: %v", record.Collection().Name, err)
+	}
+}
+
+func TestOpenJoinRollsBackOnMembershipFailure(t *testing.T) {
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+	owner := publicProjectTestUser(t, app, "join-owner@example.com", "owner")
+	user := publicProjectTestUser(t, app, "join-user@example.com", "user")
+	project := publicProjectTestProject(t, app, owner, "project", "approved", "")
+	router, err := apis.NewRouter(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bindPublicProjectRoutes(&core.ServeEvent{App: app, Router: router})
+	mux, err := router.BuildMux()
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, _ := user.NewAuthToken()
+	call := func() *httptest.ResponseRecorder {
+		req := httptest.NewRequest("POST", "/api/hpahub/projects/"+project.Id+"/apply", strings.NewReader(`{"message":"join"}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+token)
+		res := httptest.NewRecorder()
+		mux.ServeHTTP(res, req)
+		return res
+	}
+	if _, err := app.DB().NewQuery(`CREATE TRIGGER fail_join BEFORE INSERT ON project_members BEGIN SELECT RAISE(ABORT, 'test failure'); END`).Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if res := call(); res.Code != http.StatusInternalServerError {
+		t.Fatalf("failed join: %d %s", res.Code, res.Body.String())
+	}
+	rows, err := app.FindRecordsByFilter("project_join_requests", "project_id = {:project}", "", 0, 0, dbx.Params{"project": project.Id})
+	if err != nil || len(rows) != 0 {
+		t.Fatalf("application persisted: %d %v", len(rows), err)
+	}
+	if _, err := app.DB().NewQuery(`DROP TRIGGER fail_join`).Execute(); err != nil {
+		t.Fatal(err)
+	}
+	var successes atomic.Int32
+	var wg sync.WaitGroup
+	for range 6 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if call().Code == http.StatusOK {
+				successes.Add(1)
+			}
+		}()
+	}
+	wg.Wait()
+	if successes.Load() != 1 {
+		t.Fatalf("concurrent joins succeeded %d times", successes.Load())
+	}
+	rows, err = app.FindRecordsByFilter("project_join_requests", "project_id = {:project}", "", 0, 0, dbx.Params{"project": project.Id})
+	if err != nil || len(rows) != 1 || rows[0].GetString("status") != "accepted" {
+		t.Fatalf("concurrent applications: %v %v", rows, err)
+	}
+	if res := call(); res.Code != http.StatusBadRequest {
+		t.Fatalf("duplicate join: %d %s", res.Code, res.Body.String())
 	}
 }

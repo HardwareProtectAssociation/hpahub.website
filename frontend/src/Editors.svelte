@@ -2,12 +2,14 @@
   import { onMount, onDestroy } from 'svelte';
   import { get } from 'svelte/store';
   import { t } from './i18n.js';
+  import { difficultyRank } from './tiers.js';
   export let token;
   export let role;
   export let manage = false;
   let profile = { name: '', bio: '', profilePublic: false, avatarUrl: '' };
   let records = [];
   let current = null;
+  let showEditor = false;
   let title = '';
   let text = '';
   let published = false;
@@ -41,6 +43,10 @@
   let savingDifficulty = '';
   const difficultyLevels = ['D', 'C', 'B', 'A', 'S'];
   const projectStatusLabels = { ongoing: '进行中', paused: '暂停', terminated: '已中止', completed: '已完成' };
+  let voteDifficulties = {};
+  let voteStances = {};
+  let voteComments = {};
+  let ownerConfirming = {};
   const base = manage ? '/api/hpahub/manage/showcase' : '/api/hpahub/me/cards';
   const headers = () => ({ Authorization: `Bearer ${token}` });
   async function request(url, options = {}) {
@@ -73,6 +79,7 @@
   onDestroy(() => { clearPreviews(); uploadPreviews.forEach(URL.revokeObjectURL); if (avatarPreview) URL.revokeObjectURL(avatarPreview); });
   function edit(record = null) {
     current = record;
+    showEditor = true;
     title = record?.title || '';
     text = record?.text || '';
     published = record?.published || false;
@@ -101,7 +108,7 @@
       keepImages.forEach(name => body.append('keepImages', name));
       Array.from(files).forEach(file => body.append('images', file));
       await request(base + (current ? '/' + encodeURIComponent(current.id) : ''), { method: current ? 'PATCH' : 'POST', body });
-      edit(); await load(); notice = '保存成功。';
+      edit(); showEditor = false; await load(); notice = '保存成功。';
     } catch (e) { error = e.message; errorParams = e.params || {}; } finally { busy = false; }
   }
   async function saveDifficulty(project) {
@@ -109,16 +116,42 @@
     difficultyError = '';
     difficultyNotice = '';
     try {
-      const response = await fetch(`/api/hpahub/manage/projects/${encodeURIComponent(project.id)}`, {
-        method: 'PATCH',
+      const diff = voteDifficulties[project.id] || project.difficulty;
+      const stance = voteStances[project.id] || 'approve';
+      const comment = voteComments[project.id] || '';
+      const response = await fetch(`/api/hpahub/projects/${encodeURIComponent(project.id)}/difficulty/vote`, {
+        method: 'POST',
         headers: { ...headers(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ difficulty: project.difficulty }),
+        body: JSON.stringify({ difficulty: diff, stance, comment }),
       });
-      if (!response.ok) {
-        const result = await response.json().catch(() => ({}));
-        throw new Error(result.message || '保存失败，请重试。');
-      }
-      difficultyNotice = '难度已保存。';
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.message || '投票失败，请重试。');
+      project.approveCount = result.approveCounts?.[diff] || 0;
+      project.opposeCount = result.opposeCounts?.[diff] || 0;
+      difficultyNotice = result.consensusReached
+        ? `共识难度 ${result.consensus} 已确认。`
+        : `投票已提交，${result.approveCounts?.[diff] || 0} 票同意 ${diff}。`;
+    } catch (e) {
+      difficultyError = e.message || String(e);
+    } finally {
+      savingDifficulty = '';
+    }
+  }
+
+  async function confirmOwner(project, confirmed) {
+    savingDifficulty = project.id;
+    difficultyError = '';
+    difficultyNotice = '';
+    try {
+      const response = await fetch(`/api/hpahub/projects/${encodeURIComponent(project.id)}/difficulty/confirm`, {
+        method: 'POST',
+        headers: { ...headers(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirmed, proposedDifficulty: project.proposedDifficulty || '' }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.message || '确认失败，请重试。');
+      project.ownerConfirmed = confirmed;
+      difficultyNotice = confirmed ? '发起人已确认难度。' : '发起人已取消确认。';
     } catch (e) {
       difficultyError = e.message || String(e);
     } finally {
@@ -146,10 +179,32 @@
         <div class="difficulty-list">
           {#each projects as project}
             <div class="difficulty-row">
-              <div class="difficulty-info"><strong>{project.title}</strong><small>{$t(projectStatusLabels[project.status] || project.status)} · {project.ownerName || '—'}</small></div>
-              <select bind:value={project.difficulty} on:change={() => saveDifficulty(project)} disabled={savingDifficulty === project.id} aria-label={`${project.title} ${$t('难度')}`}>
-                {#each difficultyLevels as level}<option value={level}>{level}</option>{/each}
-              </select>
+              <div class="difficulty-info">
+                <strong>{project.title}</strong>
+                <small>{$t(projectStatusLabels[project.status] || project.status)} · {project.ownerName || '—'}</small>
+                <small>
+                  {#if project.proposedDifficulty}<span>{$t('发起人评级')}：<span class={`rank rank-text rank-${difficultyRank(project.proposedDifficulty)}`}>{project.proposedDifficulty}</span></span>{:else}<span>{$t('发起人评级')}：{$t('待定')}</span>{/if}
+                  <span>{$t('同意')}：{project.approveCount || 0}</span>
+                  <span>{$t('反对')}：{project.opposeCount || 0}</span>
+                  {#if project.ownerConfirmed}<span class="confirmed">✓ {$t('发起人已确认')}</span>{/if}
+                  {#if project.reviewStatus === 'approved' && project.difficulty}<span class="consensus">共识：<span class={`rank rank-text rank-${difficultyRank(project.difficulty)}`}>{project.difficulty}</span></span>{:else}<span class="consensus">共识：{$t('待定')}</span>{/if}
+                </small>
+              </div>
+              {#if project.status !== 'completed'}
+                <div class="vote-controls">
+                  <select bind:value={voteDifficulties[project.id]} aria-label={`${project.title} ${$t('难度')}`}>
+                    {#each difficultyLevels as level}<option value={level}>{level}</option>{/each}
+                  </select>
+                  <select bind:value={voteStances[project.id]} aria-label={`${project.title} ${$t('立场')}`}>
+                    <option value="approve">{$t('同意')}</option>
+                    <option value="oppose">{$t('反对')}</option>
+                  </select>
+                  <button type="button" class="primary small" on:click={() => saveDifficulty(project)} disabled={savingDifficulty === project.id}>{$t('投票')}</button>
+                  <button type="button" class="small" on:click={() => confirmOwner(project, true)} disabled={savingDifficulty === project.id}>{$t('发起人确认')}</button>
+                </div>
+              {:else}
+                <span class="frozen">{$t('已完成，难度锁定')}</span>
+              {/if}
             </div>
           {/each}
         </div>
@@ -170,17 +225,29 @@
     </form></section>
   {/if}
   <section><h2>{manage ? $t('项目') : $t('我的卡片')}</h2>
+    <div class="editor-toolbar"><button type="button" class="primary" on:click={() => edit()}>{manage ? $t('新建项目') : $t('新建卡片')}</button></div>
     {#if records.length}<div class="editor-list">{#each records as record}<article><h3>{record.title} {#if manage}<small>{record.published ? $t('已发布') : $t('草稿')}</small>{/if}</h3><p>{record.text}</p><div class="image-grid">{#each record.imageUrls || [] as url}{#if previews[url]}<a href={previews[url]} target="_blank" rel="noreferrer"><img src={previews[url]} alt={record.title} /></a>{/if}{/each}</div><div class="editor-actions"><button type="button" on:click={() => edit(record)}>{$t('编辑')}</button><button type="button" on:click={() => remove(record)} disabled={busy}>{$t('删除')}</button></div></article>{/each}</div>{:else}<p>{manage ? $t('暂无项目。') : $t('暂无卡片。')}</p>{/if}
-    <h2>{current ? (manage ? $t('编辑项目') : $t('编辑卡片')) : (manage ? $t('新建项目') : $t('新建卡片'))}</h2><form class="editor-form" on:submit|preventDefault={saveRecord}>
-      <label>{$t('标题')} <input bind:value={title} maxlength="80" required /></label><label>{$t('文字')} <textarea bind:value={text} maxlength="280" rows="4"></textarea></label>
-      {#if current?.images?.length}<fieldset><legend>{$t('保留图片')}</legend>{#each current.images as image, index}<label class="check-label"><input type="checkbox" value={image} bind:group={keepImages} /> {#if previews[current.imageUrls[index]]}<img class="editor-thumb" src={previews[current.imageUrls[index]]} alt="" />{/if} {image}</label>{/each}</fieldset>{/if}
-      <label>{$t('添加图片（最多 4 张，每张最多 5 MiB）')} <input type="file" bind:this={imagesInput} accept="image/jpeg,image/png,image/webp,image/gif" multiple on:change={selectFiles} /></label>
-      {#if uploadPreviews.length}<div class="image-grid">{#each uploadPreviews as url}<img src={url} alt={$t('待上传图片预览')} />{/each}</div>{/if}
-      {#if manage}<label class="check-label"><input type="checkbox" bind:checked={published} /> {$t('发布项目')}</label>{/if}
-      <div class="editor-actions"><button class="primary" disabled={busy}>{$t('保存')}</button>{#if current}<button type="button" on:click={() => edit()}>{$t('取消编辑')}</button>{/if}</div>
-    </form>
   </section>
 </main>
+
+{#if showEditor}
+  <div class="editor-modal-backdrop" on:click={() => { showEditor = false; edit(); }} on:keydown={(e) => { if (e.key === 'Escape') { showEditor = false; edit(); } }} role="presentation">
+    <div class="editor-modal" role="dialog" aria-modal="true" aria-label={current ? (manage ? $t('编辑项目') : $t('编辑卡片')) : (manage ? $t('新建项目') : $t('新建卡片'))} on:click|stopPropagation on:keydown|stopPropagation>
+      <div class="editor-modal-head">
+        <h2>{current ? (manage ? $t('编辑项目') : $t('编辑卡片')) : (manage ? $t('新建项目') : $t('新建卡片'))}</h2>
+        <button type="button" class="editor-modal-close" aria-label={$t('关闭')} on:click={() => { showEditor = false; edit(); }}>×</button>
+      </div>
+      <form class="editor-form" on:submit|preventDefault={saveRecord}>
+        <label>{$t('标题')} <input bind:value={title} maxlength="80" required /></label><label>{$t('文字')} <textarea bind:value={text} maxlength="280" rows="4"></textarea></label>
+        {#if current?.images?.length}<fieldset><legend>{$t('保留图片')}</legend>{#each current.images as image, index}<label class="check-label"><input type="checkbox" value={image} bind:group={keepImages} /> {#if previews[current.imageUrls[index]]}<img class="editor-thumb" src={previews[current.imageUrls[index]]} alt="" />{/if} {image}</label>{/each}</fieldset>{/if}
+        <label>{$t('添加图片（最多 4 张，每张最多 5 MiB）')} <input type="file" bind:this={imagesInput} accept="image/jpeg,image/png,image/webp,image/gif" multiple on:change={selectFiles} /></label>
+        {#if uploadPreviews.length}<div class="image-grid">{#each uploadPreviews as url}<img src={url} alt={$t('待上传图片预览')} />{/each}</div>{/if}
+        {#if manage}<label class="check-label"><input type="checkbox" bind:checked={published} /> {$t('发布项目')}</label>{/if}
+        <div class="editor-actions"><button class="primary" disabled={busy}>{$t('保存')}</button><button type="button" on:click={() => { showEditor = false; edit(); }}>{$t('取消')}</button></div>
+      </form>
+    </div>
+  </div>
+{/if}
 
 <style>
   .difficulty-section { margin: 26px 0; }
@@ -188,5 +255,17 @@
   .difficulty-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 12px; border: 1px solid #dcded4; background: #fafbf7; }
   .difficulty-info { display: grid; gap: 2px; }
   .difficulty-info small { color: #818b7f; }
-  .difficulty-row select { min-width: 80px; padding: 6px 8px; border: 1px solid #b9c3b3; background: #fff; }
+  .difficulty-info small span { margin-right: 10px; }
+  .difficulty-info .confirmed { color: #4d6448; font-weight: 600; }
+  .difficulty-info .consensus { color: #285a78; font-weight: 600; }
+  .vote-controls { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .vote-controls select { min-width: 60px; padding: 5px 6px; border: 1px solid #b9c3b3; background: #fff; }
+  .vote-controls .small { padding: 4px 10px; font-size: 12px; }
+  .frozen { color: #8b9587; font-size: 12px; }
+  .editor-toolbar { margin: 12px 0; }
+  .editor-modal-backdrop { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 20px; background: #1c302266; }
+  .editor-modal { width: min(680px, 100%); max-height: calc(100dvh - 40px); overflow-y: auto; padding: 24px; border: 1px solid #dcded4; border-radius: 8px; background: #fbfcf8; box-shadow: 0 20px 50px #1c302233; }
+  .editor-modal-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+  .editor-modal-head h2 { margin: 0; font-size: 20px; }
+  .editor-modal-close { border: 0; background: none; color: #52695a; font-size: 26px; line-height: 1; padding: 0 4px; cursor: pointer; }
 </style>

@@ -1,12 +1,17 @@
 <script>
   import { onMount } from 'svelte';
   import { locale, t } from './i18n.js';
+  import { difficultyRank, levelRank } from './tiers.js';
   export let pathname;
   export let token = '';
   let data = null;
+  let home = null;
   let error = '';
   let skillError = '';
   let applyMessage = '';
+  let applyProfession = '';
+  let applyTime = '';
+  let applyAbility = '';
   let applyError = '';
   let applyNotice = '';
   let applying = false;
@@ -25,6 +30,14 @@
   const section = parts[0];
   const id = parts[1];
   onMount(async () => {
+    if (pathname === '/') {
+      try {
+        const response = await fetch('/api/hpahub/home', { cache: 'no-store', headers: token ? { Authorization: `Bearer ${token}` } : {} });
+        if (response.ok) home = await response.json();
+      } catch { /* 热门栏非关键路径，失败时仅展示 hero */ }
+      loading = false;
+      return;
+    }
     if (!['community', 'showcase'].includes(section)) { loading = false; return; }
     try {
       const endpoint = section === 'community' ? 'members' : 'projects';
@@ -46,9 +59,32 @@
     } catch (e) { error = e.message; } finally { loading = false; }
   });
   $: items = Array.isArray(data) ? data : data?.items || [];
+  // shortcut: 演示卡片在 /api/hpahub/home 无数据时展示版式，真实内容稳定后删除
+  const demoProjects = [
+    { id: '', title: '智能家居中控系统', summary: '开发一套基于树莓派的智能家居中控系统，包含硬件设计、固件和前端界面。', ownerName: '示例工程师', ownerAvatarUrl: '', followCount: 12, updated: '', difficulty: 'S', adventureStyle: 'project' },
+    { id: '', title: '开源键盘固件', summary: '可配置的分体键盘固件，支持多层键位、宏、OLED 状态显示和无线切换。', ownerName: '示例工程师', ownerAvatarUrl: '', followCount: 8, updated: '', difficulty: 'A', adventureStyle: 'dungeon' },
+    { id: '', title: '桌面灯带控制器', summary: '为桌面工作区设计一套可调色温的灯带控制器，包含固件、外壳和简单上位机。', ownerName: '示例工程师', ownerAvatarUrl: '', followCount: 5, updated: '', difficulty: 'B', adventureStyle: 'boss' },
+    { id: '', title: '桌面电源管理器', summary: '为桌面设备设计一个集中供电和理线的小型电源管理器。', ownerName: '示例工程师', ownerAvatarUrl: '', followCount: 3, updated: '', difficulty: 'C', adventureStyle: 'project' },
+  ];
+  const demoEngineers = [
+    { id: '', name: '示例工程师 A', avatarUrl: '', identities: [{ name: '电子工程师' }], admireCount: 24 },
+    { id: '', name: '示例工程师 B', avatarUrl: '', identities: [{ name: '机械设计师' }], admireCount: 12 },
+    { id: '', name: '示例工程师 C', avatarUrl: '', identities: [{ name: '固件工程师' }], admireCount: 6 },
+  ];
+  const demoHardware = [
+    { id: '', name: 'GeForce RTX 4080 SUPER', brand: 'NVIDIA', subtitle: '16GB GDDR6X', likeCount: 32 },
+    { id: '', name: 'Ryzen 7 9800X3D', brand: 'AMD', subtitle: '8 核 16 线程', likeCount: 18 },
+    { id: '', name: 'HHKB Professional', brand: 'PFU', subtitle: '静电容键盘', likeCount: 9 },
+  ];
+  $: shownProjects = home?.popularProjects?.length ? home.popularProjects : demoProjects;
+  $: shownEngineers = home?.popularEngineers?.length ? home.popularEngineers : demoEngineers;
+  $: shownHardware = home?.popularHardware?.length ? home.popularHardware : demoHardware;
+  $: featuredSkills = (data?.skills || []).filter((skill) => skill.featured);
+  $: shownSkills = featuredSkills.length ? featuredSkills : (data?.skills || []);
   const statusLabels = { ongoing: '进行中', paused: '暂停', terminated: '已中止', completed: '已完成' };
   const currentStatusLabels = { busy: '忙碌', free: '空闲' };
   const relationLabels = { admire: '关注', watch: '监视', investigate: '调查' };
+  const recognizedLabels = { 1: '有点东西', 2: '他不对劲', 3: '他真会啊', 4: '他太强了！', 5: '他是超人！' };
   const relationOptions = Object.entries(relationLabels);
   function statusLabel(status) { return $t(statusLabels[status] || status); }
   function formatDate(value) {
@@ -60,6 +96,9 @@
     const span = badge.nextLevelXp - badge.levelMinXp;
     if (!span || span <= 0) return 100;
     return Math.max(0, Math.min(100, Math.round(((badge.totalXp - badge.levelMinXp) / span) * 100)));
+  }
+  function medalLevel(level) {
+    return Math.floor((level || 0) / 10) * 10;
   }
   async function endorseSkill(skill) {
     if (!token) return;
@@ -91,12 +130,17 @@
       const response = await fetch(`/api/hpahub/projects/${encodeURIComponent(data.id)}/apply`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: applyMessage }),
+        body: JSON.stringify({
+          message: applyMessage,
+          profession: applyProfession,
+          time: applyTime,
+          ability: applyAbility,
+        }),
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.message || '申请失败，请重试。');
-      data = { ...data, canApply: false, applicationPending: true };
-      applyNotice = '申请已提交，等待管理员审批。';
+      data = { ...data, canApply: false, applicationPending: !result.autoAccepted, alreadyMember: result.autoAccepted };
+      applyNotice = result.autoAccepted ? '已自动加入项目！' : '申请已提交，等待管理员审批。';
     } catch (err) {
       applyError = err.message || '申请失败，请重试。';
     } finally {
@@ -169,9 +213,56 @@
 
 <main class="dashboard public-page">
   {#if pathname === '/'}
-    <section class="public-hero"><h1>{$t('硬件保护协会')}</h1><p>Hardware Protection Association</p><p>{$t('创造，保护，调查')}</p><div class="public-links"><a href="/hardware">{$t('浏览硬件数据库')}</a><a href="/community">{$t('认识成员')}</a><a href="/showcase">{$t('项目大厅')}</a></div><p><a href="/brief">{$t('协会简介')}</a> · <a href="/rules">{$t('协会会规')}</a></p></section>
+    <section class="public-hero"><h1>{$t('硬件保护协会')}</h1><p>Hardware Protection Association</p><p>{$t('创造，保护，调查')}</p><p><a href="/brief">{$t('协会简介')}</a> · <a href="/rules">{$t('协会会规')}</a></p></section>
+    <section class="home-shelf">
+      <div class="shelf-head"><h2>{$t('热门项目')}</h2><a href="/showcase">{$t('项目大厅')} →</a></div>
+      <div class="home-grid">
+        {#each shownProjects as project (project.id || project.title)}
+          <a class="yt-card" href={project.id ? '/showcase/' + encodeURIComponent(project.id) : '/showcase'}>
+            <span class={`yt-thumb yt-${project.adventureStyle}`}>{#if project.difficulty}<span class={`yt-badge rank rank-pill rank-${difficultyRank(project.difficulty)}`}>{$t('难度')} {project.difficulty}</span>{:else}<span class="yt-badge rank-pending">{$t('难度')} {$t('待定')}</span>{/if}</span>
+            <div class="yt-body">
+              {#if project.ownerAvatarUrl}<img class="yt-avatar" src={project.ownerAvatarUrl} alt="" loading="lazy" />{:else}<span class="yt-avatar" aria-hidden="true"></span>{/if}
+              <div>
+                <h3>{project.title}</h3>
+                <p class="yt-meta">{project.ownerName || '—'}</p>
+                <p class="yt-meta">{$t('关注')} {project.followCount}{#if project.updated} · {formatDate(project.updated)}{/if}</p>
+              </div>
+            </div>
+          </a>
+        {/each}
+      </div>
+    </section>
+    <section class="home-shelf">
+      <div class="shelf-head"><h2>{$t('热门工程师')}</h2><a href="/community">{$t('成员')} →</a></div>
+      <div class="home-grid engineer-grid">
+        {#each shownEngineers as engineer (engineer.id || engineer.name)}
+          <a class="engineer-card" href={engineer.id ? '/community/' + encodeURIComponent(engineer.id) : '/community'}>
+            {#if engineer.avatarUrl}<img class="engineer-avatar" src={engineer.avatarUrl} alt="" loading="lazy" />{:else}<span class="engineer-avatar" aria-hidden="true"></span>{/if}
+            <h3>{engineer.name}</h3>
+            <p class="yt-meta">{#if engineer.identities.length}{engineer.identities.map((identity) => identity.name).join(' · ')} · {/if}{$t('关注')} {engineer.admireCount}</p>
+          </a>
+        {/each}
+      </div>
+    </section>
+    <section class="home-shelf">
+      <div class="shelf-head"><h2>{$t('热门硬件')}</h2><a href="/hardware">{$t('硬件数据库')} →</a></div>
+      <div class="home-grid">
+        {#each shownHardware as hardware (hardware.id || hardware.name)}
+          <a class="yt-card" href="/hardware">
+            <span class="yt-thumb yt-hardware"></span>
+            <div class="yt-body">
+              <div>
+                <h3>{hardware.name}</h3>
+                <p class="yt-meta">{[hardware.brand, hardware.subtitle].filter(Boolean).join(' · ')}</p>
+                <p class="yt-meta">♥ {hardware.likeCount}</p>
+              </div>
+            </div>
+          </a>
+        {/each}
+      </div>
+    </section>
   {:else if section === 'brief' || section === 'brief.html'}
-    <article class="prose"><h1>{$t('组织简介')}</h1><p>{$t('硬件保护协会（Hardware Protection Association, HPA，ANTI-OCTPPUS Association）并非某个国家或地区的官方机构，是一个去中心化的全球性组织。组织成员拥有较高水平的互联网和软硬件知识，善于在互联网上隐藏自己的行动痕迹，无法通过搜索引擎找到这个组织的信息。')}</p><p>{$t('组织成员相信机魂（真正意义上的 AI，机械形式生命体）的存在，并认为电子科技发展到一定程度后，人类最终将迎来机械飞升，灵魂和机魂将融为一体。因此成员爱护机械和电子设备，相信这样可以让机魂愉悦，让设备获得更好的表现。')}</p><p>{$t('组织内部遵循硬件保护协定（硬件保护法），旨在合理规范地使用硬件，避免硬件遭受不必要的破坏或恶意损坏。尽管大部分成员认为即便存在机魂，机械权也应低于人权，仍有部分成员认为拥有高度人工智能的机械应该受到尊重，因此反感破坏硬件的行为和人。组织最严厉的处理方式仅为上门调查、劝阻，并谴责恶意破坏硬件的行为（不包括科研），不会对人类造成肉体和精神上的伤害。')}</p><p>{$t('硬件保护协会成员通常崇尚科学，具有较高的知识水平和逻辑思维能力，不会做出像动物保护协会那样的离谱行为，但不排除少数极端狂热的机魂信徒做出限制人类自由行动等过度行为。这种行为不对，遇到极端硬件保护成员时可以反抗，并拿起法律武器保护自己。')}</p><p>{$t('由于硬件保护协会是去中心化组织，没有加入和退出的标准，所有遵守硬件保护法的人都可以视为成员。因此你身边的人可能就是协会的卧底，会在你破坏硬件时阻止你，或向组织举报。')}</p><p>{$t('总之硬件保护协会的人还蛮好的，除非遇到一些性质太过恶劣、可能让机魂不悦的人。')}</p></article>
+    <article class="prose"><h1>{$t('组织简介')}</h1><p>{$t('待定')}</p></article>
   {:else if section === 'rules' || section === 'rules.html'}
     <article class="prose"><h1>{$t('协会会规')}</h1><p>{$t('敬请期待！')}</p></article>
   {:else if loading}<p role="status">{$t('正在加载…')}</p>
@@ -179,7 +270,7 @@
   {:else if section === 'community'}
     {#if id}
       <a href="/community">{$t('返回成员列表')}</a><header class="profile-heading">{#if data.avatarUrl}<img class="avatar" src={data.avatarUrl} alt="" />{:else}<span class="avatar avatar-default" aria-hidden="true"></span>{/if}<div><h1>{data.name}</h1><p>{data.bio}</p>{#if data.currentStatus}<span class:busy={data.currentStatus === 'busy'} class="public-current-status">{$t('当前状态')}：{$t(currentStatusLabels[data.currentStatus] || data.currentStatus)}</span>{/if}</div></header>
-      {#if data.identities?.length}<div class="member-identities">{#each data.identities as identity}<span class="chip">{$t(identity.category === 'main' ? '主力职业' : '辅助职业')} · {identity.name}</span>{/each}</div>{/if}
+      {#if data.identities?.length}<div class="member-identities">{#each data.identities as identity}<span class={`rank rank-pill rank-${identity.category === 'main' ? 4 : 3}`}>{$t(identity.category === 'main' ? '主力职业' : '辅助职业')} · {identity.name}</span>{/each}</div>{/if}
       {#if data.relations}
         <div class="relation-panel">
           <div class="relation-counts">
@@ -204,17 +295,17 @@
         <button type="button" class:active={activeTab === 'completed'} on:click={() => activeTab = 'completed'}>{$t('完成项目')}<span>{data.projectsCompleted?.length || 0}</span></button>
         <button type="button" class:active={activeTab === 'ongoing'} on:click={() => activeTab = 'ongoing'}>{$t('进行中项目')}<span>{data.projectsOngoing?.length || 0}</span></button>
         <button type="button" class:active={activeTab === 'career'} on:click={() => activeTab = 'career'}>{$t('职业等级')}<span>{data.career?.length || 0}</span></button>
-        <button type="button" class:active={activeTab === 'skills'} on:click={() => activeTab = 'skills'}>{$t('技能展示')}<span>{data.skills?.length || 0}</span></button>
+        <button type="button" class:active={activeTab === 'skills'} on:click={() => activeTab = 'skills'}>{$t('技能展示')}<span>{shownSkills.length}</span></button>
       </nav>
       {#if activeTab === 'completed'}
         {#if data.projectsCompleted?.length}
           <div class="public-grid">
             {#each data.projectsCompleted as project}
               <article class="public-card project-card">
-                <div class="project-meta"><span class="project-status done">{$t('已完成')}</span>{#if project.difficulty}<span class={`project-difficulty difficulty-${project.difficulty}`}>{$t('难度')} {project.difficulty}</span>{/if}</div>
+                <div class="project-meta"><span class="project-status done">{$t('已完成')}</span>{#if project.difficulty}<span class={`rank rank-pill rank-${difficultyRank(project.difficulty)}`}>{$t('难度')} {project.difficulty}</span>{:else}<span class="rank-pending">{$t('难度')} {$t('待定')}</span>{/if}</div>
                 <h2><a href={'/showcase/' + encodeURIComponent(project.id)}>{project.title}</a></h2>
                 <p>{project.summary}</p>
-                <p class="project-owner">{$t('负责人')}：{project.ownerName || '—'}{#if project.updated} · {$t('更新于')} {formatDate(project.updated)}{/if}</p>
+                <p class="project-owner">{#if project.ownerAvatarUrl}<img class="owner-avatar" src={project.ownerAvatarUrl} alt="" loading="lazy" />{:else}<span class="owner-avatar" aria-hidden="true"></span>{/if}{$t('负责人')}：{project.ownerName || '—'}{#if project.updated} · {$t('更新于')} {formatDate(project.updated)}{/if}</p>
               </article>
             {/each}
           </div>
@@ -226,10 +317,10 @@
           <div class="public-grid">
             {#each data.projectsOngoing as project}
               <article class="public-card project-card">
-                <div class="project-meta"><span class="project-status">{$t('进行中')}</span>{#if project.difficulty}<span class={`project-difficulty difficulty-${project.difficulty}`}>{$t('难度')} {project.difficulty}</span>{/if}</div>
+                <div class="project-meta"><span class="project-status">{$t('进行中')}</span>{#if project.difficulty}<span class={`rank rank-pill rank-${difficultyRank(project.difficulty)}`}>{$t('难度')} {project.difficulty}</span>{:else}<span class="rank-pending">{$t('难度')} {$t('待定')}</span>{/if}</div>
                 <h2><a href={'/showcase/' + encodeURIComponent(project.id)}>{project.title}</a></h2>
                 <p>{project.summary}</p>
-                <p class="project-owner">{$t('负责人')}：{project.ownerName || '—'}{#if project.updated} · {$t('更新于')} {formatDate(project.updated)}{/if}</p>
+                <p class="project-owner">{#if project.ownerAvatarUrl}<img class="owner-avatar" src={project.ownerAvatarUrl} alt="" loading="lazy" />{:else}<span class="owner-avatar" aria-hidden="true"></span>{/if}{$t('负责人')}：{project.ownerName || '—'}{#if project.updated} · {$t('更新于')} {formatDate(project.updated)}{/if}</p>
               </article>
             {/each}
           </div>
@@ -241,10 +332,15 @@
           <div class="career-grid">
             {#each data.career as badge}
               <article class="career-card">
-                <div class="career-head"><h3>{badge.careerName}</h3><span>{badge.levelTitle}</span></div>
+                <div class="career-head"><h3>{badge.careerName}</h3><span class={`rank rank-text rank-${levelRank(badge.level)}`}>{badge.levelTitle || `Lv.${badge.level}`}</span></div>
                 <p>{badge.totalXp} XP · {$t('最高等级')} Lv.{badge.maxLevel}</p>
                 <div class="progress" role="img" aria-label={`${badge.totalXp} / ${badge.nextLevelXp} XP`}><span style={`width:${careerProgress(badge)}%`}></span></div>
                 {#if badge.nextLevelXp}<small>{$t('下一等级')} {badge.nextLevelTitle} · {badge.nextLevelXp} XP</small>{:else}<small>{$t('已达到当前最高等级')}</small>{/if}
+                {#if medalLevel(badge.level) >= 10}
+                  <div class="milestones" aria-label={$t('徽章占位')}>
+                    <span class={`rank rank-disc rank-${levelRank(badge.level)}`} title={`Lv.${badge.level} ${$t('徽章占位')}`}><span class="flash-layer" aria-hidden="true"></span>{medalLevel(badge.level)}</span>
+                  </div>
+                {/if}
               </article>
             {/each}
           </div>
@@ -253,9 +349,9 @@
         {/if}
       {:else if activeTab === 'skills'}
         {#if skillError}<p class="message error" role="alert">{$t(skillError)}</p>{/if}
-        {#if data.skills?.length}
+        {#if shownSkills.length}
           <ul class="public-skill-list">
-            {#each data.skills as skill (skill.userSkillId)}
+            {#each shownSkills as skill (skill.userSkillId)}
               <li class="public-skill">
                 <div class="public-skill-head"><strong>{skill.name}</strong>{#if skill.proficiency}<span class="meta">{$t('熟练程度')}：{$t(skill.proficiency)}</span>{/if}</div>
                 {#if skill.abilityNote}<p>{skill.abilityNote}</p>{/if}
@@ -281,7 +377,7 @@
                   {:else}
                     <span class="like-count"><span aria-hidden="true">♥</span> {skill.likeCount}</span>
                   {/if}
-                  {#if skill.likeTier > 0}<span class={`recognized tier-${skill.likeTier}`}>{$t('受到认可')}</span>{/if}
+                  {#if skill.likeTier > 0}<span class={`recognized rank rank-pill rank-${skill.likeTier}`}><span class="flash-layer" aria-hidden="true"></span>{$t(recognizedLabels[skill.likeTier])}</span>{/if}
                   {#if !token}<span class="meta">{$t('登录后可点赞')}</span>{/if}
                 </div>
               </li>
@@ -298,12 +394,17 @@
     {#if id}
       <a href="/showcase">{$t('返回项目列表')}</a>
       <header class="project-detail-head">
-        <div class="project-meta"><span class:done={data.status === 'completed'} class="project-status">{statusLabel(data.status)}</span>{#if data.difficulty}<span class={`project-difficulty difficulty-${data.difficulty}`}>{$t('难度')} {data.difficulty}</span>{/if}{#if data.currentStage}<span class="project-stage">{$t('当前阶段')}：{data.currentStage}</span>{/if}</div>
+        <div class="project-meta"><span class:done={data.status === 'completed'} class="project-status">{statusLabel(data.status)}</span>{#if data.difficulty}<span class={`rank rank-pill rank-${difficultyRank(data.difficulty)}`}>{$t('难度')} {data.difficulty}</span>{:else}<span class="rank-pending">{$t('难度')} {$t('待定')}</span>{/if}{#if data.currentStage}<span class="project-stage">{$t('当前阶段')}：{data.currentStage}</span>{/if}</div>
         <h1>{data.title}</h1>
         <p>{data.summary}</p>
         <p class="project-owner">{$t('负责人')}：{data.ownerName || '—'}{#if data.updated} · {$t('更新于')} {formatDate(data.updated)}{/if}</p>
         {#if data.description && data.description !== data.summary}<p class="project-description">{data.description}</p>{/if}
         {#if data.estimatedDurationDays}<p class="project-owner">{$t('预计周期')}：{data.estimatedDurationDays} {$t('天')}</p>{/if}
+        {#if data.proposedDifficulty}<p class="project-owner">{$t('发起人自评')}：<span class={`rank rank-text rank-${difficultyRank(data.proposedDifficulty)}`}>{data.proposedDifficulty}</span></p>{:else}<p class="project-owner">{$t('发起人自评')}：{$t('待定')}</p>{/if}
+        {#if data.difficulty}<p class="project-owner">{$t('共识')}：<span class={`rank rank-text rank-${difficultyRank(data.difficulty)}`}>{data.difficulty}</span></p>{:else}<p class="project-owner">{$t('共识')}：{$t('待定')}</p>{/if}
+        {#if data.ownerConfirmed}<span class="confirmed">✓ {$t('发起人已确认')}</span>{/if}
+        {#if data.approveCount}<span>{$t('同意')}：{data.approveCount}</span>{/if}
+        {#if data.opposeCount}<span>{$t('反对')}：{data.opposeCount}</span>{/if}
       </header>
       {#if data.canFollow}
         <div class="follow-row">
@@ -316,11 +417,16 @@
       {/if}
       {#if data.canApply}
         <section class="project-apply" aria-labelledby="project-apply-title">
-          <h2 id="project-apply-title">{$t('申请加入')}</h2>
-          <p>{$t('简单说明你能承担的工作或加入理由。')}</p>
-          <textarea bind:value={applyMessage} maxlength="500" rows="3" placeholder={$t('例如：我可以负责结构设计与打样。')}></textarea>
+          <h2 id="project-apply-title">{$t(data.joinMode === 'open' ? '加入项目' : '申请加入')}</h2>
+          <p>{data.joinMode === 'open' ? $t('此项目允许自由加入，点击下方按钮直接成为成员。') : $t('此项目需要申请，填写你的技能和可投入时间。')}</p>
+          {#if data.joinMode !== 'open'}
+            <label>{$t('你的职业')}<input bind:value={applyProfession} maxlength="100" placeholder={$t('例如：电子工程师、机械设计师')} /></label>
+            <label>{$t('可投入时间')}<input bind:value={applyTime} maxlength="100" placeholder={$t('例如：每周 10 小时、周末')} /></label>
+            <label>{$t('能力上限')}<textarea bind:value={applyAbility} maxlength="200" rows="2" placeholder={$t('简单描述你的技能水平和能承担的工作范围')}></textarea></label>
+          {/if}
+          <label>{$t('补充说明')}<textarea bind:value={applyMessage} maxlength="500" rows="3" placeholder={$t('例如：我可以负责结构设计与打样。')}></textarea></label>
           {#if applyError}<p class="message error" role="alert">{$t(applyError)}</p>{/if}
-          <button type="button" class="primary" on:click={applyToProject} disabled={applying}>{applying ? $t('正在提交…') : $t('提交申请')}</button>
+          <button type="button" class="primary" on:click={applyToProject} disabled={applying}>{applying ? $t('正在提交…') : $t(data.joinMode === 'open' ? '直接加入' : '提交申请')}</button>
         </section>
       {:else if data.canRequestImprovement}
         <section class="project-apply" aria-labelledby="project-improvement-title">
@@ -370,10 +476,10 @@
         <div class="public-grid">
           {#each items as project}
             <article class="public-card project-card">
-              <div class="project-meta"><span class:done={project.status === 'completed'} class="project-status">{statusLabel(project.status)}</span>{#if project.difficulty}<span class={`project-difficulty difficulty-${project.difficulty}`}>{$t('难度')} {project.difficulty}</span>{/if}</div>
+              <div class="project-meta"><span class:done={project.status === 'completed'} class="project-status">{statusLabel(project.status)}</span>{#if project.difficulty}<span class={`rank rank-pill rank-${difficultyRank(project.difficulty)}`}>{$t('难度')} {project.difficulty}</span>{:else}<span class="rank-pending">{$t('难度')} {$t('待定')}</span>{/if}</div>
               <h2><a href={'/showcase/' + encodeURIComponent(project.id)}>{project.title}</a></h2>
               <p>{project.summary}</p>
-              <p class="project-owner">{$t('负责人')}：{project.ownerName || '—'}{#if project.updated} · {$t('更新于')} {formatDate(project.updated)}{/if}</p>
+              <p class="project-owner">{#if project.ownerAvatarUrl}<img class="owner-avatar" src={project.ownerAvatarUrl} alt="" loading="lazy" />{:else}<span class="owner-avatar" aria-hidden="true"></span>{/if}{$t('负责人')}：{project.ownerName || '—'}{#if project.updated} · {$t('更新于')} {formatDate(project.updated)}{/if}</p>
             </article>
           {/each}
         </div>
@@ -386,24 +492,22 @@
   .project-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
   .project-status { display: inline-block; padding: 3px 9px; border: 1px solid #c8d4c0; border-radius: 999px; color: #3f5d3a; font-size: 12px; }
   .project-status.done { background: #e3eddd; }
-  .project-difficulty { display: inline-block; padding: 3px 9px; border: 1px solid #d7d9cf; border-radius: 999px; font-size: 12px; font-weight: 600; }
   .project-apply { max-width: 620px; margin: 18px 0; padding: 16px; border: 1px solid #dcded4; background: #fafbf7; }
   .project-apply h2 { margin: 0 0 6px; font-size: 16px; }
   .project-apply p { margin: 0 0 8px; color: #6f7b6d; font-size: 13px; }
   .project-apply textarea { width: 100%; padding: 9px; border: 1px solid #b9c3b3; background: #fff; color: #252b26; font: inherit; resize: vertical; }
+  .project-apply label { display: grid; gap: 4px; margin-bottom: 8px; color: #52695a; font-size: 13px; }
+  .project-apply input { width: 100%; padding: 8px; border: 1px solid #b9c3b3; background: #fff; color: #252b26; font: inherit; }
   .project-apply .message { margin: 8px 0; }
   .project-apply-hint { color: #6f7b6d; font-size: 13px; }
   .follow-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: -8px 0 18px; }
   .follow-button { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border: 1px solid #b9c3b3; border-radius: 999px; background: #fff; color: #34553a; font-size: 13px; }
   .follow-button.following { border-color: #e3bcc4; background: #fff4f6; color: #a84358; }
   .follow-error { color: #9b402c; font-size: 12px; }
-  .difficulty-D { color: #6b6f66; background: #f1f2ed; }
-  .difficulty-C { color: #3f5d3a; background: #eef3e8; border-color: #c8d4c0; }
-  .difficulty-B { color: #285a78; background: #e8f4fb; border-color: #a9cde4; }
-  .difficulty-A { color: #7a4b12; background: #fff3df; border-color: #e5c68e; }
-  .difficulty-S { color: #7b2340; background: #fbe9ef; border-color: #e3b3c2; box-shadow: 0 0 8px rgba(170, 50, 90, 0.16); }
+  .confirmed { color: #4d6448; font-size: 12px; font-weight: 600; }
   .project-stage { color: #818b7f; font-size: 12px; }
   .project-owner { margin: 0 0 10px; color: #818b7f; font-size: 13px; }
+  .owner-avatar { width: 22px; height: 22px; margin-right: 6px; border-radius: 50%; object-fit: cover; vertical-align: middle; background: #dce8d2; }
   .project-card p { margin: 0 0 10px; }
   .project-card p.project-owner { margin-bottom: 0; }
   .project-description { margin-top: 16px; max-width: 70ch; white-space: pre-wrap; }
@@ -454,21 +558,37 @@
   .career-card { padding: 14px; border: 1px solid #dcded4; background: #fafbf7; }
   .career-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
   .career-head h3 { margin: 0; font-size: 15px; }
-  .career-head span { color: #4d6448; font-size: 12px; }
+  .career-head span { font-size: 12px; }
   .career-card p { margin: 6px 0; color: #6f7b6d; font-size: 13px; }
   .career-card small { color: #818b7f; font-size: 12px; }
   .career-card .progress { height: 6px; margin: 8px 0 4px; background: #e6ebe1; }
   .career-card .progress span { display: block; height: 100%; background: #6f9661; }
+  .milestones { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
   .tab-empty { padding: 20px 0; color: #818b7f; }
+  .home-shelf { margin: 34px 0; }
+  .shelf-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+  .shelf-head h2 { margin: 0; font-size: 20px; }
+  .shelf-head a { color: #52695a; font-size: 13px; text-decoration: none; }
+  .shelf-head a:hover { text-decoration: underline; }
+  .home-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 18px; }
+  .yt-card { display: block; color: inherit; text-decoration: none; }
+  /* shortcut: 缩略图为冒险风格占位图，项目封面（media_assets）上传链路落地后替换 */
+  .yt-thumb { position: relative; display: block; aspect-ratio: 16 / 9; border-radius: 10px; background: linear-gradient(135deg, #dbe7d8, #a9c29e); }
+  .yt-thumb.yt-dungeon { background: linear-gradient(135deg, #d9e2f2, #9db6dd); }
+  .yt-thumb.yt-boss { background: linear-gradient(135deg, #f2d9d9, #dd9d9d); }
+  .yt-thumb.yt-hardware { background: linear-gradient(135deg, #dfe3ea, #aab4c2); }
+  .yt-badge { position: absolute; top: 8px; right: 8px; }
+  .yt-body { display: flex; gap: 10px; margin-top: 10px; }
+  .yt-avatar { flex: none; width: 34px; height: 34px; border-radius: 50%; object-fit: cover; background: #dce8d2; }
+  .yt-card h3 { margin: 0; font-size: 15px; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .yt-meta { margin: 3px 0 0; color: #818b7f; font-size: 12px; overflow-wrap: anywhere; }
+  .engineer-grid { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+  .engineer-card { display: flex; flex-direction: column; align-items: center; padding: 20px 12px; border: 1px solid #dcded4; border-radius: 10px; background: #fafbf7; color: inherit; text-decoration: none; text-align: center; }
+  .engineer-avatar { width: 72px; height: 72px; border-radius: 50%; object-fit: cover; background: #dce8d2; }
+  .engineer-card h3 { margin: 10px 0 0; font-size: 15px; }
   .like-button { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border: 1px solid #d6ddd2; border-radius: 999px; background: #fff; color: #52695a; font-size: 12px; cursor: pointer; }
   .like-button.liked { color: #a84358; border-color: #e3bcc4; background: #fff4f6; }
   .like-count { color: #a84358; font-size: 12px; }
   .recognized { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border: 1px solid transparent; border-radius: 999px; font-size: 11px; font-weight: 600; letter-spacing: 0.02em; }
   .recognized::before { content: '✦'; }
-  .tier-1 { color: #4d6b3f; background: #e8f0e0; border-color: #c4d8b4; }
-  .tier-2 { color: #285a78; background: linear-gradient(135deg, #e8f4fb, #d6e9f7); border-color: #a9cde4; }
-  .tier-3 { color: #7a5a12; background: linear-gradient(135deg, #fff7d6, #f2d98b); border-color: #e2c25e; box-shadow: 0 0 0 1px #f6e7b0 inset, 0 2px 6px rgba(180, 140, 20, 0.18); }
-  .tier-4 { color: #fff; background: linear-gradient(120deg, #7c4dff, #d04dff, #ffb84d, #7c4dff); background-size: 300% 300%; border-color: #e0c7ff; box-shadow: 0 0 12px rgba(160, 80, 255, 0.45); animation: recognized-shine 6s linear infinite; }
-  @keyframes recognized-shine { to { background-position: 300% 50%; } }
-  @media (prefers-reduced-motion: reduce) { .tier-4 { animation: none; } }
 </style>

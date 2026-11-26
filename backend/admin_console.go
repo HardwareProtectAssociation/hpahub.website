@@ -169,6 +169,23 @@ func bindAdminConsoleRoutes(e *core.ServeEvent) {
 			if err := tx.Save(request); err != nil {
 				return e.InternalServerError("Unable to save application.", err)
 			}
+			// Send system message to applicant
+			projectTitle := ""
+			if project, err := tx.FindRecordById("projects", request.GetString("project_id")); err == nil {
+				projectTitle = project.GetString("title")
+			}
+			applicantID := request.GetString("user_id")
+			if input.Status == "accepted" {
+				sendSystemMessage(tx, applicantID,
+					"申请已通过",
+					"你对项目「"+projectTitle+"」的申请已通过，欢迎加入！",
+					"project_approval", request.GetString("project_id"))
+			} else {
+				sendSystemMessage(tx, applicantID,
+					"申请未通过",
+					"你对项目「"+projectTitle+"」的申请未通过。如有疑问请联系管理员。",
+					"project_approval", request.GetString("project_id"))
+			}
 			if input.Status == "accepted" {
 				projectID := request.GetString("project_id")
 				userID := request.GetString("user_id")

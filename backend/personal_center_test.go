@@ -48,6 +48,8 @@ func TestPersonalCenterData(t *testing.T) {
 	centerTestSave(t, app, preferences)
 
 	completed := centerTestProject(t, app, user, "已完成的键盘项目", "completed")
+	completed.Set("difficulty", "B")
+	centerTestSave(t, app, completed)
 	joined := centerTestProject(t, app, other, "参与的固件项目", "ongoing")
 	membership := centerTestRecord(t, app, "project_members")
 	membership.Set("project_id", joined.Id)
@@ -56,6 +58,12 @@ func TestPersonalCenterData(t *testing.T) {
 	membership.Set("joined_at", time.Now())
 	membership.Set("duties", "负责外壳与结构")
 	centerTestSave(t, app, membership)
+
+	follow := centerTestRecord(t, app, "member_relations")
+	follow.Set("actor_user_id", other.Id)
+	follow.Set("target_user_id", user.Id)
+	follow.Set("relation", "admire")
+	centerTestSave(t, app, follow)
 
 	// A confirmed task contribution and a closed ballot produce one career badge.
 	task := centerTestRecord(t, app, "project_tasks")
@@ -124,11 +132,14 @@ func TestPersonalCenterData(t *testing.T) {
 	if data.Preferences == nil || len(data.Preferences.ExpectedRewardTypes) != 2 {
 		t.Fatalf("unexpected preferences: %+v", data.Preferences)
 	}
-	if len(data.Projects.Completed) != 1 || data.Projects.Completed[0].ID != completed.Id {
+	if len(data.Projects.Completed) != 1 || data.Projects.Completed[0].ID != completed.Id || data.Projects.Completed[0].Difficulty != "B" {
 		t.Fatalf("unexpected completed projects: %+v", data.Projects.Completed)
 	}
-	if len(data.Projects.Participating) != 1 || data.Projects.Participating[0].ID != joined.Id {
-		t.Fatalf("unexpected participating projects: %+v", data.Projects.Participating)
+	if len(data.Projects.Participated) != 1 || data.Projects.Participated[0].ID != joined.Id {
+		t.Fatalf("unexpected participating projects: %+v", data.Projects.Participated)
+	}
+	if data.Relations.AdmireCount != 1 {
+		t.Fatalf("unexpected relations: %+v", data.Relations)
 	}
 	if len(data.Badges) != 1 {
 		t.Fatalf("unexpected badges: %+v", data.Badges)
@@ -448,7 +459,7 @@ func TestSkillLikes(t *testing.T) {
 		t.Fatalf("unlike = %d %+v", status, body)
 	}
 
-	cases := map[int]int{0: 0, 10: 0, 11: 1, 29: 1, 30: 2, 59: 2, 60: 3, 99: 3, 100: 4}
+	cases := map[int]int{0: 0, 9: 0, 10: 1, 49: 1, 50: 2, 99: 2, 100: 3, 999: 3, 1000: 4, 4999: 4, 5000: 5}
 	for count, tier := range cases {
 		if got := centerLikeTier(count); got != tier {
 			t.Fatalf("tier(%d) = %d, want %d", count, got, tier)
@@ -471,6 +482,7 @@ func TestPublicMemberSkills(t *testing.T) {
 	userSkill.Set("skill_id", skill.Id)
 	userSkill.Set("proficiency", "比较熟练")
 	userSkill.Set("ability_note", "公开技能说明")
+	userSkill.Set("featured", true)
 	centerTestSave(t, app, userSkill)
 
 	like := centerTestRecord(t, app, "user_skill_likes")
@@ -487,6 +499,9 @@ func TestPublicMemberSkills(t *testing.T) {
 	}
 	if skills[0]["proficiency"] != "比较熟练" {
 		t.Fatalf("unexpected proficiency: %+v", skills[0])
+	}
+	if skills[0]["featured"] != true {
+		t.Fatalf("unexpected featured flag: %+v", skills[0])
 	}
 	skills, err = publicMemberSkills(&core.RequestEvent{App: app, Auth: owner}, owner)
 	if err != nil {
@@ -527,7 +542,7 @@ func TestPersonalCenterSkillCRUD(t *testing.T) {
 		return response
 	}
 
-	response := request("POST", "/api/hpahub/me/skills", `{"name":"页面作品技能","proficiency":"略懂一二","abilityNote":"说明","links":["https://example.com/a"]}`)
+	response := request("POST", "/api/hpahub/me/skills", `{"name":"页面作品技能","proficiency":"略懂一二","abilityNote":"说明","links":["https://example.com/a"],"featured":true}`)
 	if response.Code != http.StatusOK {
 		t.Fatalf("create status = %d: %s", response.Code, response.Body.String())
 	}
@@ -538,7 +553,7 @@ func TestPersonalCenterSkillCRUD(t *testing.T) {
 		t.Fatalf("create response: %s", response.Body.String())
 	}
 	path := "/api/hpahub/me/skills/" + created.UserSkillID
-	response = request("PATCH", path, `{"name":"页面作品技能改","proficiency":"非常熟练","abilityNote":"新说明","links":["https://example.com/b"]}`)
+	response = request("PATCH", path, `{"name":"页面作品技能改","proficiency":"非常熟练","abilityNote":"新说明","links":["https://example.com/b"],"featured":true}`)
 	if response.Code != http.StatusOK {
 		t.Fatalf("update status = %d: %s", response.Code, response.Body.String())
 	}
@@ -546,7 +561,7 @@ func TestPersonalCenterSkillCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(data.Skills) != 1 || data.Skills[0].Name != "页面作品技能改" || len(data.Skills[0].Links) != 1 || data.Skills[0].Links[0] != "https://example.com/b" {
+	if len(data.Skills) != 1 || data.Skills[0].Name != "页面作品技能改" || len(data.Skills[0].Links) != 1 || data.Skills[0].Links[0] != "https://example.com/b" || !data.Skills[0].Featured {
 		t.Fatalf("unexpected skill: %+v", data.Skills)
 	}
 	if response := request("PATCH", path, `{"name":"x","proficiency":"非常熟练","links":["javascript:alert(1)"]}`); response.Code != http.StatusBadRequest {

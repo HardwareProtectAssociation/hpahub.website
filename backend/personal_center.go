@@ -54,6 +54,7 @@ type centerSkill struct {
 	LikeCount   int      `json:"likeCount"`
 	LikeTier    int      `json:"likeTier"`
 	LikedByMe   bool     `json:"likedByMe"`
+	Featured    bool     `json:"featured"`
 }
 
 type centerSkillPayload struct {
@@ -61,6 +62,7 @@ type centerSkillPayload struct {
 	Proficiency string   `json:"proficiency"`
 	AbilityNote string   `json:"abilityNote"`
 	Links       []string `json:"links"`
+	Featured    bool     `json:"featured"`
 }
 
 type centerSkillInput struct {
@@ -93,6 +95,7 @@ type centerProject struct {
 	Summary        string `json:"summary"`
 	Status         string `json:"status"`
 	ReviewStatus   string `json:"reviewStatus"`
+	Difficulty     string `json:"difficulty"`
 	AdventureStyle string `json:"adventureStyle"`
 	Relation       string `json:"relation"`
 	Duties         string `json:"duties"`
@@ -113,18 +116,22 @@ type centerBadge struct {
 }
 
 type centerProjects struct {
-	Participating []centerProject `json:"participating"`
-	Completed     []centerProject `json:"completed"`
+	Initiated    []centerProject `json:"initiated"`
+	Participated []centerProject `json:"participated"`
+	Completed    []centerProject `json:"completed"`
+	Assisted     []centerProject `json:"assisted"`
+	Followed     []centerProject `json:"followed"`
 }
 
 type centerResponse struct {
-	Profile         centerProfile      `json:"profile"`
-	Identities      []centerIdentity   `json:"identities"`
-	IdentityOptions []centerIdentity   `json:"identityOptions"`
-	Projects        centerProjects     `json:"projects"`
-	Badges          []centerBadge      `json:"badges"`
-	Skills          []centerSkill      `json:"skills"`
-	Preferences     *centerPreferences `json:"preferences"`
+	Profile         centerProfile         `json:"profile"`
+	Identities      []centerIdentity      `json:"identities"`
+	IdentityOptions []centerIdentity      `json:"identityOptions"`
+	Projects        centerProjects        `json:"projects"`
+	Badges          []centerBadge         `json:"badges"`
+	Skills          []centerSkill         `json:"skills"`
+	Preferences     *centerPreferences    `json:"preferences"`
+	Relations       memberRelationSummary `json:"relations"`
 }
 
 func centerSkillProficiency(value string) string {
@@ -345,13 +352,15 @@ func centerOwnedSkill(app core.App, ownerID, id string) (*core.Record, error) {
 
 func centerLikeTier(count int) int {
 	switch {
-	case count >= 100:
+	case count >= 5000:
+		return 5
+	case count >= 1000:
 		return 4
-	case count >= 60:
+	case count >= 100:
 		return 3
-	case count >= 30:
+	case count >= 50:
 		return 2
-	case count > 10:
+	case count >= 10:
 		return 1
 	}
 	return 0
@@ -646,6 +655,7 @@ func bindPersonalCenterRoutes(e *core.ServeEvent) {
 		row.Set("proficiency", input.Proficiency)
 		row.Set("ability_note", input.AbilityNote)
 		row.Set("links", input.Links)
+		row.Set("featured", input.Featured)
 		if err := e.App.Save(row); err != nil {
 			return e.InternalServerError("Unable to save skill.", err)
 		}
@@ -692,6 +702,7 @@ func bindPersonalCenterRoutes(e *core.ServeEvent) {
 		row.Set("proficiency", input.Proficiency)
 		row.Set("ability_note", input.AbilityNote)
 		row.Set("links", input.Links)
+		row.Set("featured", input.Featured)
 		if err := e.App.Save(row); err != nil {
 			return e.InternalServerError("Unable to save skill.", err)
 		}
@@ -935,8 +946,11 @@ func personalCenterData(app core.App, auth *core.Record) (centerResponse, error)
 		Identities:      []centerIdentity{},
 		IdentityOptions: []centerIdentity{},
 		Projects: centerProjects{
-			Participating: []centerProject{},
-			Completed:     []centerProject{},
+			Initiated:    []centerProject{},
+			Participated: []centerProject{},
+			Completed:    []centerProject{},
+			Assisted:     []centerProject{},
+			Followed:     []centerProject{},
 		},
 		Badges: []centerBadge{},
 		Skills: []centerSkill{},
@@ -1032,6 +1046,7 @@ func personalCenterData(app core.App, auth *core.Record) (centerResponse, error)
 			LikeCount:   likeCount,
 			LikeTier:    centerLikeTier(likeCount),
 			LikedByMe:   likedByMe,
+			Featured:    row.GetBool("featured"),
 		})
 	}
 
@@ -1068,16 +1083,23 @@ func personalCenterData(app core.App, auth *core.Record) (centerResponse, error)
 			Summary:        project.GetString("summary"),
 			Status:         project.GetString("execution_status"),
 			ReviewStatus:   project.GetString("review_status"),
+			Difficulty:     project.GetString("difficulty"),
 			AdventureStyle: project.GetString("adventure_style"),
 			Relation:       relation,
 			Duties:         duties,
 			Updated:        project.GetString("updated"),
 		}
-		if relation == "owner" && item.Status == "completed" {
-			response.Projects.Completed = append(response.Projects.Completed, item)
-			return
+		if relation == "owner" {
+			response.Projects.Initiated = append(response.Projects.Initiated, item)
+			if item.Status == "completed" {
+				response.Projects.Completed = append(response.Projects.Completed, item)
+			}
+		} else {
+			response.Projects.Participated = append(response.Projects.Participated, item)
+			if item.Status == "completed" {
+				response.Projects.Assisted = append(response.Projects.Assisted, item)
+			}
 		}
-		response.Projects.Participating = append(response.Projects.Participating, item)
 	}
 
 	owned, err := app.FindRecordsByFilter("projects", "owner_user_id = {:user}", "-updated", 0, 0, dbx.Params{"user": owner.Id})
@@ -1102,8 +1124,38 @@ func personalCenterData(app core.App, auth *core.Record) (centerResponse, error)
 		}
 		addProject(project, relation, membership.GetString("duties"))
 	}
-	sortCenterProjects(response.Projects.Participating)
+	// Add followed projects (not already in initiated/participated)
+	follows, err := app.FindRecordsByFilter("project_follows", `user_id = {:user} && is_active = true`, "", 0, 0, dbx.Params{"user": owner.Id})
+	if err != nil {
+		return response, err
+	}
+	for _, follow := range follows {
+		project, err := app.FindRecordById("projects", follow.GetString("project_id"))
+		if err != nil || project.GetString("review_status") != "approved" || project.GetString("deleted_at") != "" {
+			continue
+		}
+		if seen[project.Id] {
+			continue
+		}
+		seen[project.Id] = true
+		item := centerProject{
+			ID:             project.Id,
+			Title:          project.GetString("title"),
+			Summary:        project.GetString("summary"),
+			Status:         project.GetString("execution_status"),
+			ReviewStatus:   project.GetString("review_status"),
+			Difficulty:     project.GetString("difficulty"),
+			AdventureStyle: project.GetString("adventure_style"),
+			Relation:       "followed",
+			Updated:        project.GetString("updated"),
+		}
+		response.Projects.Followed = append(response.Projects.Followed, item)
+	}
+	sortCenterProjects(response.Projects.Initiated)
+	sortCenterProjects(response.Projects.Participated)
 	sortCenterProjects(response.Projects.Completed)
+	sortCenterProjects(response.Projects.Assisted)
+	sortCenterProjects(response.Projects.Followed)
 	sort.SliceStable(response.Identities, func(i, j int) bool {
 		if response.Identities[i].Category != response.Identities[j].Category {
 			return response.Identities[i].Category < response.Identities[j].Category
@@ -1117,6 +1169,11 @@ func personalCenterData(app core.App, auth *core.Record) (centerResponse, error)
 		return response, err
 	}
 	response.Badges = badges
+	relations, err := memberRelationSummaryData(app, owner.Id, "")
+	if err != nil {
+		return response, err
+	}
+	response.Relations = relations
 	return response, nil
 }
 
