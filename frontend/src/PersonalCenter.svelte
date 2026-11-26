@@ -114,10 +114,8 @@
     return Math.max(0, Math.min(100, Math.round(((badge.totalXp - badge.levelMinXp) / span) * 100)));
   }
 
-  function milestones(badge) {
-    const list = [];
-    for (let level = 10; level <= (badge.maxLevel || 0); level += 10) list.push(level);
-    return list;
+  function medalLevel(level) {
+    return Math.floor((level || 0) / 10) * 10;
   }
 
   function startEdit() {
@@ -617,11 +615,11 @@
                   {:else}
                     <small>{$t('已达到当前最高等级')}</small>
                   {/if}
-                  <div class="milestones" aria-label={$t('徽章占位')}>
-                    {#each milestones(badge) as milestone}
-                      <span class:earned={badge.level >= milestone} class="milestone" title={`Lv.${milestone} ${$t('徽章占位')}`}>{milestone}</span>
-                    {/each}
-                  </div>
+                  {#if medalLevel(badge.level) >= 10}
+                    <div class="milestones" aria-label={$t('徽章占位')}>
+                      <span class={`medal ${medalLevel(badge.level) >= 50 ? `medal-${medalLevel(badge.level)}` : ''}`} title={`Lv.${badge.level} ${$t('徽章占位')}`}>{medalLevel(badge.level)}</span>
+                    </div>
+                  {/if}
                 </div>
               </li>
             {/each}
@@ -872,8 +870,15 @@
   .badge-body small { color: #818b7f; font-size: 12px; }
   .badge-hint { margin: 6px 0 0 !important; font-size: 12px !important; color: #8b9587 !important; }
   .milestones { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
-  .milestone { display: grid; width: 18px; height: 18px; place-items: center; border: 1px dashed #b9c3b3; border-radius: 50%; color: #9aa596; font-size: 9px; line-height: 1; }
-  .milestone.earned { border-style: solid; border-color: #6f9661; background: #e3eddd; color: #3f5d3a; }
+  .medal { display: grid; width: 26px; height: 26px; place-items: center; border: 1px solid #6f9661; border-radius: 50%; background: #e3eddd; color: #3f5d3a; font-size: 10px; font-weight: 600; line-height: 1; }
+  .medal-100, .medal-90, .medal-80, .medal-70, .medal-60, .medal-50 { color: #fff; border-color: transparent; background-color: transparent; background-size: 300% 300%; animation: recognized-shine 5s linear infinite; }
+  .medal-100 { position: relative; background-image: linear-gradient(120deg, #ff5cb8, #ff8a5c, #ffd24d, #5ce08a, #4dc9ff, #7c4dff, #ff5cb8); box-shadow: 0 0 12px rgba(120, 160, 255, 0.6), 0 0 4px rgba(255, 255, 255, 0.7) inset; }
+  .medal-100::after { content: ''; position: absolute; inset: 0; border-radius: inherit; background-image: radial-gradient(1.5px 1.5px at 22% 30%, #fff, transparent), radial-gradient(1px 1px at 68% 24%, #fff, transparent), radial-gradient(1.5px 1.5px at 42% 72%, #fff, transparent), radial-gradient(1px 1px at 80% 62%, #fff, transparent); background-size: 26px 100%; animation: tier5-sparkle 2.4s linear infinite; pointer-events: none; }
+  .medal-90 { background-image: linear-gradient(120deg, #ff5cb8, #ff8a5c, #ffd24d, #5ce08a, #4dc9ff, #7c4dff, #ff5cb8); }
+  .medal-80 { background-image: linear-gradient(120deg, #0f7a4d, #5ce0a0, #0f7a4d, #7ef0c0, #0f7a4d); box-shadow: 0 0 8px rgba(40, 180, 120, 0.5); }
+  .medal-70 { background-image: linear-gradient(100deg, #aa771c, #fcf6ba, #b38728, #fbf5b7, #aa771c); }
+  .medal-60 { background-image: linear-gradient(100deg, #9aa2ab, #ffffff, #b8c0c8, #f2f4f6, #9aa2ab); }
+  .medal-50 { background-image: linear-gradient(100deg, #8c4a21, #e8b88a, #b87333, #f0c9a4, #8c4a21); }
   .progress { height: 6px; margin: 8px 0 4px; background: #e6e9df; }
   .progress span { display: block; height: 100%; background: #6f9661; }
   .skill-card { padding-top: 12px; border-top: 1px solid #e6e9df; }
@@ -911,7 +916,7 @@
   .tier-5::after { content: ''; position: absolute; inset: 0; border-radius: inherit; background-image: radial-gradient(2px 2px at 18% 32%, #fff, transparent), radial-gradient(1.5px 1.5px at 68% 22%, #fff, transparent), radial-gradient(2px 2px at 42% 72%, #fff, transparent), radial-gradient(1.5px 1.5px at 86% 62%, #fff, transparent), radial-gradient(1px 1px at 32% 52%, #fff, transparent), radial-gradient(1.5px 1.5px at 58% 82%, #fff, transparent); background-size: 72px 100%; animation: tier5-sparkle 2.4s linear infinite; pointer-events: none; }
   @keyframes tier5-sparkle { 0% { background-position: 0 0; opacity: 0.25; } 50% { opacity: 1; } 100% { background-position: 72px 0; opacity: 0.25; } }
   @keyframes recognized-shine { to { background-position: 300% 50%; } }
-  @media (prefers-reduced-motion: reduce) { .tier-4, .tier-5, .tier-5::after { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { .tier-4, .tier-5, .tier-5::after, .medal-100, .medal-90, .medal-80, .medal-70, .medal-60, .medal-50, .medal-100::after { animation: none; } }
   @media (max-width: 600px) { .center-grid { grid-template-columns: 1fr; } .edit-grid, .contact-row { grid-template-columns: 1fr; } }
   .reward-note { margin: 12px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
   .center-empty { color: #818b7f; font-size: 13px; }
