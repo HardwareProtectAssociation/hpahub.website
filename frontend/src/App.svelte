@@ -7,6 +7,7 @@
   import SkillEditor from './SkillEditor.svelte';
   import AdminDirectory from './AdminDirectory.svelte';
   import MyProjects from './MyProjects.svelte';
+  import Messages from './Messages.svelte';
   import PublicPages from './PublicPages.svelte';
   import Editors from './Editors.svelte';
 
@@ -25,6 +26,8 @@
   let password = '';
   let role = 'guest';
   $: isAdmin = role === 'admin' || role === 'octopus';
+  let unreadMessages = 0;
+  let messagePollTimer = null;
   $: isOctopus = role === 'octopus';
   let policy = { intervalHours: 0, retainCount: 10 };
   let backups = [];
@@ -154,6 +157,7 @@
   function logout() {
     menuOpen = false;
     clearTimeout(expiryTimer);
+    if (messagePollTimer) clearInterval(messagePollTimer);
     token = '';
     collection = '';
     role = 'guest';
@@ -242,6 +246,8 @@
       sessionStorage.setItem('authToken', token);
       scheduleExpiry();
       role = (await request('/api/hpahub/me')).role;
+      fetchUnreadMessages();
+      messagePollTimer = setInterval(fetchUnreadMessages, 60000);
       if (['admin', 'octopus'].includes(role) && new URLSearchParams(location.search).has('console')) await openConsole();
     } catch (err) {
       logout();
@@ -250,6 +256,14 @@
       checking = false;
     }
   });
+
+  async function fetchUnreadMessages() {
+    if (!token) return;
+    try {
+      const result = await request('/api/hpahub/me/messages/unread-count');
+      unreadMessages = result.unreadCount || 0;
+    } catch {}
+  }
 </script>
 
 <svelte:head><title>HPA Hub</title></svelte:head>
@@ -268,6 +282,7 @@
       <a class="text-button" href="/showcase">{$t('项目大厅')}</a>
       {#if token && !checking}
         <a class="text-button" href="/me">{$t('个人中心')}</a>
+        {#if ['member', 'admin', 'octopus'].includes(role)}<a class="text-button" href="/messages">{$t('站内消息')}{#if unreadMessages > 0}<span class="nav-badge">{unreadMessages}</span>{/if}</a>{/if}
         {#if ['member', 'admin', 'octopus'].includes(role)}<a class="text-button" href="/my-projects">{$t('我的项目')}</a>{/if}
         {#if ['member', 'admin'].includes(role)}<a class="text-button" href="/settings">{$t('个人设置')}</a>{/if}
         {#if isAdmin}
@@ -301,6 +316,12 @@
       <SkillEditor {token} />
     {:else}
       <main class="dashboard"><h1>{$t('技能管理')}</h1><p>{$t('请先登录后管理技能。')}</p><a href="/sign-in">{$t('登录')}</a></main>
+    {/if}
+  {:else if pathname === '/messages'}
+    {#if token}
+      <Messages {token} />
+    {:else}
+      <main class="dashboard"><h1>{$t('站内消息')}</h1><p>{$t('请先登录后查看消息。')}</p><a href="/sign-in">{$t('登录')}</a></main>
     {/if}
   {:else if pathname === '/my-projects'}
     {#if token}

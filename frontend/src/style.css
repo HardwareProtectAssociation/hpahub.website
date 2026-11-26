@@ -25,6 +25,7 @@
 .sidebar-footer { display: grid; gap: 8px; margin-top: auto; padding-top: 14px; border-top: 1px solid #e2e6dd; }
 .sidebar-footer label { display: block; }
 .sidebar-footer select { width: 100%; }
+.nav-badge { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: #e36b82; color: #fff; font-size: 11px; line-height: 1.4; }
 .menu-toggle, .menu-backdrop { display: none; }
 @media (max-width: 800px) {
   .topbar { position: fixed; z-index: 21; right: 20px; bottom: calc(86px + env(safe-area-inset-bottom)); width: min(260px, calc(100vw - 40px)); height: auto; max-height: calc(100dvh - 110px); overflow-y: auto; padding: 22px; border: 1px solid #dcded4; border-radius: 8px; box-shadow: 0 12px 32px #263a2c24; display: none; }
