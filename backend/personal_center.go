@@ -54,6 +54,7 @@ type centerSkill struct {
 	LikeCount   int      `json:"likeCount"`
 	LikeTier    int      `json:"likeTier"`
 	LikedByMe   bool     `json:"likedByMe"`
+	Featured    bool     `json:"featured"`
 }
 
 type centerSkillPayload struct {
@@ -61,6 +62,7 @@ type centerSkillPayload struct {
 	Proficiency string   `json:"proficiency"`
 	AbilityNote string   `json:"abilityNote"`
 	Links       []string `json:"links"`
+	Featured    bool     `json:"featured"`
 }
 
 type centerSkillInput struct {
@@ -653,6 +655,7 @@ func bindPersonalCenterRoutes(e *core.ServeEvent) {
 		row.Set("proficiency", input.Proficiency)
 		row.Set("ability_note", input.AbilityNote)
 		row.Set("links", input.Links)
+		row.Set("featured", input.Featured)
 		if err := e.App.Save(row); err != nil {
 			return e.InternalServerError("Unable to save skill.", err)
 		}
@@ -699,6 +702,7 @@ func bindPersonalCenterRoutes(e *core.ServeEvent) {
 		row.Set("proficiency", input.Proficiency)
 		row.Set("ability_note", input.AbilityNote)
 		row.Set("links", input.Links)
+		row.Set("featured", input.Featured)
 		if err := e.App.Save(row); err != nil {
 			return e.InternalServerError("Unable to save skill.", err)
 		}
@@ -1042,6 +1046,7 @@ func personalCenterData(app core.App, auth *core.Record) (centerResponse, error)
 			LikeCount:   likeCount,
 			LikeTier:    centerLikeTier(likeCount),
 			LikedByMe:   likedByMe,
+			Featured:    row.GetBool("featured"),
 		})
 	}
 

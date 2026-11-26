@@ -482,6 +482,7 @@ func TestPublicMemberSkills(t *testing.T) {
 	userSkill.Set("skill_id", skill.Id)
 	userSkill.Set("proficiency", "比较熟练")
 	userSkill.Set("ability_note", "公开技能说明")
+	userSkill.Set("featured", true)
 	centerTestSave(t, app, userSkill)
 
 	like := centerTestRecord(t, app, "user_skill_likes")
@@ -498,6 +499,9 @@ func TestPublicMemberSkills(t *testing.T) {
 	}
 	if skills[0]["proficiency"] != "比较熟练" {
 		t.Fatalf("unexpected proficiency: %+v", skills[0])
+	}
+	if skills[0]["featured"] != true {
+		t.Fatalf("unexpected featured flag: %+v", skills[0])
 	}
 	skills, err = publicMemberSkills(&core.RequestEvent{App: app, Auth: owner}, owner)
 	if err != nil {
@@ -538,7 +542,7 @@ func TestPersonalCenterSkillCRUD(t *testing.T) {
 		return response
 	}
 
-	response := request("POST", "/api/hpahub/me/skills", `{"name":"页面作品技能","proficiency":"略懂一二","abilityNote":"说明","links":["https://example.com/a"]}`)
+	response := request("POST", "/api/hpahub/me/skills", `{"name":"页面作品技能","proficiency":"略懂一二","abilityNote":"说明","links":["https://example.com/a"],"featured":true}`)
 	if response.Code != http.StatusOK {
 		t.Fatalf("create status = %d: %s", response.Code, response.Body.String())
 	}
@@ -549,7 +553,7 @@ func TestPersonalCenterSkillCRUD(t *testing.T) {
 		t.Fatalf("create response: %s", response.Body.String())
 	}
 	path := "/api/hpahub/me/skills/" + created.UserSkillID
-	response = request("PATCH", path, `{"name":"页面作品技能改","proficiency":"非常熟练","abilityNote":"新说明","links":["https://example.com/b"]}`)
+	response = request("PATCH", path, `{"name":"页面作品技能改","proficiency":"非常熟练","abilityNote":"新说明","links":["https://example.com/b"],"featured":true}`)
 	if response.Code != http.StatusOK {
 		t.Fatalf("update status = %d: %s", response.Code, response.Body.String())
 	}
@@ -557,7 +561,7 @@ func TestPersonalCenterSkillCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(data.Skills) != 1 || data.Skills[0].Name != "页面作品技能改" || len(data.Skills[0].Links) != 1 || data.Skills[0].Links[0] != "https://example.com/b" {
+	if len(data.Skills) != 1 || data.Skills[0].Name != "页面作品技能改" || len(data.Skills[0].Links) != 1 || data.Skills[0].Links[0] != "https://example.com/b" || !data.Skills[0].Featured {
 		t.Fatalf("unexpected skill: %+v", data.Skills)
 	}
 	if response := request("PATCH", path, `{"name":"x","proficiency":"非常熟练","links":["javascript:alert(1)"]}`); response.Code != http.StatusBadRequest {

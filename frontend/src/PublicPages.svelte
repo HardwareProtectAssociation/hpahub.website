@@ -79,6 +79,8 @@
   $: shownProjects = home?.popularProjects?.length ? home.popularProjects : demoProjects;
   $: shownEngineers = home?.popularEngineers?.length ? home.popularEngineers : demoEngineers;
   $: shownHardware = home?.popularHardware?.length ? home.popularHardware : demoHardware;
+  $: featuredSkills = (data?.skills || []).filter((skill) => skill.featured);
+  $: shownSkills = featuredSkills.length ? featuredSkills : (data?.skills || []);
   const statusLabels = { ongoing: '进行中', paused: '暂停', terminated: '已中止', completed: '已完成' };
   const currentStatusLabels = { busy: '忙碌', free: '空闲' };
   const relationLabels = { admire: '关注', watch: '监视', investigate: '调查' };
@@ -268,7 +270,7 @@
   {:else if section === 'community'}
     {#if id}
       <a href="/community">{$t('返回成员列表')}</a><header class="profile-heading">{#if data.avatarUrl}<img class="avatar" src={data.avatarUrl} alt="" />{:else}<span class="avatar avatar-default" aria-hidden="true"></span>{/if}<div><h1>{data.name}</h1><p>{data.bio}</p>{#if data.currentStatus}<span class:busy={data.currentStatus === 'busy'} class="public-current-status">{$t('当前状态')}：{$t(currentStatusLabels[data.currentStatus] || data.currentStatus)}</span>{/if}</div></header>
-      {#if data.identities?.length}<div class="member-identities">{#each data.identities as identity}<span class="chip">{$t(identity.category === 'main' ? '主力职业' : '辅助职业')} · {identity.name}</span>{/each}</div>{/if}
+      {#if data.identities?.length}<div class="member-identities">{#each data.identities as identity}<span class={`rank rank-pill rank-${identity.category === 'main' ? 4 : 3}`}>{$t(identity.category === 'main' ? '主力职业' : '辅助职业')} · {identity.name}</span>{/each}</div>{/if}
       {#if data.relations}
         <div class="relation-panel">
           <div class="relation-counts">
@@ -293,7 +295,7 @@
         <button type="button" class:active={activeTab === 'completed'} on:click={() => activeTab = 'completed'}>{$t('完成项目')}<span>{data.projectsCompleted?.length || 0}</span></button>
         <button type="button" class:active={activeTab === 'ongoing'} on:click={() => activeTab = 'ongoing'}>{$t('进行中项目')}<span>{data.projectsOngoing?.length || 0}</span></button>
         <button type="button" class:active={activeTab === 'career'} on:click={() => activeTab = 'career'}>{$t('职业等级')}<span>{data.career?.length || 0}</span></button>
-        <button type="button" class:active={activeTab === 'skills'} on:click={() => activeTab = 'skills'}>{$t('技能展示')}<span>{data.skills?.length || 0}</span></button>
+        <button type="button" class:active={activeTab === 'skills'} on:click={() => activeTab = 'skills'}>{$t('技能展示')}<span>{shownSkills.length}</span></button>
       </nav>
       {#if activeTab === 'completed'}
         {#if data.projectsCompleted?.length}
@@ -347,9 +349,9 @@
         {/if}
       {:else if activeTab === 'skills'}
         {#if skillError}<p class="message error" role="alert">{$t(skillError)}</p>{/if}
-        {#if data.skills?.length}
+        {#if shownSkills.length}
           <ul class="public-skill-list">
-            {#each data.skills as skill (skill.userSkillId)}
+            {#each shownSkills as skill (skill.userSkillId)}
               <li class="public-skill">
                 <div class="public-skill-head"><strong>{skill.name}</strong>{#if skill.proficiency}<span class="meta">{$t('熟练程度')}：{$t(skill.proficiency)}</span>{/if}</div>
                 {#if skill.abilityNote}<p>{skill.abilityNote}</p>{/if}

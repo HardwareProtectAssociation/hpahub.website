@@ -436,7 +436,7 @@
         {#if featuredIdentities.length}
           <div class="chips">
             {#each featuredIdentities as identity}
-              <span class="chip">{$t(identity.category === 'main' ? '主力职业' : '辅助职业')} · {identity.name}</span>
+              <span class={`rank rank-pill rank-${identity.category === 'main' ? 4 : 3}`}>{$t(identity.category === 'main' ? '主力职业' : '辅助职业')} · {identity.name}</span>
             {/each}
           </div>
         {/if}
@@ -660,7 +660,7 @@
           <ul class="skill-list">
             {#each displaySkills as skill (skill.id)}
               <li class="skill-card">
-                <div class="skill-head"><strong>{skill.name}</strong>{#if skill.category}<span class="chip small">{$t(skill.category)}</span>{/if}</div>
+                <div class="skill-head"><strong>{skill.name}</strong>{#if skill.category}<span class="chip small">{$t(skill.category)}</span>{/if}{#if skill.featured}<span class="chip small">{$t('公开展示')}</span>{/if}</div>
                 {#if skill.proficiency}<span class="meta">{$t('熟练程度')}：{$t(skill.proficiency)}</span>{/if}
                 {#if skill.abilityNote}<p>{skill.abilityNote}</p>{/if}
                 {#if skill.images?.length}
