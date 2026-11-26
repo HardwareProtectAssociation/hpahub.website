@@ -299,7 +299,7 @@
                 <div class="project-meta"><span class="project-status done">{$t('已完成')}</span>{#if project.difficulty}<span class={`project-difficulty difficulty-${project.difficulty}`}>{$t('难度')} {project.difficulty}</span>{/if}</div>
                 <h2><a href={'/showcase/' + encodeURIComponent(project.id)}>{project.title}</a></h2>
                 <p>{project.summary}</p>
-                <p class="project-owner">{$t('负责人')}：{project.ownerName || '—'}{#if project.updated} · {$t('更新于')} {formatDate(project.updated)}{/if}</p>
+                <p class="project-owner">{#if project.ownerAvatarUrl}<img class="owner-avatar" src={project.ownerAvatarUrl} alt="" loading="lazy" />{:else}<span class="owner-avatar" aria-hidden="true"></span>{/if}{$t('负责人')}：{project.ownerName || '—'}{#if project.updated} · {$t('更新于')} {formatDate(project.updated)}{/if}</p>
               </article>
             {/each}
           </div>
@@ -314,7 +314,7 @@
                 <div class="project-meta"><span class="project-status">{$t('进行中')}</span>{#if project.difficulty}<span class={`project-difficulty difficulty-${project.difficulty}`}>{$t('难度')} {project.difficulty}</span>{/if}</div>
                 <h2><a href={'/showcase/' + encodeURIComponent(project.id)}>{project.title}</a></h2>
                 <p>{project.summary}</p>
-                <p class="project-owner">{$t('负责人')}：{project.ownerName || '—'}{#if project.updated} · {$t('更新于')} {formatDate(project.updated)}{/if}</p>
+                <p class="project-owner">{#if project.ownerAvatarUrl}<img class="owner-avatar" src={project.ownerAvatarUrl} alt="" loading="lazy" />{:else}<span class="owner-avatar" aria-hidden="true"></span>{/if}{$t('负责人')}：{project.ownerName || '—'}{#if project.updated} · {$t('更新于')} {formatDate(project.updated)}{/if}</p>
               </article>
             {/each}
           </div>
@@ -468,7 +468,7 @@
               <div class="project-meta"><span class:done={project.status === 'completed'} class="project-status">{statusLabel(project.status)}</span>{#if project.difficulty}<span class={`project-difficulty difficulty-${project.difficulty}`}>{$t('难度')} {project.difficulty}</span>{/if}</div>
               <h2><a href={'/showcase/' + encodeURIComponent(project.id)}>{project.title}</a></h2>
               <p>{project.summary}</p>
-              <p class="project-owner">{$t('负责人')}：{project.ownerName || '—'}{#if project.updated} · {$t('更新于')} {formatDate(project.updated)}{/if}</p>
+              <p class="project-owner">{#if project.ownerAvatarUrl}<img class="owner-avatar" src={project.ownerAvatarUrl} alt="" loading="lazy" />{:else}<span class="owner-avatar" aria-hidden="true"></span>{/if}{$t('负责人')}：{project.ownerName || '—'}{#if project.updated} · {$t('更新于')} {formatDate(project.updated)}{/if}</p>
             </article>
           {/each}
         </div>
@@ -502,6 +502,7 @@
   .difficulty-S { color: #7b2340; background: #fbe9ef; border-color: #e3b3c2; box-shadow: 0 0 8px rgba(170, 50, 90, 0.16); }
   .project-stage { color: #818b7f; font-size: 12px; }
   .project-owner { margin: 0 0 10px; color: #818b7f; font-size: 13px; }
+  .owner-avatar { width: 22px; height: 22px; margin-right: 6px; border-radius: 50%; object-fit: cover; vertical-align: middle; background: #dce8d2; }
   .project-card p { margin: 0 0 10px; }
   .project-card p.project-owner { margin-bottom: 0; }
   .project-description { margin-top: 16px; max-width: 70ch; white-space: pre-wrap; }

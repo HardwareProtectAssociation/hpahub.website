@@ -12,14 +12,15 @@ import (
 )
 
 type myProject struct {
-	ID           string `json:"id"`
-	Title        string `json:"title"`
-	Summary      string `json:"summary"`
-	Status       string `json:"status"`
-	ReviewStatus string `json:"reviewStatus"`
-	Difficulty   string `json:"difficulty"`
-	OwnerName    string `json:"ownerName"`
-	Updated      string `json:"updated"`
+	ID             string `json:"id"`
+	Title          string `json:"title"`
+	Summary        string `json:"summary"`
+	Status         string `json:"status"`
+	ReviewStatus   string `json:"reviewStatus"`
+	Difficulty     string `json:"difficulty"`
+	OwnerName      string `json:"ownerName"`
+	OwnerAvatarURL string `json:"ownerAvatarUrl"`
+	Updated        string `json:"updated"`
 }
 
 func bindMyProjectRoutes(e *core.ServeEvent) {
@@ -100,18 +101,23 @@ func bindMyProjectRoutes(e *core.ServeEvent) {
 		seen := map[string]bool{}
 		converted := func(project *core.Record) myProject {
 			ownerName := ""
+			ownerAvatarURL := ""
 			if owner, err := e.App.FindRecordById("users", project.GetString("owner_user_id")); err == nil {
 				ownerName = publicPersonName(owner)
+				if owner.GetString("avatar") != "" {
+					ownerAvatarURL = contentURL("members", owner.Id, "avatar")
+				}
 			}
 			return myProject{
-				ID:           project.Id,
-				Title:        project.GetString("title"),
-				Summary:      project.GetString("summary"),
-				Status:       project.GetString("execution_status"),
-				ReviewStatus: project.GetString("review_status"),
-				Difficulty:   project.GetString("difficulty"),
-				OwnerName:    ownerName,
-				Updated:      project.GetString("updated"),
+				ID:             project.Id,
+				Title:          project.GetString("title"),
+				Summary:        project.GetString("summary"),
+				Status:         project.GetString("execution_status"),
+				ReviewStatus:   project.GetString("review_status"),
+				Difficulty:     project.GetString("difficulty"),
+				OwnerName:      ownerName,
+				OwnerAvatarURL: ownerAvatarURL,
+				Updated:        project.GetString("updated"),
 			}
 		}
 		owned, err := e.App.FindRecordsByFilter("projects", `owner_user_id = {:user} && deleted_at = ""`, "-updated", 0, 0, dbx.Params{"user": member.Id})

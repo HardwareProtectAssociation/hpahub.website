@@ -8,8 +8,7 @@ import (
 
 type homeProject struct {
 	publicProject
-	FollowCount    int    `json:"followCount"`
-	OwnerAvatarURL string `json:"ownerAvatarUrl"`
+	FollowCount int `json:"followCount"`
 }
 
 type homeEngineer struct {
@@ -69,12 +68,7 @@ func homeHotProjects(e *core.RequestEvent) ([]homeProject, error) {
 		if project.GetString("deleted_at") != "" {
 			continue
 		}
-		summary := projectSummary(e, project, owners)
-		avatarURL := ""
-		if owner := owners[summary.OwnerID]; owner != nil && owner.GetString("avatar") != "" {
-			avatarURL = contentURL("members", owner.Id, "avatar")
-		}
-		items = append(items, homeProject{publicProject: summary, FollowCount: followCounts[project.Id], OwnerAvatarURL: avatarURL})
+		items = append(items, homeProject{publicProject: projectSummary(e, project, owners), FollowCount: followCounts[project.Id]})
 	}
 	sort.SliceStable(items, func(i, j int) bool {
 		if items[i].FollowCount != items[j].FollowCount {

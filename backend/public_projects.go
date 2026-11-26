@@ -19,6 +19,7 @@ type publicProject struct {
 	AdventureStyle string `json:"adventureStyle"`
 	OwnerID        string `json:"ownerId"`
 	OwnerName      string `json:"ownerName"`
+	OwnerAvatarURL string `json:"ownerAvatarUrl"`
 	PublishedAt    string `json:"publishedAt"`
 	Updated        string `json:"updated"`
 }
@@ -404,8 +405,12 @@ func projectSummary(e *core.RequestEvent, project *core.Record, owners map[strin
 		owners[ownerID] = owner
 	}
 	ownerName := ""
+	ownerAvatarURL := ""
 	if owner != nil {
 		ownerName = publicPersonName(owner)
+		if owner.GetString("avatar") != "" {
+			ownerAvatarURL = contentURL("members", owner.Id, "avatar")
+		}
 	}
 	return publicProject{
 		ID:             project.Id,
@@ -416,6 +421,7 @@ func projectSummary(e *core.RequestEvent, project *core.Record, owners map[strin
 		AdventureStyle: project.GetString("adventure_style"),
 		OwnerID:        ownerID,
 		OwnerName:      ownerName,
+		OwnerAvatarURL: ownerAvatarURL,
 		PublishedAt:    project.GetString("published_at"),
 		Updated:        project.GetString("updated"),
 	}

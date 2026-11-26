@@ -113,7 +113,7 @@
             </div>
             <h2><a href={'/showcase/' + encodeURIComponent(project.id)}>{project.title}</a></h2>
             <p>{project.summary}</p>
-            <p class="project-owner">{$t('负责人')}：{project.ownerName || '—'}{#if project.updated} · {$t('更新于')} {new Date(project.updated).toLocaleDateString()}{/if}</p>
+            <p class="project-owner">{#if project.ownerAvatarUrl}<img class="owner-avatar" src={project.ownerAvatarUrl} alt="" loading="lazy" />{:else}<span class="owner-avatar" aria-hidden="true"></span>{/if}{$t('负责人')}：{project.ownerName || '—'}{#if project.updated} · {$t('更新于')} {new Date(project.updated).toLocaleDateString()}{/if}</p>
           </article>
         {/each}
       </div>
@@ -173,6 +173,7 @@
   .difficulty-S { color: #7b2340; background: #fbe9ef; }
   .review { color: #818b7f; font-size: 12px; }
   .project-owner { margin-bottom: 0 !important; }
+  .owner-avatar { width: 22px; height: 22px; margin-right: 6px; border-radius: 50%; object-fit: cover; vertical-align: middle; background: #dce8d2; }
   .empty { padding: 30px 0; color: #818b7f; }
   .heading-actions { display: flex; gap: 10px; align-items: center; }
   .heading-actions .primary { min-height: 44px; padding: 0 18px; }
