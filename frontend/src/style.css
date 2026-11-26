@@ -61,3 +61,12 @@
 @keyframes rank-shine { to { background-position: 300% 50%; } }
 @keyframes rank-flash { 0%, 26%, 55%, 86%, 100% { opacity: 0; } 5%, 60% { opacity: 1; } 10%, 66% { opacity: 0.1; } 20%, 78% { opacity: 0.85; } }
 @media (prefers-reduced-motion: reduce) { .rank, .rank-5:not(.rank-text)::before, .rank-5:not(.rank-text)::after, .rank-5:not(.rank-text) .flash-layer { animation: none; } }
+
+.account-menu { position: relative; min-width: 0; }
+.account-button { display: flex; width: 100%; min-height: 48px; align-items: center; gap: 10px; padding: 6px 8px; border: 1px solid #dce3d8; border-radius: 4px; background: #fff; color: #354839; text-align: left; }
+.account-button:hover { background: #eef4eb; }
+.account-button img, .account-avatar-default { width: 34px; height: 34px; flex: none; border-radius: 50%; object-fit: cover; background: #dce8d2; }
+.account-id { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.account-popover { position: absolute; bottom: calc(100% + 6px); left: 0; right: 0; z-index: 2; display: grid; padding: 6px; border: 1px solid #dce3d8; border-radius: 4px; background: #fff; box-shadow: 0 8px 20px #263a2c20; }
+.account-popover a, .account-popover button { min-height: 44px; display: flex; align-items: center; padding: 8px 10px; border: 0; border-radius: 3px; background: transparent; color: #354839; font: inherit; text-align: left; text-decoration: none; }
+.account-popover a:hover, .account-popover button:hover { background: #e6eee0; }
