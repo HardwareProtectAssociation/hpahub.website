@@ -98,6 +98,19 @@ func TestAdminConsoleApplications(t *testing.T) {
 	if response := call("PATCH", "/api/hpahub/manage/applications/"+request.Id, applicantToken, `{"status":"accepted"}`); response.Code != http.StatusForbidden {
 		t.Fatalf("member approval status = %d, want 403", response.Code)
 	}
+	if _, err := app.DB().NewQuery(`CREATE TRIGGER fail_membership BEFORE INSERT ON project_members BEGIN SELECT RAISE(ABORT, 'test failure'); END`).Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if response := call("PATCH", "/api/hpahub/manage/applications/"+request.Id, adminToken, `{"status":"accepted"}`); response.Code != http.StatusInternalServerError {
+		t.Fatalf("failed approval status = %d, want 500", response.Code)
+	}
+	rolledBack, err := app.FindRecordById("project_join_requests", request.Id)
+	if err != nil || rolledBack.GetString("status") != "pending" {
+		t.Fatalf("request after failure = %+v, %v", rolledBack, err)
+	}
+	if _, err := app.DB().NewQuery(`DROP TRIGGER fail_membership`).Execute(); err != nil {
+		t.Fatal(err)
+	}
 	if response := call("PATCH", "/api/hpahub/manage/applications/"+request.Id, adminToken, `{"status":"accepted","note":"欢迎"}`); response.Code != http.StatusOK {
 		t.Fatalf("approval status = %d: %s", response.Code, response.Body.String())
 	}
