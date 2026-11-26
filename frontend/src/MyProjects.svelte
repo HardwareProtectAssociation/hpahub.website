@@ -7,6 +7,13 @@
   let activeTab = 'initiated';
   let loading = true;
   let error = '';
+  let showCreate = false;
+  let creating = false;
+  let newTitle = '';
+  let newSummary = '';
+  let newDifficulty = '';
+  let newStyle = 'project';
+  const difficultyLevels = ['D', 'C', 'B', 'A', 'S'];
 
   const statusLabels = { ongoing: '进行中', paused: '暂停', terminated: '已中止', completed: '已完成' };
   const reviewLabels = { pending: '待审核', approved: '已通过', rejected: '已拒绝' };
@@ -35,13 +42,46 @@
     return data[tab] || [];
   }
 
+  async function createProject() {
+    if (!newTitle.trim()) return;
+    creating = true;
+    error = '';
+    try {
+      const response = await fetch('/api/hpahub/me/projects', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: newTitle.trim(),
+          summary: newSummary.trim(),
+          proposedDifficulty: newDifficulty || undefined,
+          adventureStyle: newStyle,
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.message || '创建失败，请重试。');
+      showCreate = false;
+      newTitle = '';
+      newSummary = '';
+      newDifficulty = '';
+      newStyle = 'project';
+      await load();
+    } catch (err) {
+      error = err.message || String(err);
+    } finally {
+      creating = false;
+    }
+  }
+
   onMount(load);
 </script>
 
 <main class="dashboard my-projects">
   <div class="page-heading">
     <div><h1>{$t('我的项目')}<span class="heading-dot">.</span></h1><p>{$t('查看我发起、参与和关注的项目。')}</p></div>
-    <a class="secondary" href="/showcase">{$t('项目大厅')}</a>
+    <div class="heading-actions">
+      <button type="button" class="primary" on:click={() => { showCreate = true; }}>{$t('发起项目')}</button>
+      <a class="secondary" href="/showcase">{$t('项目大厅')}</a>
+    </div>
   </div>
   {#if loading}
     <p role="status">{$t('正在加载…')}</p>
@@ -75,6 +115,27 @@
   {/if}
 </main>
 
+{#if showCreate}
+  <div class="create-modal-backdrop" on:click={() => { showCreate = false; }} on:keydown={(e) => { if (e.key === 'Escape') showCreate = false; }} role="presentation">
+    <div class="create-modal" role="dialog" aria-modal="true" aria-label={$t('发起项目')} on:click|stopPropagation on:keydown|stopPropagation>
+      <div class="create-modal-head">
+        <h2>{$t('发起项目')}</h2>
+        <button type="button" class="create-modal-close" aria-label={$t('关闭')} on:click={() => { showCreate = false; }}>×</button>
+      </div>
+      <form class="create-form" on:submit|preventDefault={createProject}>
+        <label>{$t('项目名称')}<input bind:value={newTitle} maxlength="160" required placeholder={$t('输入项目名称')} /></label>
+        <label>{$t('项目简介')}<textarea bind:value={newSummary} maxlength="2000" rows="3" placeholder={$t('简单描述项目目标和内容')}></textarea></label>
+        <label>{$t('发起人自评难度')}<select bind:value={newDifficulty}><option value="">{$t('暂不设置')}</option>{#each difficultyLevels as level}<option value={level}>{level}</option>{/each}</select></label>
+        <label>{$t('冒险风格')}<select bind:value={newStyle}><option value="project">{$t('项目')}</option><option value="dungeon">{$t('地牢')}</option><option value="boss">{$t('Boss')}</option></select></label>
+        <div class="create-actions">
+          <button type="submit" class="primary" disabled={creating}>{creating ? $t('正在创建…') : $t('创建项目')}</button>
+          <button type="button" on:click={() => { showCreate = false; }}>{$t('取消')}</button>
+        </div>
+      </form>
+    </div>
+  </div>
+{/if}
+
 <style>
   .my-projects { width: min(1100px, 88%); }
   .my-projects .page-heading { margin-top: 0; align-items: center; gap: 20px; }
@@ -101,4 +162,16 @@
   .review { color: #818b7f; font-size: 12px; }
   .project-owner { margin-bottom: 0 !important; }
   .empty { padding: 30px 0; color: #818b7f; }
+  .heading-actions { display: flex; gap: 10px; align-items: center; }
+  .heading-actions .primary { min-height: 44px; padding: 0 18px; }
+  .create-modal-backdrop { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 20px; background: #1c302266; }
+  .create-modal { width: min(520px, 100%); max-height: calc(100dvh - 40px); overflow-y: auto; padding: 24px; border: 1px solid #dcded4; border-radius: 8px; background: #fbfcf8; box-shadow: 0 20px 50px #1c302233; }
+  .create-modal-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+  .create-modal-head h2 { margin: 0; font-size: 20px; }
+  .create-modal-close { border: 0; background: none; color: #52695a; font-size: 26px; line-height: 1; padding: 0 4px; cursor: pointer; }
+  .create-form { display: grid; gap: 12px; }
+  .create-form label { display: grid; gap: 5px; color: #52695a; font-size: 13px; }
+  .create-form input, .create-form select, .create-form textarea { width: 100%; padding: 9px; border: 1px solid #b9c3b3; background: #fff; color: #252b26; font: inherit; }
+  .create-form textarea { resize: vertical; }
+  .create-actions { display: flex; gap: 10px; margin-top: 8px; }
 </style>

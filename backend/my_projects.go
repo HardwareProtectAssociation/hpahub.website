@@ -3,7 +3,9 @@ package main
 import (
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
@@ -21,6 +23,65 @@ type myProject struct {
 }
 
 func bindMyProjectRoutes(e *core.ServeEvent) {
+	e.Router.POST("/api/hpahub/me/projects", func(e *core.RequestEvent) error {
+		noCache(e)
+		if e.Auth == nil {
+			return e.UnauthorizedError("Authentication required.", nil)
+		}
+		creator, ok, err := personalCenterOwner(e.App, e.Auth)
+		if err != nil {
+			return e.InternalServerError("Unable to create project.", err)
+		}
+		if !ok {
+			return e.ForbiddenError("No member profile is linked to this account.", nil)
+		}
+		var input struct {
+			Title              string `json:"title"`
+			Summary            string `json:"summary"`
+			ProposedDifficulty string `json:"proposedDifficulty"`
+			AdventureStyle     string `json:"adventureStyle"`
+		}
+		if err := e.BindBody(&input); err != nil {
+			return e.BadRequestError("Invalid project.", err)
+		}
+		input.Title = strings.TrimSpace(input.Title)
+		input.Summary = strings.TrimSpace(input.Summary)
+		if input.Title == "" || utf8.RuneCountInString(input.Title) > 160 || utf8.RuneCountInString(input.Summary) > 2000 {
+			return e.BadRequestError("Invalid project.", nil)
+		}
+		if input.ProposedDifficulty != "" && !validProjectDifficulty(input.ProposedDifficulty) {
+			return e.BadRequestError("Invalid difficulty.", nil)
+		}
+		if input.AdventureStyle == "" {
+			input.AdventureStyle = "project"
+		}
+		if input.AdventureStyle != "project" && input.AdventureStyle != "dungeon" && input.AdventureStyle != "boss" {
+			return e.BadRequestError("Invalid adventure style.", nil)
+		}
+		collection, err := e.App.FindCollectionByNameOrId("projects")
+		if err != nil {
+			return e.InternalServerError("Unable to create project.", err)
+		}
+		project := core.NewRecord(collection)
+		project.Set("creator_user_id", creator.Id)
+		project.Set("owner_user_id", creator.Id)
+		project.Set("title", input.Title)
+		project.Set("summary", input.Summary)
+		project.Set("review_status", "approved")
+		project.Set("execution_status", "ongoing")
+		project.Set("collaboration_mode", "collaborative")
+		project.Set("join_mode", "open")
+		project.Set("adventure_style", input.AdventureStyle)
+		project.Set("version", 1)
+		project.Set("published_at", time.Now())
+		if input.ProposedDifficulty != "" {
+			project.Set("owner_proposed_difficulty", input.ProposedDifficulty)
+		}
+		if err := e.App.Save(project); err != nil {
+			return e.InternalServerError("Unable to create project.", err)
+		}
+		return e.JSON(200, map[string]any{"ok": true, "id": project.Id})
+	})
 	e.Router.GET("/api/hpahub/me/projects", func(e *core.RequestEvent) error {
 		noCache(e)
 		if e.Auth == nil {
