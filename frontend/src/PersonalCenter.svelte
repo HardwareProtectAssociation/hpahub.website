@@ -33,6 +33,13 @@
   let inviteCount = 1;
   let inviteMaxUses = 1;
   let copiedCode = '';
+  let hardwareConfig = [];
+  let hwEditing = false;
+  let hwSaving = false;
+  let hwError = '';
+  let hwNotice = '';
+  let hwRows = [];
+  const hwCategories = ['CPU', 'GPU', '主板', '内存', '存储', '显示器', '键盘', '鼠标', '耳机', '其他'];
 
   const genderLabels = { male: '男', female: '女', nonbinary: '非二元', private: '不愿透露' };
   const genderOptions = Object.entries(genderLabels);
@@ -308,9 +315,60 @@
     return value ? new Date(value * 1000).toLocaleString() : '—';
   }
 
+  async function loadHardwareConfig() {
+    try {
+      const response = await fetch('/api/hpahub/me/hardware-config', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) return;
+      hardwareConfig = body.items || [];
+    } catch {}
+  }
+
+  function startHwEdit() {
+    hwRows = hardwareConfig.map((item) => ({ ...item }));
+    if (!hwRows.length) hwRows = [{ category: 'CPU', name: '', detail: '' }];
+    hwError = '';
+    hwNotice = '';
+    hwEditing = true;
+  }
+
+  function addHwRow() {
+    if (hwRows.length >= 50) return;
+    hwRows = [...hwRows, { category: '其他', name: '', detail: '' }];
+  }
+
+  function removeHwRow(index) {
+    hwRows = hwRows.filter((_, i) => i !== index);
+  }
+
+  async function saveHwConfig() {
+    hwSaving = true;
+    hwError = '';
+    try {
+      const items = hwRows.filter((r) => r.name.trim());
+      const response = await fetch('/api/hpahub/me/hardware-config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ items }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.message || '保存失败，请重试。');
+      await loadHardwareConfig();
+      hwEditing = false;
+      hwNotice = '硬件配置已保存。';
+    } catch (err) {
+      hwError = err.message || String(err);
+    } finally {
+      hwSaving = false;
+    }
+  }
+
   onMount(async () => {
     await load();
     await loadInvitations();
+    await loadHardwareConfig();
   });
   onDestroy(() => {
     if (avatarSrc) URL.revokeObjectURL(avatarSrc);
@@ -576,7 +634,45 @@
       </section>
 
       {#if data.profile.member}
-        <section class="center-section wide" aria-labelledby="center-invitations">
+        <section class="center-section wide" aria-labelledby="center-hardware">
+        <div class="section-head">
+          <div><h2 id="center-hardware">{$t('我的硬件配置')}</h2><p>{$t('展示你日常使用的硬件设备。')}</p></div>
+          {#if !hwEditing}<button type="button" class="link-button" on:click={startHwEdit}>{$t('编辑硬件')}</button>{/if}
+        </div>
+        {#if hwNotice}<p class="message success" role="status">{hwNotice}</p>{/if}
+        {#if hwEditing}
+          <div class="hw-edit">
+            {#if hwError}<p class="message error" role="alert">{hwError}</p>{/if}
+            {#each hwRows as row, index}
+              <div class="hw-row">
+                <select bind:value={row.category}>{#each hwCategories as cat}<option value={cat}>{cat}</option>{/each}</select>
+                <input bind:value={row.name} maxlength="200" placeholder={$t('硬件名称')} />
+                <input bind:value={row.detail} maxlength="500" placeholder={$t('型号或补充说明')} />
+                <button type="button" class="small danger" on:click={() => removeHwRow(index)}>{$t('删除')}</button>
+              </div>
+            {/each}
+            <div class="hw-actions">
+              <button type="button" class="secondary" on:click={addHwRow}>{$t('添加硬件')}</button>
+              <button type="button" class="primary" on:click={saveHwConfig} disabled={hwSaving}>{hwSaving ? $t('正在保存…') : $t('保存硬件配置')}</button>
+              <button type="button" on:click={() => { hwEditing = false; }}>{$t('取消')}</button>
+            </div>
+          </div>
+        {:else if hardwareConfig.length}
+          <div class="hw-display">
+            {#each hardwareConfig as item (item.id)}
+              <div class="hw-item">
+                <span class="hw-category">{item.category}</span>
+                <strong>{item.name}</strong>
+                {#if item.detail}<span class="hw-detail">{item.detail}</span>{/if}
+              </div>
+            {/each}
+          </div>
+        {:else}
+          <div class="center-empty"><p>{$t('还没有填写硬件配置')}</p></div>
+        {/if}
+      </section>
+
+      <section class="center-section wide" aria-labelledby="center-invitations">
           <div class="section-head">
             <div><h2 id="center-invitations">{$t('我的邀请码')}</h2><p>{$t('邀请码有效 24 小时，仅可使用一次。')}</p></div>
             <div class="invite-controls">
@@ -656,6 +752,15 @@
   .mini-status { font-size: 10px; color: #4d6448; }
   .mini-status.done { color: #6e9a61; }
   .mini-empty { color: #8b9587; font-size: 12px; margin: 0; }
+  .hw-edit { display: grid; gap: 10px; }
+  .hw-row { display: grid; grid-template-columns: 100px 1fr 1fr auto; gap: 8px; align-items: center; }
+  .hw-row select, .hw-row input { padding: 7px; border: 1px solid #b9c3b3; background: #fff; font: inherit; font-size: 13px; }
+  .hw-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+  .hw-display { display: grid; gap: 6px; }
+  .hw-item { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; padding: 8px 12px; border: 1px solid #e4e8df; border-radius: 6px; background: #fff; }
+  .hw-category { display: inline-block; padding: 1px 8px; border-radius: 999px; background: #eef3e8; color: #4d6448; font-size: 11px; font-weight: 600; min-width: 48px; text-align: center; }
+  .hw-item strong { font-size: 13px; color: #274732; }
+  .hw-detail { color: #6f7b6d; font-size: 12px; }
   .preset-chip { padding: 4px 12px; border: 1px solid #d6ddd2; border-radius: 999px; background: #fff; color: #52695a; font-size: 12px; cursor: pointer; }
   .preset-chip:hover { border-color: #7c9b6c; background: #eef3e8; }
   .preset-chip.active { border-color: #7c9b6c; background: #eef3e8; color: #274732; font-weight: 600; }
