@@ -20,7 +20,7 @@
   let menuOpen = false;
   let accountOpen = false;
   let accountMenu, accountButton;
-  let accountId = '';
+  let accountName = '';
   let accountAvatar = '';
   let mode = pathname === '/join' ? 'register' : 'login';
   let inviteCode = '';
@@ -164,7 +164,7 @@
     token = '';
     collection = '';
     role = 'guest';
-    accountOpen = false; accountId = '';
+    accountOpen = false; accountName = '';
     if (accountAvatar) URL.revokeObjectURL(accountAvatar);
     accountAvatar = '';
     sessionStorage.removeItem('authToken');
@@ -253,7 +253,8 @@
       scheduleExpiry();
       const me = await request('/api/hpahub/me');
       role = me.role;
-      accountId = me.id;
+      accountName = result.record?.display_name || result.record?.name || result.record?.email || '';
+      if (collection === '_superusers') loadSuperuserName();
       loadAccountAvatar();
       fetchUnreadMessages();
       messagePollTimer = setInterval(fetchUnreadMessages, 60000);
@@ -265,6 +266,14 @@
       checking = false;
     }
   });
+
+  async function loadSuperuserName() {
+    const currentToken = token;
+    try {
+      const center = await request('/api/hpahub/me/center');
+      if (token === currentToken) accountName = center.profile?.name || accountName;
+    } catch {}
+  }
 
   async function loadAccountAvatar() {
     try {
@@ -312,7 +321,7 @@
           <div class="account-menu" bind:this={accountMenu}>
             <button type="button" class="account-button" bind:this={accountButton} aria-expanded={accountOpen} aria-controls="account-menu" on:click={() => accountOpen = !accountOpen}>
               {#if accountAvatar}<img src={accountAvatar} alt="" />{:else}<span class="account-avatar-default" aria-hidden="true"></span>{/if}
-              <span class="account-id">{accountId}</span><span aria-hidden="true">⌃</span>
+              <span class="account-id">{accountName}</span><span aria-hidden="true">⌃</span>
             </button>
             {#if accountOpen}
               <div id="account-menu" class="account-popover">
@@ -358,7 +367,7 @@
     {/if}
   {:else if pathname === '/me'}
     {#if token}
-      <PersonalCenter {token} />
+      <PersonalCenter {token} on:profileSaved={(event) => { accountName = event.detail.name || accountName; }} />
     {:else}
       <main class="dashboard"><h1>{$t('个人中心')}</h1><p>{$t('请先登录后查看个人中心。')}</p><a href="/sign-in">{$t('登录')}</a></main>
     {/if}

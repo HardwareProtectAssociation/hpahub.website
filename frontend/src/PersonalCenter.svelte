@@ -1,10 +1,11 @@
 <script>
-  import { onDestroy, onMount } from 'svelte';
+  import { createEventDispatcher, onDestroy, onMount } from 'svelte';
   import { t } from './i18n.js';
   import AvatarCrop from './AvatarCrop.svelte';
   import { difficultyRank, levelRank } from './tiers.js';
 
   export let token;
+  const dispatch = createEventDispatcher();
 
   let data = null;
   let loading = true;
@@ -263,6 +264,7 @@
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.message || `请求失败（${response.status}）`);
       data = result;
+      dispatch('profileSaved', { name: result.profile?.name });
       if (avatarSrc) URL.revokeObjectURL(avatarSrc);
       avatarSrc = await loadAvatar(result.profile?.avatarUrl);
       cancelEdit();
