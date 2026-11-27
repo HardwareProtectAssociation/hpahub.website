@@ -1483,3 +1483,62 @@ body {
 }
 
 .topbar, .menu-backdrop { backdrop-filter: none; -webkit-backdrop-filter: none; }
+
+/* Project difficulty shapes */
+.project-card { position: relative; }
+.difficulty-star {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  color: #fff;
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1;
+  text-shadow: 0 1px 2px #0008;
+  filter: drop-shadow(0 3px 8px #0007);
+  pointer-events: none;
+}
+.difficulty-star.star-5 {
+  clip-path: polygon(50% 0%, 61% 25%, 87% 13%, 75% 39%, 100% 50%, 75% 61%, 87% 87%, 61% 75%, 50% 100%, 39% 75%, 13% 87%, 25% 61%, 0% 50%, 25% 39%, 13% 13%, 39% 25%);
+  background: linear-gradient(135deg, #d92f8f, #d9531f, #b8860b, #1f9e57, #1b86b3, #5a2bc4);
+}
+.difficulty-star.star-4 {
+  clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+  background: linear-gradient(135deg, #d89b26, #ffe697, #b8860b);
+  color: #3a2500;
+  text-shadow: none;
+}
+.difficulty-star.star-3 {
+  clip-path: polygon(50% 0%, 65% 35%, 100% 50%, 65% 65%, 50% 100%, 35% 65%, 0% 50%, 35% 35%);
+  background: linear-gradient(135deg, #cfd8e0, #7d8a95, #aab6c0);
+  color: #1e262e;
+  text-shadow: none;
+}
+.difficulty-star.star-2 {
+  clip-path: polygon(50% 4%, 100% 100%, 0% 100%);
+  align-items: end;
+  justify-items: center;
+  padding-bottom: 6px;
+  background: linear-gradient(135deg, #d59a6a, #8a552e);
+}
+.difficulty-star.star-1 {
+  border-radius: 50%;
+  background: linear-gradient(135deg, #c9ced3, #6b7780);
+  color: #1e262e;
+  text-shadow: none;
+}
+.difficulty-star.star-0 {
+  border-radius: 50%;
+  background: var(--surface-tint);
+  border: 1px dashed var(--border-default);
+  color: var(--ink-subtle);
+  text-shadow: none;
+}
+.project-card h2 { padding-right: 52px; }
+.project-card .project-meta { padding-right: 54px; }

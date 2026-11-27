@@ -560,8 +560,9 @@
         <div class="public-grid">
           {#each hallProjects as project}
             <a class="public-card project-card project-card-link" href={'/showcase/' + encodeURIComponent(project.id)}>
+              {#if project.difficulty}<span class={`difficulty-star star-${difficultyRank(project.difficulty)}`} title={`${$t('难度')} ${project.difficulty}`} aria-label={`${$t('难度')} ${project.difficulty}`}>{project.difficulty}</span>{:else}<span class="difficulty-star star-0" title={$t('难度')} aria-label={$t('难度')}>?</span>{/if}
               {#if project.coverUrl}<img class="project-card-cover" src={project.coverUrl} alt={project.title} loading="lazy" />{/if}
-              <div class="project-meta"><span class:done={project.status === 'completed'} class="project-status">{statusLabel(project.status)}</span>{#if project.difficulty}<span class={`rank rank-pill difficulty-badge rank-${difficultyRank(project.difficulty)}`}>{$t('难度')} {project.difficulty}</span>{:else}<span class="rank-pending">{$t('难度')} {$t('待定')}</span>{/if}</div>
+              <div class="project-meta"><span class:done={project.status === 'completed'} class="project-status">{statusLabel(project.status)}</span></div>
               <h2>{project.title}</h2>
               <p>{project.summary}</p>
               <div class="project-people">

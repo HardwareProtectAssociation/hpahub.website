@@ -225,9 +225,9 @@
       <div class="project-list">
         {#each projectsFor(activeTab) as project}
           <article class="project-card">
+            {#if project.difficulty}<span class={`difficulty-star star-${difficultyRank(project.difficulty)}`} title={`${$t('难度')} ${project.difficulty}`} aria-label={`${$t('难度')} ${project.difficulty}`}>{project.difficulty}</span>{:else}<span class="difficulty-star star-0" title={$t('难度')} aria-label={$t('难度')}>?</span>{/if}
             <div class="project-meta">
               <span class:done={project.status === 'completed'} class="project-status">{$t(statusLabels[project.status] || project.status)}</span>
-              {#if project.reviewStatus === 'approved' && project.difficulty}<span class={`rank rank-pill difficulty-badge rank-${difficultyRank(project.difficulty)}`}>{$t('难度')} {project.difficulty}</span>{:else}<span class="rank-pending">{$t('难度')} {$t('待定')}</span>{/if}
               {#if activeTab === 'initiated'}<span class="review">{$t(reviewLabels[project.reviewStatus] || project.reviewStatus)}</span><span class="version">{$t('版本')} {project.version || 1}</span>{/if}
             </div>
             <h2><a href={'/showcase/' + encodeURIComponent(project.id)}>{project.title}</a></h2>
