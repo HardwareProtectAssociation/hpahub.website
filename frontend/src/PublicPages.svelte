@@ -418,7 +418,7 @@
         <p class="project-owner">{$t('负责人')}：<RedactedText text={data.ownerName || '—'} hidden={!!data.ownerRedacted} />{#if data.updated} · {$t('更新于')} {formatDate(data.updated)}{/if}</p>
         <p class="project-owner">{$t('发起人')}：<RedactedText text={data.creatorName || '—'} hidden={!!data.creatorRedacted} /></p>
         <p class="project-owner">{$t('管理员')}：{data.managers?.length || 0}{#if data.managers?.length} · {#each data.managers as manager, index}{#if index}、{/if}<RedactedText text={manager.name || '—'} hidden={!!manager.redacted} />{/each}{/if}</p>
-        <p class="project-owner">{$t('发布时间')}：{data.publishedAt ? formatDate(data.publishedAt) : '—'} · {$t('参与人数')}：{data.participantCount || 0}</p>
+        <p class="project-owner">{$t('发布时间')}：{data.publishedAt ? formatDate(data.publishedAt) : '—'} · {$t('参与人数')}：{data.participantCount || 0} · {$t('关注度')}：{data.followCount || 0}</p>
         {#if data.description && data.description !== data.summary}<p class="project-description">{data.description}</p>{/if}
         <p class="project-owner">{$t('是否接受赞助')}：{$t(data.acceptsSponsorship ? '是' : '否')} · {$t('允许他人管理')}：{$t(data.allowOthersManagement ? '是' : '否')} · {$t('是否需要保密')}：{$t(data.confidentialityRequested ? '是' : '否')}</p>
         {#if data.projectNeeds?.length}<p class="project-owner">{$t('项目需要')}：{data.projectNeeds.map((need) => $t(({ funding: '资金支持', technical: '技术支持', equipment: '设备支持', venue: '场地支持', manpower: '人手支持', promotion: '宣传支持', emotional: '情绪支持' })[need] || need)).join(' · ')}</p>{/if}
@@ -538,8 +538,8 @@
                 <span class="people-block"><span class="people-label">{$t('发起人')}</span>{#if project.creatorRedacted}<span class="people-avatar hidden" title={$t('资料隐藏')} aria-label={$t('资料隐藏')}></span>{:else if project.creatorAvatarUrl}<img class="people-avatar" src={project.creatorAvatarUrl} alt={project.creatorName || ''} title={project.creatorName || ''} loading="lazy" />{:else}<span class="people-avatar" title={project.creatorName || ''}></span>{/if}</span>
                 {#if project.managers?.length}<span class="people-block"><span class="people-label">{$t('管理员')}</span>{#each project.managers as manager}<span class="people-avatar-slot">{#if manager.redacted}<span class="people-avatar hidden" title={$t('资料隐藏')} aria-label={$t('资料隐藏')}></span>{:else if manager.avatarUrl}<img class="people-avatar" src={manager.avatarUrl} alt={manager.name || ''} title={manager.name || ''} loading="lazy" />{:else}<span class="people-avatar" title={manager.name || ''}></span>{/if}</span>{/each}</span>{/if}
               </div>
-              <p class="project-owner">{$t('发布时间')}：{project.publishedAt ? formatDate(project.publishedAt) : '—'}</p>
-              <p class="project-owner">{$t('参与人数')}：{project.participantCount || 0}</p>
+              <p class="project-owner">{$t('发布时间')}：{project.publishedAt ? formatDate(project.publishedAt) : '—'} · {$t('参与人数')}：{project.participantCount || 0}</p>
+              <p class="project-owner">{$t('关注度')}：{project.followCount || 0}</p>
             </a>
           {/each}
         </div>

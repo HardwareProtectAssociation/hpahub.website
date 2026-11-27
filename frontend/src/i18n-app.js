@@ -445,6 +445,7 @@ export default {
   '保密协议': ['保密協議', '秘密保持契約', 'Confidentiality agreement'],
   '我同意保密协议': ['我同意保密協議', '秘密保持契約に同意します', 'I agree to the confidentiality agreement'],
   '参与人数': ['參與人數', '参加人数', 'Participants'],
+  '关注度': ['關注度', 'フォロー数', 'Followers'],
   '发布时间': ['發布時間', '公開日', 'Published'],
   '项目状态': ['專案狀態', 'プロジェクトの状態', 'Project status'],
   '暂停中': ['暫停中', '一時停止中', 'Paused'],

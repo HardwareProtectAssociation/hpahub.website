@@ -49,6 +49,14 @@ func TestPublicProjectRoutes(t *testing.T) {
 	membership.Set("duties", "负责结构与打样")
 	publicProjectTestSave(t, app, membership)
 
+	follow := core.NewRecord(publicProjectTestCollection(t, app, "project_follows"))
+	follow.Set("project_id", approved.Id)
+	follow.Set("user_id", member.Id)
+	follow.Set("is_active", true)
+	follow.Set("receive_updates", true)
+	follow.Set("followed_at", time.Now())
+	publicProjectTestSave(t, app, follow)
+
 	router, err := apis.NewRouter(app)
 	if err != nil {
 		t.Fatal(err)
@@ -80,6 +88,9 @@ func TestPublicProjectRoutes(t *testing.T) {
 	if listed.Items[0].CreatorName != "项目负责人" || listed.Items[0].ParticipantCount != 2 || len(listed.Items[0].Managers) != 1 || listed.Items[0].Managers[0].Name != "项目负责人" {
 		t.Fatalf("unexpected project card: %+v", listed.Items[0])
 	}
+	if listed.Items[0].FollowCount != 1 {
+		t.Fatalf("follow count = %d", listed.Items[0].FollowCount)
+	}
 	if listed.Items[0].OwnerName != "项目负责人" {
 		t.Fatalf("owner name = %q", listed.Items[0].OwnerName)
 	}
@@ -100,6 +111,9 @@ func TestPublicProjectRoutes(t *testing.T) {
 	}
 	if project.Members[0].Duties != "负责结构与打样" {
 		t.Fatalf("unexpected member: %+v", project.Members[0])
+	}
+	if project.FollowCount != 1 {
+		t.Fatalf("detail follow count = %d", project.FollowCount)
 	}
 
 	approved.Set("allow_others_management", true)

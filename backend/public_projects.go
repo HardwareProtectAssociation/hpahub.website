@@ -20,6 +20,7 @@ type publicProject struct {
 	CreatorAvatarURL string                `json:"creatorAvatarUrl,omitempty"`
 	Managers         []publicProjectMember `json:"managers,omitempty"`
 	ParticipantCount int                   `json:"participantCount,omitempty"`
+	FollowCount      int                   `json:"followCount"`
 	ID               string                `json:"id"`
 	Title            string                `json:"title"`
 	Summary          string                `json:"summary"`
@@ -120,6 +121,10 @@ func bindPublicProjectRoutes(e *core.ServeEvent) {
 			return e.InternalServerError("Unable to load projects.", err)
 		}
 		owners := map[string]*core.Record{}
+		followCounts, err := projectFollowCounts(e)
+		if err != nil {
+			return e.InternalServerError("Unable to load projects.", err)
+		}
 		items := make([]publicProject, 0, len(rows))
 		for _, project := range rows {
 			if project.GetString("deleted_at") != "" {
@@ -129,6 +134,7 @@ func bindPublicProjectRoutes(e *core.ServeEvent) {
 			if err != nil {
 				return e.InternalServerError("Unable to load project details.", err)
 			}
+			card.FollowCount = followCounts[project.Id]
 			items = append(items, card)
 		}
 		return e.JSON(200, map[string]any{"items": items})
@@ -143,6 +149,9 @@ func bindPublicProjectRoutes(e *core.ServeEvent) {
 		card, err := projectHallCard(e, project, owners)
 		if err != nil {
 			return e.InternalServerError("Unable to load project details.", err)
+		}
+		if follows, err := e.App.FindRecordsByFilter("project_follows", "project_id = {:project} && is_active = true", "", 0, 0, dbx.Params{"project": project.Id}); err == nil {
+			card.FollowCount = len(follows)
 		}
 		detail := publicProjectDetail{
 			publicProject:            card,
@@ -572,6 +581,18 @@ func projectCoverURL(project *core.Record) string {
 		return ""
 	}
 	return contentURL("projects", project.Id, "cover")
+}
+
+func projectFollowCounts(e *core.RequestEvent) (map[string]int, error) {
+	rows, err := e.App.FindRecordsByFilter("project_follows", "is_active = true", "", 0, 0)
+	if err != nil {
+		return nil, err
+	}
+	counts := make(map[string]int, len(rows))
+	for _, row := range rows {
+		counts[row.GetString("project_id")]++
+	}
+	return counts, nil
 }
 
 func publicPersonName(record *core.Record) string {
