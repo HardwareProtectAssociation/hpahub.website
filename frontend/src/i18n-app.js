@@ -26,6 +26,7 @@ export default {
   '显示项目': ['顯示專案', 'プロジェクトを表示', 'Show projects'],
   '显示职业等级': ['顯示職業等級', '職業レベルを表示', 'Show career levels'],
   '显示技能': ['顯示技能', 'スキルを表示', 'Show skills'],
+  '隐藏此项': ['隱藏此項', 'この項目を非表示', 'Hide this section'],
   '修改个人名片': ['修改個人名片', '公開プロフィールを編集', 'Edit public profile'],
   '项目管理': ['項目管理', 'プロジェクト管理', 'Manage projects'],
   '管理控制台': ['管理控制台', '管理コンソール', 'Admin console'],
