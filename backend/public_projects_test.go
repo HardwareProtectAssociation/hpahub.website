@@ -35,6 +35,10 @@ func TestPublicProjectRoutes(t *testing.T) {
 	stage.Set("sort_order", 10)
 	publicProjectTestSave(t, app, stage)
 	approved.Set("current_stage_id", stage.Id)
+	approved.Set("planned_start_date", "2027-01-01")
+	approved.Set("schedule_note", "完成原型")
+	approved.Set("collaboration_mode", "collaborative")
+	approved.Set("join_mode", "approval")
 	publicProjectTestSave(t, app, approved)
 
 	membership := core.NewRecord(publicProjectTestCollection(t, app, "project_members"))
@@ -73,6 +77,9 @@ func TestPublicProjectRoutes(t *testing.T) {
 	if len(listed.Items) != 1 || listed.Items[0].ID != approved.Id {
 		t.Fatalf("unexpected public projects: %+v", listed.Items)
 	}
+	if listed.Items[0].CreatorName != "项目负责人" || listed.Items[0].ParticipantCount != 2 || len(listed.Items[0].Managers) != 1 || listed.Items[0].Managers[0].Name != "项目负责人" {
+		t.Fatalf("unexpected project card: %+v", listed.Items[0])
+	}
 	if listed.Items[0].OwnerName != "项目负责人" {
 		t.Fatalf("owner name = %q", listed.Items[0].OwnerName)
 	}
@@ -88,8 +95,46 @@ func TestPublicProjectRoutes(t *testing.T) {
 	if project.CurrentStage != "方案" || len(project.Stages) != 1 || len(project.Members) != 1 {
 		t.Fatalf("unexpected detail: %+v", project)
 	}
+	if project.ScheduleNote != "完成原型" || project.PlannedStartDate == "" || project.CollaborationMode != "collaborative" || project.JoinMode != "approval" {
+		t.Fatalf("missing project details: %+v", project)
+	}
 	if project.Members[0].Duties != "负责结构与打样" {
 		t.Fatalf("unexpected member: %+v", project.Members[0])
+	}
+
+	approved.Set("allow_others_management", true)
+	publicProjectTestSave(t, app, approved)
+	grant := core.NewRecord(publicProjectTestCollection(t, app, "project_permission_grants"))
+	grant.Set("project_id", approved.Id)
+	grant.Set("user_id", member.Id)
+	grant.Set("permission_code", "manage")
+	grant.Set("granted_by", owner.Id)
+	grant.Set("granted_at", time.Now())
+	publicProjectTestSave(t, app, grant)
+	list = request("/api/hpahub/projects")
+	if err := json.Unmarshal(list.Body.Bytes(), &listed); err != nil {
+		t.Fatal(err)
+	}
+	if len(listed.Items[0].Managers) != 2 || listed.Items[0].Managers[1].Name != "协作成员" || listed.Items[0].ParticipantCount != 2 {
+		t.Fatalf("missing project manager: %+v", listed.Items[0])
+	}
+	member.Set("hidden_profile_sections", []string{"projects"})
+	publicProjectTestSave(t, app, member)
+	list = request("/api/hpahub/projects")
+	if err := json.Unmarshal(list.Body.Bytes(), &listed); err != nil {
+		t.Fatal(err)
+	}
+	if !listed.Items[0].Managers[1].Redacted || strings.Contains(list.Body.String(), "协作成员") {
+		t.Fatalf("hidden manager exposed: %s", list.Body.String())
+	}
+	grant.Set("revoked_at", time.Now())
+	publicProjectTestSave(t, app, grant)
+	list = request("/api/hpahub/projects")
+	if err := json.Unmarshal(list.Body.Bytes(), &listed); err != nil {
+		t.Fatal(err)
+	}
+	if len(listed.Items[0].Managers) != 1 {
+		t.Fatalf("revoked manager still listed: %+v", listed.Items[0])
 	}
 
 	for _, id := range []string{pending.Id, deleted.Id, "missing"} {

@@ -13,19 +13,23 @@ import (
 )
 
 type publicProject struct {
-	Redacted       bool   `json:"redacted,omitempty"`
-	OwnerRedacted  bool   `json:"ownerRedacted,omitempty"`
-	ID             string `json:"id"`
-	Title          string `json:"title"`
-	Summary        string `json:"summary"`
-	Status         string `json:"status"`
-	Difficulty     string `json:"difficulty"`
-	AdventureStyle string `json:"adventureStyle"`
-	OwnerID        string `json:"ownerId"`
-	OwnerName      string `json:"ownerName"`
-	OwnerAvatarURL string `json:"ownerAvatarUrl"`
-	PublishedAt    string `json:"publishedAt"`
-	Updated        string `json:"updated"`
+	Redacted         bool                  `json:"redacted,omitempty"`
+	OwnerRedacted    bool                  `json:"ownerRedacted,omitempty"`
+	CreatorName      string                `json:"creatorName,omitempty"`
+	CreatorRedacted  bool                  `json:"creatorRedacted,omitempty"`
+	Managers         []publicProjectMember `json:"managers,omitempty"`
+	ParticipantCount int                   `json:"participantCount,omitempty"`
+	ID               string                `json:"id"`
+	Title            string                `json:"title"`
+	Summary          string                `json:"summary"`
+	Status           string                `json:"status"`
+	Difficulty       string                `json:"difficulty"`
+	AdventureStyle   string                `json:"adventureStyle"`
+	OwnerID          string                `json:"ownerId"`
+	OwnerName        string                `json:"ownerName"`
+	OwnerAvatarURL   string                `json:"ownerAvatarUrl"`
+	PublishedAt      string                `json:"publishedAt"`
+	Updated          string                `json:"updated"`
 }
 
 type publicProjectStage struct {
@@ -48,6 +52,8 @@ type publicProjectMember struct {
 type publicProjectDetail struct {
 	publicProject
 	Description              string                `json:"description"`
+	CollaborationMode        string                `json:"collaborationMode"`
+	ScheduleNote             string                `json:"scheduleNote"`
 	ProjectNature            string                `json:"projectNature"`
 	ProjectNeeds             []string              `json:"projectNeeds"`
 	ProviderOffers           []string              `json:"providerOffers"`
@@ -108,7 +114,11 @@ func bindPublicProjectRoutes(e *core.ServeEvent) {
 			if project.GetString("deleted_at") != "" {
 				continue
 			}
-			items = append(items, projectSummary(e, project, owners))
+			card, err := projectHallCard(e, project, owners)
+			if err != nil {
+				return e.InternalServerError("Unable to load project details.", err)
+			}
+			items = append(items, card)
 		}
 		return e.JSON(200, map[string]any{"items": items})
 	})
@@ -119,9 +129,15 @@ func bindPublicProjectRoutes(e *core.ServeEvent) {
 			return e.NotFoundError("Not found.", nil)
 		}
 		owners := map[string]*core.Record{}
+		card, err := projectHallCard(e, project, owners)
+		if err != nil {
+			return e.InternalServerError("Unable to load project details.", err)
+		}
 		detail := publicProjectDetail{
-			publicProject:            projectSummary(e, project, owners),
+			publicProject:            card,
 			Description:              projectDescriptionText(project),
+			CollaborationMode:        project.GetString("collaboration_mode"),
+			ScheduleNote:             project.GetString("schedule_note"),
 			ProjectNature:            project.GetString("project_nature"),
 			ProjectNeeds:             project.GetStringSlice("project_needs"),
 			ProviderOffers:           project.GetStringSlice("provider_offers"),
@@ -449,6 +465,53 @@ func validProjectDifficulty(value string) bool {
 		}
 	}
 	return false
+}
+
+func projectHallCard(e *core.RequestEvent, project *core.Record, users map[string]*core.Record) (publicProject, error) {
+	card := projectSummary(e, project, users)
+	display := func(id string) publicProjectMember {
+		user := users[id]
+		if user == nil {
+			user, _ = e.App.FindRecordById("users", id)
+			users[id] = user
+		}
+		if user == nil {
+			return publicProjectMember{}
+		}
+		name := publicPersonName(user)
+		hidden := profileSectionHidden(user, "projects") || profileSectionHidden(user, "project:"+project.Id)
+		if hidden {
+			name = maskedText(name)
+		}
+		return publicProjectMember{Name: name, Redacted: hidden}
+	}
+	creator := display(project.GetString("creator_user_id"))
+	card.CreatorName, card.CreatorRedacted = creator.Name, creator.Redacted
+	ownerID := project.GetString("owner_user_id")
+	owner := display(ownerID)
+	card.Managers = []publicProjectMember{owner}
+	members, err := e.App.FindRecordsByFilter("project_members", `project_id = {:project} && status = "active"`, "", 0, 0, dbx.Params{"project": project.Id})
+	if err != nil {
+		return card, err
+	}
+	memberIDs := map[string]bool{ownerID: true}
+	for _, member := range members {
+		memberIDs[member.GetString("user_id")] = true
+	}
+	card.ParticipantCount = len(memberIDs)
+	if project.GetBool("allow_others_management") {
+		grants, err := e.App.FindRecordsByFilter("project_permission_grants", `project_id = {:project} && permission_code = "manage" && revoked_at = ""`, "", 0, 0, dbx.Params{"project": project.Id})
+		if err != nil {
+			return card, err
+		}
+		for _, grant := range grants {
+			id := grant.GetString("user_id")
+			if id != ownerID && memberIDs[id] {
+				card.Managers = append(card.Managers, display(id))
+			}
+		}
+	}
+	return card, nil
 }
 
 func projectSummary(e *core.RequestEvent, project *core.Record, owners map[string]*core.Record) publicProject {

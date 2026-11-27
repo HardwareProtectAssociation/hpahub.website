@@ -415,10 +415,17 @@
         <h1>{data.title}</h1>
         <p>{data.summary}</p>
         <p class="project-owner">{$t('负责人')}：<RedactedText text={data.ownerName || '—'} hidden={!!data.ownerRedacted} />{#if data.updated} · {$t('更新于')} {formatDate(data.updated)}{/if}</p>
+        <p class="project-owner">{$t('发起人')}：<RedactedText text={data.creatorName || '—'} hidden={!!data.creatorRedacted} /></p>
+        <p class="project-owner">{$t('管理员')}：{data.managers?.length || 0}{#if data.managers?.length} · {#each data.managers as manager, index}{#if index}、{/if}<RedactedText text={manager.name || '—'} hidden={!!manager.redacted} />{/each}{/if}</p>
+        <p class="project-owner">{$t('发布时间')}：{data.publishedAt ? formatDate(data.publishedAt) : '—'} · {$t('参与人数')}：{data.participantCount || 0}</p>
         {#if data.description && data.description !== data.summary}<p class="project-description">{data.description}</p>{/if}
-        {#if data.acceptsSponsorship || data.allowOthersManagement || data.confidentialityRequested}<p class="project-owner">{$t('项目安排')}：{[data.acceptsSponsorship && $t('接受赞助'), data.allowOthersManagement && $t('允许他人管理'), data.confidentialityRequested && $t('需要保密')].filter(Boolean).join(' · ')}</p>{/if}
+        <p class="project-owner">{$t('是否接受赞助')}：{$t(data.acceptsSponsorship ? '是' : '否')} · {$t('允许他人管理')}：{$t(data.allowOthersManagement ? '是' : '否')} · {$t('是否需要保密')}：{$t(data.confidentialityRequested ? '是' : '否')}</p>
         {#if data.projectNeeds?.length}<p class="project-owner">{$t('项目需要')}：{data.projectNeeds.map((need) => $t(({ funding: '资金支持', technical: '技术支持', equipment: '设备支持', venue: '场地支持', manpower: '人手支持', promotion: '宣传支持', emotional: '情绪支持' })[need] || need)).join(' · ')}</p>{/if}
         {#if data.providerOffers?.length}<p class="project-owner">{$t('发起人可提供')}：{data.providerOffers.map((offer) => $t(({ technical: '技术', funding: '资金', equipment: '设备', venue: '场地', manpower: '人手', promotion: '宣传' })[offer] || offer)).join(' · ')}</p>{/if}
+        {#if data.collaborationMode}<p class="project-owner">{$t('协作方式')}：{$t(data.collaborationMode === 'independent' ? '独立项目' : '协作项目')}</p>{/if}
+        {#if data.collaborationMode === 'collaborative'}<p class="project-owner">{$t('加入方式')}：{$t(data.joinMode === 'open' ? '自由加入' : '申请加入')}</p>{/if}
+        {#if data.plannedStartDate}<p class="project-owner">{$t('计划开始日期')}：{formatDate(data.plannedStartDate)}</p>{/if}
+        {#if data.scheduleNote}<p class="project-description">{$t('时间安排')}：{data.scheduleNote}</p>{/if}
         {#if data.projectNature}<p class="project-owner">{$t('项目性质')}：{$t(({ commercial: '商业盈利', learning: '学习交流', showcase: '技术展示', research: '科学研究' })[data.projectNature])}</p>{/if}
         {#if data.longTerm}<p class="project-owner">{$t('预计周期')}：{$t('长期项目')}</p>{:else if data.estimatedDurationDays}<p class="project-owner">{$t('预计周期')}：{data.estimatedDurationDays} {$t('天')}</p>{/if}
         {#if data.proposedDifficulty}<p class="project-owner">{$t('发起人自评')}：<span class={`rank rank-text rank-${difficultyRank(data.proposedDifficulty)}`}>{data.proposedDifficulty}</span></p>{:else}<p class="project-owner">{$t('发起人自评')}：{$t('待定')}</p>{/if}
@@ -427,6 +434,9 @@
         {#if data.approveCount}<span>{$t('同意')}：{data.approveCount}</span>{/if}
         {#if data.opposeCount}<span>{$t('反对')}：{data.opposeCount}</span>{/if}
       </header>
+      {#if data.confidentialityRequested && data.confidentialityTerms}
+        <section class="project-section"><h2>{$t('保密协议')}</h2><p class="project-description">{data.confidentialityTerms}</p></section>
+      {/if}
       {#if data.canFollow}
         <div class="follow-row">
           <button type="button" class:following={data.following} class="follow-button" on:click={toggleFollow} disabled={followBusy}>
@@ -447,7 +457,6 @@
           {/if}
           <label>{$t('补充说明')}<textarea bind:value={applyMessage} maxlength="500" rows="3" placeholder={$t('例如：我可以负责结构设计与打样。')}></textarea></label>
           {#if data.confidentialityRequested}
-            <h3>{$t('保密协议')}</h3><p class="agreement">{data.confidentialityTerms}</p>
             <label class="agreement-check"><input type="checkbox" bind:checked={acceptTerms} />{$t('我同意保密协议')}</label>
           {/if}
           {#if applyError}<p class="message error" role="alert">{$t(applyError)}</p>{/if}
@@ -459,7 +468,6 @@
           <p>{$t('这个项目已经完成，你可以提出改进方向或补充方案。')}</p>
           <textarea bind:value={improvementMessage} maxlength="500" rows="3" placeholder={$t('例如：我想改进外壳结构，降低装配难度。')}></textarea>
           {#if data.confidentialityRequested}
-            <h3>{$t('保密协议')}</h3><p class="agreement">{data.confidentialityTerms}</p>
             <label class="agreement-check"><input type="checkbox" bind:checked={acceptTerms} />{$t('我同意保密协议')}</label>
           {/if}
           {#if improvementError}<p class="message error" role="alert">{$t(improvementError)}</p>{/if}
@@ -520,12 +528,15 @@
       {#if items.length}
         <div class="public-grid">
           {#each items as project}
-            <article class="public-card project-card">
+            <a class="public-card project-card project-card-link" href={'/showcase/' + encodeURIComponent(project.id)}>
               <div class="project-meta"><span class:done={project.status === 'completed'} class="project-status">{statusLabel(project.status)}</span>{#if project.difficulty}<span class={`rank rank-pill difficulty-badge rank-${difficultyRank(project.difficulty)}`}>{$t('难度')} {project.difficulty}</span>{:else}<span class="rank-pending">{$t('难度')} {$t('待定')}</span>{/if}</div>
-              <h2><a href={'/showcase/' + encodeURIComponent(project.id)}>{project.title}</a></h2>
+              <h2>{project.title}</h2>
               <p>{project.summary}</p>
-              <p class="project-owner">{#if project.ownerAvatarUrl}<img class="owner-avatar" src={project.ownerAvatarUrl} alt="" loading="lazy" />{:else}<span class="owner-avatar" aria-hidden="true"></span>{/if}{$t('负责人')}：<RedactedText text={project.ownerName || '—'} hidden={!!project.ownerRedacted} />{#if project.updated} · {$t('更新于')} {formatDate(project.updated)}{/if}</p>
-            </article>
+              <p class="project-owner">{$t('发起人')}：<RedactedText text={project.creatorName || '—'} hidden={!!project.creatorRedacted} /></p>
+              <p class="project-owner">{$t('管理员')}：{project.managers?.length || 0}{#if project.managers?.length} · {#each project.managers as manager, index}{#if index}、{/if}<RedactedText text={manager.name || '—'} hidden={!!manager.redacted} />{/each}{/if}</p>
+              <p class="project-owner">{$t('发布时间')}：{project.publishedAt ? formatDate(project.publishedAt) : '—'}</p>
+              <p class="project-owner">{$t('参与人数')}：{project.participantCount || 0}</p>
+            </a>
           {/each}
         </div>
       {:else}<p>{$t('暂无公开项目。')}</p>{/if}
@@ -728,6 +739,8 @@
   .project-stage { color: var(--ink-muted); font-size: 12px; }
   .project-owner { margin: 0 0 10px; color: var(--ink-muted); font-size: 13px; }
   .owner-avatar { width: 22px; height: 22px; margin-right: 6px; border-radius: 50%; object-fit: cover; vertical-align: middle; background: var(--surface-tint); border: 1px solid var(--border-subtle); }
+  .project-card-link { display: block; color: inherit; text-decoration: none; }
+  .project-card-link:hover h2 { color: var(--accent-deep); }
   .project-card h2 a { text-decoration: none; color: var(--ink-primary); transition: color var(--t-fast) var(--ease-out); }
   .project-card:hover h2 a { color: var(--accent-deep); }
   .project-card p { margin: 0 0 10px; color: var(--ink-muted); }
