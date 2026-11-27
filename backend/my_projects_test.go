@@ -182,6 +182,26 @@ func TestCreateProjectDetails(t *testing.T) {
 	if coverImageResponse.Code != http.StatusOK {
 		t.Fatalf("public cover = %d: %s", coverImageResponse.Code, coverImageResponse.Body.String())
 	}
+	editableRequest := httptest.NewRequest("GET", "/api/hpahub/me/projects/"+project.Id, nil)
+	editableRequest.Header.Set("Authorization", "Bearer "+token)
+	editableResponse := httptest.NewRecorder()
+	mux.ServeHTTP(editableResponse, editableRequest)
+	if editableResponse.Code != http.StatusOK || !strings.Contains(editableResponse.Body.String(), `"coverUrl":"/api/hpahub/projects/`+project.Id+`/cover"`) {
+		t.Fatalf("editable detail cover = %d: %s", editableResponse.Code, editableResponse.Body.String())
+	}
+	removeRequest := httptest.NewRequest("DELETE", "/api/hpahub/me/projects/"+project.Id+"/cover", nil)
+	removeRequest.Header.Set("Authorization", "Bearer "+token)
+	removeResponse := httptest.NewRecorder()
+	mux.ServeHTTP(removeResponse, removeRequest)
+	if removeResponse.Code != http.StatusOK {
+		t.Fatalf("cover remove = %d: %s", removeResponse.Code, removeResponse.Body.String())
+	}
+	removedCover := httptest.NewRequest("GET", "/api/hpahub/projects/"+project.Id+"/cover", nil)
+	removedCoverResponse := httptest.NewRecorder()
+	mux.ServeHTTP(removedCoverResponse, removedCover)
+	if removedCoverResponse.Code != http.StatusNotFound {
+		t.Fatalf("removed public cover = %d", removedCoverResponse.Code)
+	}
 	editRequest := httptest.NewRequest("PATCH", "/api/hpahub/me/projects/"+project.Id, strings.NewReader(`{"title":"更新后的项目","summary":"新简介","description":"新详情","projectNature":"learning","executionStatus":"ongoing","projectNeeds":["venue"],"providerOffers":["technical"]}`))
 	editRequest.Header.Set("Authorization", "Bearer "+token)
 	editRequest.Header.Set("Content-Type", "application/json")

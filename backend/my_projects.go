@@ -239,6 +239,18 @@ func bindMyProjectRoutes(e *core.ServeEvent) {
 		}
 		return project, member, nil
 	}
+	e.Router.DELETE("/api/hpahub/me/projects/{id}/cover", func(e *core.RequestEvent) error {
+		noCache(e)
+		project, _, err := loadOwned(e)
+		if err != nil {
+			return err
+		}
+		project.Set("cover", "")
+		if err := e.App.Save(project); err != nil {
+			return e.InternalServerError("Unable to remove cover.", err)
+		}
+		return e.JSON(200, map[string]any{"ok": true})
+	})
 	e.Router.GET("/api/hpahub/me/projects/{id}", func(e *core.RequestEvent) error {
 		noCache(e)
 		project, _, err := loadOwned(e)
@@ -255,6 +267,7 @@ func bindMyProjectRoutes(e *core.ServeEvent) {
 			"projectNeeds":    project.GetStringSlice("project_needs"),
 			"providerOffers":  project.GetStringSlice("provider_offers"),
 			"version":         project.GetInt("version"),
+			"coverUrl":        projectCoverURL(project),
 		})
 	})
 	e.Router.GET("/api/hpahub/me/projects/{id}/versions", func(e *core.RequestEvent) error {

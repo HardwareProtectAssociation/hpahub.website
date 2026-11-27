@@ -22,6 +22,9 @@
   let manageBusy = false;
   let manageError = '';
   let manageNotice = '';
+  let coverFile = null;
+  let coverPreview = '';
+  let removeCover = false;
 
   async function request(path, options = {}) {
     const response = await fetch(path, {
@@ -39,6 +42,10 @@
     manageNotice = '';
     versions = [];
     editForm = null;
+    coverFile = null;
+    removeCover = false;
+    if (coverPreview) URL.revokeObjectURL(coverPreview);
+    coverPreview = '';
     try {
       const [detail, versionList] = await Promise.all([
         request(`/api/hpahub/me/projects/${encodeURIComponent(project.id)}`),
@@ -52,6 +59,7 @@
         executionStatus: detail.executionStatus || 'ongoing',
         projectNeeds: detail.projectNeeds || [],
         providerOffers: detail.providerOffers || [],
+        coverUrl: detail.coverUrl || '',
       };
       versions = versionList.items || [];
       manageProject = project;
@@ -66,6 +74,32 @@
     versions = [];
     manageError = '';
     manageNotice = '';
+    coverFile = null;
+    removeCover = false;
+    if (coverPreview) URL.revokeObjectURL(coverPreview);
+    coverPreview = '';
+  }
+
+  function selectCover(event) {
+    const file = event.currentTarget.files?.[0] || null;
+    if (file && file.size > 2 * 1024 * 1024) {
+      manageError = '封面不能超过 2 MiB。';
+      event.currentTarget.value = '';
+      return;
+    }
+    manageError = '';
+    if (coverPreview) URL.revokeObjectURL(coverPreview);
+    coverFile = file;
+    coverPreview = file ? URL.createObjectURL(file) : '';
+    if (file) removeCover = false;
+  }
+
+  function toggleRemoveCover() {
+    if (removeCover) {
+      coverFile = null;
+      if (coverPreview) URL.revokeObjectURL(coverPreview);
+      coverPreview = '';
+    }
   }
 
   async function saveManage() {
@@ -79,7 +113,26 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(editForm),
       });
-      manageNotice = $t('项目已保存为版本 {version}。', { version: result.version });
+      let coverError = '';
+      if (removeCover) {
+        await request(`/api/hpahub/me/projects/${encodeURIComponent(manageProject.id)}/cover`, { method: 'DELETE' });
+        editForm = { ...editForm, coverUrl: '' };
+      } else if (coverFile) {
+        const body = new FormData();
+        body.set('cover', coverFile);
+        try {
+          const cover = await request(`/api/hpahub/me/projects/${encodeURIComponent(manageProject.id)}/cover`, { method: 'POST', body });
+          editForm = { ...editForm, coverUrl: cover.coverUrl || '' };
+        } catch {
+          coverError = '项目内容已保存，但封面更新失败。';
+        }
+        coverFile = null;
+        if (coverPreview) URL.revokeObjectURL(coverPreview);
+        coverPreview = '';
+      }
+      removeCover = false;
+      manageNotice = coverError ? '' : $t('项目已保存为版本 {version}。', { version: result.version });
+      manageError = coverError;
       manageProject = { ...manageProject, title: editForm.title, version: result.version };
       const versionList = await request(`/api/hpahub/me/projects/${encodeURIComponent(manageProject.id)}/versions`);
       versions = versionList.items || [];
@@ -178,6 +231,17 @@
         <label>{$t('项目名称')}<input bind:value={editForm.title} maxlength="160" required /></label>
         <label>{$t('项目简介')}<textarea bind:value={editForm.summary} maxlength="2000" rows="2"></textarea></label>
         <label>{$t('项目详情')}<textarea bind:value={editForm.description} maxlength="10000" rows="4"></textarea></label>
+        <div class="manage-cover">
+          <div class="cover-preview-wrap">
+            {#if coverPreview && !removeCover}<img class="cover-image" src={coverPreview} alt={$t('封面预览')} />
+            {:else if editForm.coverUrl && !removeCover}<img class="cover-image" src={editForm.coverUrl} alt={$t('当前封面')} />
+            {:else}<span class="cover-empty">{$t('暂无封面')}</span>{/if}
+          </div>
+          <div class="cover-controls">
+            <label class="cover-file">{$t('更换封面')}<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" on:change={selectCover} /></label>
+            {#if (editForm.coverUrl || coverPreview) && !removeCover}<label class="cover-remove"><input type="checkbox" bind:checked={removeCover} on:change={toggleRemoveCover} />{$t('删除封面')}</label>{/if}
+          </div>
+        </div>
         <div class="manage-grid">
           <label>{$t('项目状态')}<select bind:value={editForm.executionStatus}>{#each Object.entries(statusLabels) as [value, label]}<option {value}>{$t(label)}</option>{/each}</select></label>
           <label>{$t('项目性质')}<select bind:value={editForm.projectNature}><option value="">{$t('未填写')}</option>{#each Object.entries(natureLabels) as [value, label]}<option {value}>{$t(label)}</option>{/each}</select></label>
@@ -241,6 +305,13 @@
   .manage-modal label { display: grid; gap: 6px; color: var(--ink-secondary); font-size: 13px; }
   .manage-modal input:not([type="checkbox"]), .manage-modal select, .manage-modal textarea { width: 100%; padding: 9px 11px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--ink-primary); font: inherit; }
   .manage-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 14px; }
+  .manage-cover { display: grid; gap: 10px; }
+  .cover-preview-wrap { display: flex; align-items: center; justify-content: center; min-height: 120px; border: 1px dashed var(--border-default); border-radius: var(--radius-sm); background: var(--surface-soft); overflow: hidden; }
+  .cover-image { display: block; width: 100%; max-height: 220px; object-fit: cover; }
+  .cover-empty { color: var(--ink-subtle); font-size: 13px; }
+  .cover-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
+  .cover-file { display: inline-flex !important; flex-direction: row; align-items: center; gap: 8px; color: var(--accent-deep) !important; font-size: 13px; cursor: pointer; white-space: nowrap; }
+  .cover-remove { display: inline-flex !important; flex-direction: row; align-items: center; gap: 6px; color: var(--ink-secondary) !important; font-size: 13px; white-space: nowrap; }
   .manage-options { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 10px 12px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); }
   .manage-options legend { padding: 0 5px; color: var(--ink-secondary); font-size: 13px; }
   .manage-options label { display: inline-flex; flex-direction: row; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid var(--border-default); border-radius: 999px; font-size: 12px; cursor: pointer; }
