@@ -3,6 +3,7 @@ package main
 import (
 	"sort"
 
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
 )
 
@@ -37,17 +38,17 @@ func bindHomeRoutes(e *core.ServeEvent) {
 }
 
 func homeHotProjects(e *core.RequestEvent) ([]homeProject, error) {
-	rows, err := e.App.FindRecordsByFilter("projects", `review_status = "approved"`, "-updated", 100, 0)
+	var rows []*core.Record
+	err := e.App.RecordQuery("projects").
+		AndWhere(dbx.HashExp{"review_status": "approved", "deleted_at": ""}).
+		OrderBy("(SELECT COUNT(*) FROM project_follows WHERE project_follows.project_id = projects.id AND is_active = 1) DESC", "updated DESC", "id DESC").
+		Limit(8).All(&rows)
 	if err != nil {
 		return nil, err
 	}
-	follows, err := e.App.FindRecordsByFilter("project_follows", "is_active = true", "", 0, 0)
+	followCounts, err := projectFollowCounts(e.App, rows)
 	if err != nil {
 		return nil, err
-	}
-	followCounts := map[string]int{}
-	for _, follow := range follows {
-		followCounts[follow.GetString("project_id")]++
 	}
 	owners := map[string]*core.Record{}
 	items := make([]homeProject, 0, len(rows))
@@ -56,15 +57,6 @@ func homeHotProjects(e *core.RequestEvent) ([]homeProject, error) {
 			continue
 		}
 		items = append(items, homeProject{publicProject: projectSummary(e, project, owners), FollowCount: followCounts[project.Id]})
-	}
-	sort.SliceStable(items, func(i, j int) bool {
-		if items[i].FollowCount != items[j].FollowCount {
-			return items[i].FollowCount > items[j].FollowCount
-		}
-		return items[i].Updated > items[j].Updated
-	})
-	if len(items) > 8 {
-		items = items[:8]
 	}
 	return items, nil
 }

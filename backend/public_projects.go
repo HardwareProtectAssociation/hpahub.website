@@ -159,18 +159,18 @@ func bindPublicProjectRoutes(e *core.ServeEvent) {
 			}
 			offset = parsed
 		}
-		rows, err := e.App.FindRecordsByFilter("projects", `review_status = "approved"`, "-published_at,-updated", 21, offset)
+		rows, err := e.App.FindRecordsByFilter("projects", `review_status = "approved" && deleted_at = ""`, "-published_at,-updated,-id", 21, offset)
 		if err != nil {
 			return e.InternalServerError("Unable to load projects.", err)
 		}
 		owners := map[string]*core.Record{}
-		followCounts, err := projectFollowCounts(e)
-		if err != nil {
-			return e.InternalServerError("Unable to load projects.", err)
-		}
 		hasMore := len(rows) > 20
 		if hasMore {
 			rows = rows[:20]
+		}
+		followCounts, err := projectFollowCounts(e.App, rows)
+		if err != nil {
+			return e.InternalServerError("Unable to load projects.", err)
 		}
 		items := make([]publicProject, 0, len(rows))
 		for _, project := range rows {
@@ -277,9 +277,11 @@ func bindPublicProjectRoutes(e *core.ServeEvent) {
 		if err != nil {
 			return e.InternalServerError("Unable to load project details.", err)
 		}
-		if follows, err := e.App.FindRecordsByFilter("project_follows", "project_id = {:project} && is_active = true", "", 0, 0, dbx.Params{"project": project.Id}); err == nil {
-			card.FollowCount = len(follows)
+		followCounts, err := projectFollowCounts(e.App, []*core.Record{project})
+		if err != nil {
+			return e.InternalServerError("Unable to load project follows.", err)
 		}
+		card.FollowCount = followCounts[project.Id]
 		detail := publicProjectDetail{
 			publicProject:            card,
 			Version:                  max(project.GetInt("version"), 1),
@@ -763,16 +765,25 @@ func projectCoverURL(project *core.Record) string {
 	return contentURL("projects", project.Id, "cover")
 }
 
-func projectFollowCounts(e *core.RequestEvent) (map[string]int, error) {
-	rows, err := e.App.FindRecordsByFilter("project_follows", "is_active = true", "", 0, 0)
-	if err != nil {
-		return nil, err
+func projectFollowCounts(app core.App, projects []*core.Record) (map[string]int, error) {
+	counts := make(map[string]int, len(projects))
+	if len(projects) == 0 {
+		return counts, nil
 	}
-	counts := make(map[string]int, len(rows))
+	ids := make([]any, 0, len(projects))
+	for _, project := range projects {
+		ids = append(ids, project.Id)
+	}
+	var rows []struct {
+		ProjectID string `db:"project_id"`
+		Total     int    `db:"total"`
+	}
+	err := app.DB().Select("project_id", "COUNT(*) AS total").From("project_follows").
+		Where(dbx.HashExp{"is_active": true}).AndWhere(dbx.In("project_id", ids...)).GroupBy("project_id").All(&rows)
 	for _, row := range rows {
-		counts[row.GetString("project_id")]++
+		counts[row.ProjectID] = row.Total
 	}
-	return counts, nil
+	return counts, err
 }
 
 func publicPersonName(record *core.Record) string {
