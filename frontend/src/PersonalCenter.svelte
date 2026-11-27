@@ -693,7 +693,7 @@
                   </ul>
                 {/if}
                 <div class="skill-foot">
-                  <span class="like-count"><span aria-hidden="true">♥</span> {skill.likeCount}</span>
+                  <span class="like-count"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 10v12" /><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z" /></svg> {skill.likeCount}</span>
                   {#if skill.likeTier > 0}<span class={`recognized rank rank-pill rank-${skill.likeTier}`}><span class="flash-layer" aria-hidden="true"></span>{$t(recognizedLabels[skill.likeTier])}</span>{/if}
                 </div>
               </li>
@@ -914,7 +914,8 @@
   .skill-links a { color: var(--accent-deep); }
   .skill-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
   .skill-hint { margin: 6px 0 0 !important; font-size: 12px !important; color: var(--ink-subtle) !important; }
-  .like-count { color: #a84358; font-size: 12px; }
+  .like-count { display: inline-flex; align-items: center; gap: 4px; color: var(--ink-muted); font-size: 12px; }
+  .like-count svg { flex: none; }
   .invitation-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
   .invite-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
   .invite-controls label { display: flex; align-items: center; gap: 6px; color: var(--ink-secondary); font-size: 12px; }

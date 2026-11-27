@@ -378,11 +378,17 @@
                 {/if}
                 <div class="public-skill-foot">
                   {#if skill.canEndorse}
-                    <button type="button" class:liked={skill.likedByMe} class="like-button" on:click={() => endorseSkill(skill)} aria-pressed={skill.likedByMe} aria-label={$t(skill.likedByMe ? '取消点赞' : '点赞')}>
-                      <span aria-hidden="true">{skill.likedByMe ? '♥' : '♡'}</span> {skill.likeCount}
+                    <button type="button" class:liked={skill.likedByMe} class="like-button" on:click={() => endorseSkill(skill)} aria-pressed={skill.likedByMe} aria-label={$t(skill.likedByMe ? '取消认可' : '认可')}>
+                      <svg class="thumb" viewBox="0 0 24 24" width="14" height="14" fill={skill.likedByMe ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M7 10v12" />
+                        <path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z" />
+                      </svg>
+                      <span>{skill.likedByMe ? $t('你已认可') : $t('认可')}</span>
+                      <span class="like-sep" aria-hidden="true">·</span>
+                      <span class="like-number">{skill.likeCount}</span>
                     </button>
                   {:else}
-                    <span class="like-count"><span aria-hidden="true">♥</span> {skill.likeCount}</span>
+                    <span class="like-count"><svg class="thumb" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 10v12" /><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z" /></svg> {skill.likeCount}</span>
                   {/if}
                   {#if skill.likeTier > 0}<span class={`recognized rank rank-pill rank-${skill.likeTier}`}><span class="flash-layer" aria-hidden="true"></span>{$t(recognizedLabels[skill.likeTier])}</span>{/if}
                   {#if !token}<span class="meta">{$t('登录后可点赞')}</span>{/if}
@@ -790,10 +796,14 @@
   }
   .engineer-avatar { width: 72px; height: 72px; border-radius: 50%; object-fit: cover; background: linear-gradient(135deg, #d7eee1, #b3dec6); border: 2px solid var(--surface-elevated); box-shadow: 0 0 0 2px var(--border-default); }
   .engineer-card h3 { margin: 12px 0 0; font-size: 15px; color: var(--ink-primary); }
-  .like-button { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border: 1px solid var(--border-default); border-radius: 999px; background: var(--surface-elevated); color: var(--ink-secondary); font-size: 12px; cursor: pointer; transition: background-color var(--t-fast) var(--ease-out), border-color var(--t-fast) var(--ease-out); }
-  .like-button:hover { background: var(--surface-tint); }
-  .like-button.liked { color: #a84358; border-color: #e3bcc4; background: #fff4f6; }
-  .like-count { color: #a84358; font-size: 12px; }
+  .like-button { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border: 1px solid var(--border-default); border-radius: 999px; background: transparent; color: var(--ink-secondary); font-size: 12px; cursor: pointer; transition: background-color var(--t-fast) var(--ease-out), border-color var(--t-fast) var(--ease-out), color var(--t-fast) var(--ease-out); }
+  .like-button:hover { background: var(--surface-tint); border-color: var(--border-strong); }
+  .like-button.liked { color: var(--accent-deep); border-color: var(--accent); background: var(--accent-soft); }
+  .like-button .thumb,
+  .like-count .thumb { flex: none; }
+  .like-sep { opacity: 0.45; }
+  .like-number { font-variant-numeric: tabular-nums; }
+  .like-count { display: inline-flex; align-items: center; gap: 5px; color: var(--ink-muted); font-size: 12px; }
   .recognized { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border: 1px solid transparent; border-radius: 999px; font-size: 11px; font-weight: 600; letter-spacing: 0.02em; }
   .recognized::before { content: '✦'; }
   @media (max-width: 600px) {
