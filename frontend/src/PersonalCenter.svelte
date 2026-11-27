@@ -22,11 +22,14 @@
   let formPublic = false;
   let formGender = '';
   let formAge = '';
+  let formBirthday = '';
+  let formProfileTitle = '';
   let formCurrentStatus = '';
   let formContacts = [];
   let formActivityAreas = [];
   let formIdentityIds = [];
-  let activityDraft = '';
+  let activityScope = '';
+  let activityRegion = '';
   let removeAvatar = false;
   let avatarFile = null;
   let avatarThumb = null;
@@ -60,6 +63,29 @@
     { value: 'phone', label: '电话' },
     { value: 'other', label: '其他' },
   ];
+  const sponsorIdentityNames = new Set(['资金赞助者', '工具提供者', '材料提供者', '场地提供者', '资源联络者', '采购与后勤协作者']);
+  const technicalSupportIdentityNames = new Set(['技术顾问', '测试与体验者']);
+  function identityGroup(identity) {
+    if (sponsorIdentityNames.has(identity.name)) return '赞助类';
+    if (identity.category === 'main' || technicalSupportIdentityNames.has(identity.name)) return '技术类';
+    return '管理类';
+  }
+  $: identityGroups = ['技术类', '赞助类', '管理类'].map((group) => ({
+    name: group,
+    identities: (data?.identityOptions || []).filter((identity) => identityGroup(identity) === group),
+  })).filter((group) => group.identities.length);
+  const activityScopes = [
+    { value: 'domestic', label: '国内' },
+    { value: 'hmt', label: '港澳台' },
+    { value: 'overseas', label: '海外' },
+  ];
+  const activityRegions = {
+    domestic: ['北京市', '天津市', '河北省', '山西省', '内蒙古自治区', '辽宁省', '吉林省', '黑龙江省', '上海市', '江苏省', '浙江省', '安徽省', '福建省', '江西省', '山东省', '河南省', '湖北省', '湖南省', '广东省', '广西壮族自治区', '海南省', '重庆市', '四川省', '贵州省', '云南省', '西藏自治区', '陕西省', '甘肃省', '青海省', '宁夏回族自治区', '新疆维吾尔自治区'],
+    hmt: ['香港', '澳门', '台湾'],
+    overseas: ['亚洲', '欧洲', '北美洲', '南美洲', '非洲', '大洋洲'],
+  };
+  $: activityRegionOptions = (activityRegions[activityScope] || []).map((region) => ({ value: region, label: region }));
+  $: profileTitleOptions = [{ value: '', label: $t('不佩戴头衔') }, ...(data?.profile?.officialTitles || []).map((title) => ({ value: title.id, label: `${title.name}${!title.isOfficial && title.issuedByName ? ` · ${$t('授予者')}：${title.issuedByName}` : ''}` }))];
   $: featuredIdentities = (data?.identities || []).filter((identity) => identity.featured);
   $: completedProjects = [...(data?.projects?.completed || []), ...(data?.projects?.assisted || [])];
   $: difficultyTags = ['S', 'A', 'B', 'C', 'D'].map((level) => ({ level, count: completedProjects.filter((project) => (project.difficulty || '').toUpperCase() === level).length })).filter((tag) => tag.count > 0);
@@ -134,16 +160,20 @@
   }
 
   function startEdit() {
+    if (data?.profile?.canEditProfile === false) return;
     formName = data?.profile?.name || '';
     formBio = data?.profile?.bio || '';
     formPublic = !!data?.profile?.profilePublic;
     formGender = data?.profile?.gender || '';
     formAge = data?.profile?.age || '';
+    formBirthday = data?.profile?.birthday || '';
+    formProfileTitle = data?.profile?.profileTitleId || '';
     formCurrentStatus = data?.profile?.currentStatus || '';
     formContacts = (data?.profile?.contacts || []).map((contact) => ({ ...contact }));
     formActivityAreas = [...(data?.profile?.activityAreas || [])];
     formIdentityIds = (data?.identities || []).filter((identity) => identity.featured).map((identity) => identity.id);
-    activityDraft = '';
+    activityScope = '';
+    activityRegion = '';
     removeAvatar = false;
     avatarFile = null;
     avatarThumb = null;
@@ -164,14 +194,15 @@
   }
 
   function addActivityArea() {
-    const value = activityDraft.trim();
-    if (!value) return;
+    const region = activityRegion.trim();
+    if (!activityScope || !region) return;
     if (formActivityAreas.length >= 2) {
       formError = '最多选择 2 个活动范围。';
       return;
     }
+    const value = `${activityScope === 'domestic' ? '国内' : activityScope === 'hmt' ? '港澳台' : '海外'} · ${region}`;
     if (!formActivityAreas.includes(value)) formActivityAreas = [...formActivityAreas, value];
-    activityDraft = '';
+    activityRegion = '';
   }
 
   function removeActivityArea(index) {
@@ -225,6 +256,8 @@
       body.set('bio', formBio);
       body.set('gender', formGender);
       body.set('age', String(formAge || 0));
+      body.set('birthday', formBirthday);
+      body.set('profileTitle', formProfileTitle);
       body.set('currentStatus', formCurrentStatus);
       body.set('contacts', JSON.stringify(formContacts.filter((contact) => contact.value.trim())));
       body.set('activityAreas', JSON.stringify(formActivityAreas));
@@ -423,16 +456,16 @@
         <span class="avatar avatar-default" aria-hidden="true"></span>
       {/if}
       <div class="profile-copy">
-        <h1 id="center-name">{data.profile.name || data.profile.email}</h1>
-        {#if data.profile.name && data.profile.email && data.profile.email !== data.profile.name}
-          <p class="center-email">{data.profile.email}</p>
-        {/if}
+        <h1 id="center-name">{data.profile.name || $t('未设置昵称')}</h1>
+        {#if data.profile.officialTitles?.length}<div class="profile-meta">{#each data.profile.officialTitles as title}<span class="profile-badge title-badge">{$t(title.isOfficial ? '官方头衔' : '项目头衔')} · {title.name}{#if !title.isOfficial && title.issuedByName} · {$t('授予者')}：{title.issuedByName}{/if}</span>{/each}</div>{/if}
         {#if data.profile.bio}<p class="center-bio">{data.profile.bio}</p>{/if}
-        {#if data.profile.currentStatus || data.profile.gender || data.profile.age || data.profile.activityAreas?.length}
+        {#if data.profile.currentStatus || data.profile.gender || data.profile.age || data.profile.birthday || data.profile.profileTitle || data.profile.activityAreas?.length}
           <div class="profile-meta" aria-label={$t('个人资料')}>
             {#if data.profile.currentStatus}<span class={`profile-badge status-badge status-${data.profile.currentStatus}`}>{$t('当前状态')} · {$t(currentStatusLabels[data.profile.currentStatus] || data.profile.currentStatus)}</span>{/if}
-            {#if data.profile.gender}<span class={`profile-badge gender-badge gender-${data.profile.gender}`}>{$t('性别')} · {$t(genderLabels[data.profile.gender] || data.profile.gender)}</span>{/if}
+            {#if data.profile.gender}<span class={`profile-badge gender-badge gender-${data.profile.gender}`}>{$t(genderLabels[data.profile.gender] || data.profile.gender)}</span>{/if}
             {#if data.profile.age}<span class="profile-badge profile-fact">{$t('年龄')} · {data.profile.age}</span>{/if}
+            {#if data.profile.birthday}<span class="profile-badge profile-fact">{$t('生日')} · {data.profile.birthday}</span>{/if}
+            {#if data.profile.profileTitle}<span class="profile-badge profile-fact">{$t('佩戴头衔')} · {data.profile.profileTitle}</span>{/if}
             {#if data.profile.activityAreas?.length}<span class="profile-badge profile-fact">{$t('活动范围')} · {data.profile.activityAreas.join('、')}</span>{/if}
           </div>
         {/if}
@@ -446,7 +479,10 @@
         {/if}
         {#if data.profile.member}
           <div class="profile-actions">
-            {#if !editing}<button type="button" class="link-button" on:click={startEdit}>{$t('编辑资料')}</button>{/if}
+            {#if !editing}
+              {#if data.profile.canEditProfile}<button type="button" class="link-button" on:click={startEdit}>{$t('编辑资料')}</button>
+              {:else}<span class="profile-edit-lock">{$t('个人资料每7天只能修改一次')} · {new Date(data.profile.nextProfileEditAt).toLocaleString()}</span>{/if}
+            {/if}
             <a class="text-link" href="/settings">{$t('修改个人名片')}</a>
             {#if data.profile.profilePublic}
               <a class="text-link" href={`/community/${data.profile.id}`}>{$t('查看公开主页')}</a>
@@ -461,29 +497,35 @@
     {#if editing}
       <form class="profile-edit" on:submit|preventDefault={saveProfile}>
         <div class="section-head">
-          <div><h2>{$t('编辑个人资料')}</h2><p>{$t('修改后会立即更新个人中心和公开主页。')}</p></div>
+          <div><h2>{$t('编辑个人资料')}</h2><p>{$t('每7天可以修改一次个人资料。')}</p></div>
         </div>
         {#if formError}<p class="message error" role="alert">{$t(formError)}</p>{/if}
-        <div class="edit-avatar">
-          {#if avatarPreview && !removeAvatar}
-            <img class="avatar" src={avatarPreview} alt={$t('新头像预览')} />
-          {:else if avatarSrc && !removeAvatar}
-            <img class="avatar" src={avatarSrc} alt={$t('当前头像')} />
-          {:else}
-            <span class="avatar avatar-default" aria-hidden="true"></span>
-          {/if}
-          <div class="avatar-controls">
-            <AvatarCrop on:crop={selectAvatar} on:pending={(event) => cropPending = event.detail} />
-            {#if avatarSrc || avatarPreview}
-              <label class="check-label"><input type="checkbox" bind:checked={removeAvatar} />{$t('删除头像')}</label>
+        <div class="edit-profile-top">
+          <div class="edit-avatar">
+            {#if avatarPreview && !removeAvatar}
+              <img class="avatar" src={avatarPreview} alt={$t('新头像预览')} />
+            {:else if avatarSrc && !removeAvatar}
+              <img class="avatar" src={avatarSrc} alt={$t('当前头像')} />
+            {:else}
+              <span class="avatar avatar-default" aria-hidden="true"></span>
             {/if}
+            <div class="avatar-controls">
+              <AvatarCrop on:crop={selectAvatar} on:pending={(event) => cropPending = event.detail} />
+              {#if avatarSrc || avatarPreview}
+                <label class="check-label"><input type="checkbox" bind:checked={removeAvatar} />{$t('删除头像')}</label>
+              {/if}
+            </div>
           </div>
+          <label class="edit-field">{$t('昵称')}<input bind:value={formName} maxlength="80" required /></label>
         </div>
-        <label class="edit-field">{$t('昵称')}<input bind:value={formName} maxlength="80" required /></label>
         <label class="edit-field">{$t('简介')}<textarea bind:value={formBio} maxlength="600" rows="4"></textarea></label>
         <div class="edit-grid">
           <div class="edit-field"><span>{$t('性别')}</span><Select bind:value={formGender} ariaLabel={$t('性别')} options={[{ value: '', label: $t('未填写') }, ...genderOptions.map(([value, label]) => ({ value, label: $t(label) }))]} /></div>
           <label class="edit-field">{$t('年龄')}<input type="number" min="1" max="120" bind:value={formAge} placeholder={$t('可不填')} /></label>
+        </div>
+        <div class="edit-grid">
+          <label class="edit-field">{$t('生日')}<input type="date" bind:value={formBirthday} /></label>
+          <div class="edit-field"><span>{$t('佩戴头衔')}</span><Select bind:value={formProfileTitle} ariaLabel={$t('佩戴头衔')} options={profileTitleOptions} /><small>{$t('只能选择已获得的头衔；新头衔由管理员授予。')}</small></div>
         </div>
         <div class="edit-field"><span>{$t('当前状态')}</span><Select bind:value={formCurrentStatus} ariaLabel={$t('当前状态')} options={[{ value: '', label: $t('未设置') }, { value: 'busy', label: $t('忙碌') }, { value: 'free', label: $t('空闲') }]} /></div>
         <fieldset class="edit-block">
@@ -508,21 +550,28 @@
           {/if}
           {#if formActivityAreas.length < 2}
             <div class="tag-input">
-              <input bind:value={activityDraft} maxlength="40" placeholder={$t('线上 / 上海 / 江浙沪')} />
-              <button type="button" class="small" on:click={addActivityArea}>{$t('添加')}</button>
+              <Select bind:value={activityScope} ariaLabel={$t('活动地区类别')} options={[{ value: '', label: $t('选择地区类别') }, ...activityScopes.map((scope) => ({ value: scope.value, label: $t(scope.label) }))]} on:value={() => activityRegion = ''} />
+              <Select bind:value={activityRegion} ariaLabel={$t('活动地区')} options={[{ value: '', label: $t('选择具体地区') }, ...activityRegionOptions]} disabled={!activityScope} />
+              <button type="button" class="small" disabled={!activityScope || !activityRegion} on:click={addActivityArea}>{$t('添加')}</button>
             </div>
           {/if}
+          <p class="activity-area-hint">{$t('国内按省级地区选择，港澳台按地区选择，海外按大洲选择。')}</p>
         </fieldset>
         <fieldset class="edit-block">
           <legend>{$t('想要展示的职业（最多 3 个）')}</legend>
-          <div class="identity-picker">
-            {#each data.identityOptions as identity}
-              <label class:checked={formIdentityIds.includes(identity.id)}>
-                <input type="checkbox" checked={formIdentityIds.includes(identity.id)} on:change={() => toggleIdentity(identity.id)} />
-                <span>{identity.name}</span>
-              </label>
-            {/each}
-          </div>
+          {#each identityGroups as group}
+            <div class="identity-group">
+              <h4>{$t(group.name)}</h4>
+              <div class="identity-picker">
+                {#each group.identities as identity}
+                  <label class:checked={formIdentityIds.includes(identity.id)}>
+                    <input type="checkbox" checked={formIdentityIds.includes(identity.id)} on:change={() => toggleIdentity(identity.id)} />
+                    <span>{identity.name}</span>
+                  </label>
+                {/each}
+              </div>
+            </div>
+          {/each}
         </fieldset>
         <div class="edit-actions">
           <button class="primary" type="submit" disabled={saving || cropPending}>{saving ? $t('正在保存…') : $t('保存资料')}</button>
@@ -601,7 +650,7 @@
                 <a class="project-mini-card" href={'/showcase/' + encodeURIComponent(project.id)}>
                   <span class:done={project.status === 'completed'} class="mini-status">{$t(statusLabels[project.status] || project.status)}</span>
                   <strong>{project.title}</strong>
-                  {#if project.summary}<p>{project.summary}</p>{/if}
+                  {#if project.projectNumber}<small class="project-number">{project.projectNumber}</small>{/if}
                 </a>
               {/each}
             </div>
@@ -792,7 +841,6 @@
   .personal-center { width: min(1200px, 88%); }
   .center-profile { align-items: flex-start; border-bottom: 1px solid var(--border-subtle); padding-bottom: 28px; }
   .center-profile h1 { margin: 0 0 6px; font-size: clamp(28px, 3vw, 40px); line-height: 1.2; letter-spacing: -0.035em; font-weight: 700; }
-  .center-email { margin: 0 0 12px; color: var(--ink-subtle); font-size: 14px; font-family: var(--font-mono); }
   .center-bio { margin: 0 0 14px; max-width: 70ch; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink-secondary); }
   .profile-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin: 0 0 10px; font-size: 12px; }
   .center-contacts { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0 0 10px; color: var(--ink-muted); font-size: 13px; }
@@ -811,7 +859,6 @@
   .project-mini-card { display: grid; gap: 4px; padding: 12px 14px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-elevated); text-decoration: none; color: inherit; transition: transform var(--t-fast) var(--ease-out), border-color var(--t-fast) var(--ease-out), box-shadow var(--t-fast) var(--ease-out); }
   .project-mini-card:hover { transform: translateY(-2px); border-color: var(--border-strong); box-shadow: var(--shadow-xs); }
   .project-mini-card strong { font-size: 13px; color: var(--accent-deep); }
-  .project-mini-card p { margin: 0; color: var(--ink-muted); font-size: 11.5px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .mini-status { font-size: 10.5px; color: var(--ink-muted); font-weight: 500; }
   .mini-status.done { color: var(--accent); }
   .mini-empty { color: var(--ink-subtle); font-size: 12px; margin: 0; }
@@ -829,12 +876,14 @@
   .chip { display: inline-block; padding: 4px 10px; border: 1px solid var(--border-default); border-radius: 999px; background: var(--surface-tint); color: var(--accent-deep); font-size: 12px; font-weight: 500; }
   .chip.small { padding: 2px 8px; font-size: 11px; }
   .profile-actions { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 16px; font-size: 13px; }
+  .profile-edit-lock { color: var(--ink-subtle); font-size: 13px; }
   .text-link { color: var(--accent-deep); text-underline-offset: 3px; font-weight: 600; }
   .link-button { padding: 0; border: 0; background: none; color: var(--accent-deep); font: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
   .profile-edit { display: grid; gap: 16px; max-width: 760px; margin: 0 0 26px; padding: 24px; border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--shadow-sm); }
   .profile-edit .section-head { margin-bottom: 0; }
   .profile-edit .message { margin: 0; }
   .edit-avatar { display: flex; flex-wrap: wrap; align-items: center; gap: 18px; }
+  .edit-profile-top { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 18px; max-width: 620px; }
   .avatar-controls { display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
   .file-label { display: inline-flex; align-items: center; gap: 8px; color: var(--accent-deep); font-size: 13px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
   .edit-field { display: grid; gap: 6px; max-width: 620px; color: var(--ink-secondary); font-size: 13px; font-weight: 500; }
@@ -848,9 +897,10 @@
   .contact-row input { width: 100%; padding: 8px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--ink-primary); font: inherit; }
   .tag-list { display: flex; flex-wrap: wrap; gap: 8px; }
   .chip button { margin-left: 6px; padding: 0; border: 0; background: none; color: inherit; cursor: pointer; font-size: 14px; line-height: 1; }
-  .tag-input { display: flex; gap: 8px; }
-  .tag-input input { flex: 1; padding: 8px 10px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-elevated); font: inherit; }
+  .tag-input { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 8px; }
   .identity-picker { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; max-height: 260px; overflow: auto; }
+  .identity-group { display: grid; gap: 8px; }
+  .identity-group h4 { margin: 0; color: var(--ink-subtle); font-size: 12px; font-weight: 600; }
   .identity-picker label { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-soft); font-size: 13px; cursor: pointer; }
   .identity-picker label.checked { border-color: var(--accent); background: var(--surface-tint); color: var(--accent-deep); font-weight: 500; }
   .edit-actions { display: flex; flex-wrap: wrap; gap: 10px; }
@@ -927,7 +977,7 @@
   .invitation-card small { color: var(--ink-muted); }
   .recognized { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border: 1px solid transparent; border-radius: 999px; font-size: 11px; font-weight: 600; letter-spacing: 0.02em; }
   .recognized::before { content: '✦'; }
-  @media (max-width: 600px) { .edit-grid, .contact-row { grid-template-columns: 1fr; } }
+  @media (max-width: 600px) { .edit-profile-top, .edit-grid, .contact-row, .tag-input { grid-template-columns: 1fr; } }
   .reward-note { margin: 12px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
   .center-empty { color: var(--ink-subtle); font-size: 13px; }
   .center-empty p { margin: 0 0 6px; }

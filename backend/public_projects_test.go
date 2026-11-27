@@ -378,7 +378,7 @@ func TestOpenJoinRollsBackOnMembershipFailure(t *testing.T) {
 	}
 	token, _ := user.NewAuthToken()
 	call := func() *httptest.ResponseRecorder {
-		req := httptest.NewRequest("POST", "/api/hpahub/projects/"+project.Id+"/apply", strings.NewReader(`{"message":"join"}`))
+		req := httptest.NewRequest("POST", "/api/hpahub/projects/"+project.Id+"/apply", strings.NewReader(`{"message":"join","profession":"电子工程师","ability":"设计电路"}`))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Authorization", "Bearer "+token)
 		res := httptest.NewRecorder()
@@ -416,6 +416,10 @@ func TestOpenJoinRollsBackOnMembershipFailure(t *testing.T) {
 	rows, err = app.FindRecordsByFilter("project_join_requests", "project_id = {:project}", "", 0, 0, dbx.Params{"project": project.Id})
 	if err != nil || len(rows) != 1 || rows[0].GetString("status") != "accepted" {
 		t.Fatalf("concurrent applications: %v %v", rows, err)
+	}
+	membership, err := app.FindFirstRecordByFilter("project_members", "project_id = {:project} && user_id = {:user}", dbx.Params{"project": project.Id, "user": user.Id})
+	if err != nil || membership.GetString("duties") != "电子工程师 · 设计电路" {
+		t.Fatalf("join duties not saved: %v %v", membership, err)
 	}
 	if res := call(); res.Code != http.StatusBadRequest {
 		t.Fatalf("duplicate join: %d %s", res.Code, res.Body.String())

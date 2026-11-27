@@ -1,5 +1,5 @@
 <script>
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, tick } from 'svelte';
   import { locale, languages, t } from './i18n.js';
   import Hardware from './Hardware.svelte';
   import PersonalCenter from './PersonalCenter.svelte';
@@ -21,12 +21,24 @@
   let checking = !!token;
   let page = 'home';
   let menuOpen = false;
+  let menuButton;
+  let mainNavigation;
+  async function toggleMenu() {
+    menuOpen = !menuOpen;
+    if (menuOpen) {
+      await tick();
+      mainNavigation?.querySelector('a')?.focus();
+    }
+  }
   let accountOpen = false;
   let accountMenu, accountButton;
   let accountName = '';
   let accountAvatar = '';
   let mode = pathname === '/join' ? 'register' : 'login';
   let inviteCode = '';
+  let requestingMembership = false;
+  let membershipApplicationName = '';
+  let membershipApplicationReason = '';
   let passwordConfirm = '';
   let identity = '';
   let password = '';
@@ -150,6 +162,26 @@
     } finally {
       loading = false;
       checking = false;
+    }
+  }
+
+  async function submitMembershipApplication() {
+    loading = true;
+    error = '';
+    notice = '';
+    try {
+      await request('/api/hpahub/membership-applications', {
+        method: 'POST',
+        body: JSON.stringify({ email: identity, name: membershipApplicationName, reason: membershipApplicationReason }),
+      });
+      notice = '申请已提交。管理员通过后会生成邀请码，并通过你留下的邮箱联系你。';
+      identity = '';
+      membershipApplicationName = '';
+      membershipApplicationReason = '';
+    } catch (err) {
+      error = err.message;
+    } finally {
+      loading = false;
     }
   }
 
@@ -300,17 +332,17 @@
 
 <svelte:head><title>HPA Hub</title></svelte:head>
 
-<svelte:window on:keydown={(event) => { if (event.key === 'Escape') { if (accountOpen) { accountOpen = false; accountButton?.focus(); } else menuOpen = false; } }} on:click={(event) => { if (accountOpen && accountMenu && !accountMenu.contains(event.target)) accountOpen = false; }} />
+<svelte:window on:keydown={(event) => { if (event.key === 'Escape') { if (accountOpen) { accountOpen = false; accountButton?.focus(); } else if (menuOpen) { menuOpen = false; menuButton?.focus(); } } }} on:click={(event) => { if (accountOpen && accountMenu && !accountMenu.contains(event.target)) accountOpen = false; }} />
 
 <div class="app-shell">
   {#if menuOpen}<button class="menu-backdrop" aria-label={$t('关闭导航菜单')} on:click={() => menuOpen = false}></button>{/if}
   <header class:menu-open={menuOpen} class="topbar">
     <a class="brand" href="/" aria-label={$t('HPA Hub 首页')}><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span>HPA<span class="brand-light">HUB</span></span></a>
-    <nav id="main-navigation" class="topbar-right" aria-label={$t('主导航')}>
+    <nav id="main-navigation" class="topbar-right" bind:this={mainNavigation} aria-label={$t('主导航')}>
       <a class="text-button" href="/" aria-current={pathname === '/' && page === 'home' ? 'page' : undefined}>{$t('首页')}</a>
-      <a class="text-button" href="/hardware" aria-current={pathname === '/hardware' ? 'page' : undefined}>{$t('硬件数据库')}</a>
-      <a class="text-button" href="/community" aria-current={pathname === '/community' || pathname.startsWith('/community/') ? 'page' : undefined}>{$t('成员列表')}</a>
       <a class="text-button" href="/showcase" aria-current={pathname === '/showcase' || pathname.startsWith('/showcase/') ? 'page' : undefined}>{$t('项目大厅')}</a>
+      <a class="text-button" href="/community" aria-current={pathname === '/community' || pathname.startsWith('/community/') ? 'page' : undefined}>{$t('成员列表')}</a>
+      <a class="text-button" href="/hardware" aria-current={pathname === '/hardware' ? 'page' : undefined}>{$t('硬件数据库')}</a>
       {#if token && !checking}
         {#if ['member', 'admin', 'octopus'].includes(role)}<a class="text-button" href="/messages" aria-current={pathname === '/messages' ? 'page' : undefined}>{$t('站内消息')}{#if unreadMessages > 0}<span class="nav-badge">{unreadMessages}</span>{/if}</a>{/if}
         {#if isAdmin}
@@ -329,7 +361,6 @@
             {#if accountOpen}
               <div id="account-menu" class="account-popover">
                 <a href="/me">{$t('个人中心')}</a>
-                {#if ['member', 'admin', 'octopus'].includes(role)}<a href="/settings">{$t('修改个人名片')}</a>{/if}
                 {#if ['member', 'admin', 'octopus'].includes(role)}<a href="/my-projects">{$t('我的项目')}</a>{/if}
                 <button type="button" on:click={logout}>{$t('退出登录')}</button>
               </div>
@@ -342,14 +373,14 @@
       </div>
     </nav>
   </header>
-  <button class="menu-toggle" aria-label={menuOpen ? $t('关闭导航菜单') : $t('打开导航菜单')} aria-expanded={menuOpen} aria-controls="main-navigation" on:click={() => menuOpen = !menuOpen}>
+  <button class="menu-toggle" bind:this={menuButton} aria-label={menuOpen ? $t('关闭导航菜单') : $t('打开导航菜单')} aria-expanded={menuOpen} aria-controls="main-navigation" on:click={toggleMenu}>
     <span aria-hidden="true">{menuOpen ? '×' : '☰'}</span>
   </button>
 
   {#if checking}
     <main class="dashboard"><p role="status">{$t('正在验证登录状态…')}</p></main>
   {:else if pathname === '/hardware'}
-    <Hardware />
+    <Hardware {token} admin={isAdmin} />
   {:else if pathname === '/me/skills'}
     {#if token}
       <SkillEditor {token} />
@@ -390,30 +421,40 @@
     <main class="login-layout">
       <section class="login-intro">
         <h1>{$t('欢迎来到')}<br /><em>HPA Hub。</em></h1>
-        <p>{$t('登录你的账户，开始使用 HPA Hub。新用户可使用邀请码注册。')}</p>
+        <p>{$t('登录你的账户，开始使用 HPA Hub。新成员可使用邀请码注册或提交加入申请。')}</p>
         <div class="archive-art" aria-hidden="true"><div class="art-label">HPA<br />HUB</div><div class="art-rings"><span></span><span></span><span></span></div><div class="art-bottom">WELCOME <span>✳</span></div></div>
       </section>
       <section class="login-panel" aria-labelledby="login-title">
         <div class="panel-top"><span>{$t('账户访问')}</span><span>HPA HUB</span></div>
-        <h2 id="login-title">{mode === 'login' ? $t('登录') : $t('使用邀请码注册')}</h2>
-        <p class="muted">{mode === 'login' ? $t('普通用户与管理员使用同一入口登录。') : $t('邀请码有效期为 24 小时，仅可使用一次。')}</p>
-        <form on:submit|preventDefault={mode === 'login' ? login : register} class="login-form">
+        <h2 id="login-title">{mode === 'login' ? $t('登录') : requestingMembership ? $t('申请加入 HPA Hub') : $t('使用邀请码注册')}</h2>
+        <p class="muted">{mode === 'login' ? $t('普通用户与管理员使用同一入口登录。') : requestingMembership ? $t('提交邮箱、昵称和申请理由，管理员审核后会发放邀请码。') : $t('邀请码有效期为 24 小时，仅可使用一次。')}</p>
+        {#if mode === 'register'}<div class="join-options"><button type="button" class:active={!requestingMembership} on:click={() => { requestingMembership = false; error = ''; notice = ''; }}>{$t('我有邀请码')}</button><button type="button" class:active={requestingMembership} on:click={() => { requestingMembership = true; error = ''; notice = ''; }}>{$t('没有邀请码，申请加入')}</button></div>{/if}
+        <form on:submit|preventDefault={mode === 'login' ? login : requestingMembership ? submitMembershipApplication : register} class="login-form">
           <label for="identity">{mode === 'login' ? $t('账号或邮箱') : $t('邮箱')}</label>
           {#if mode === 'login'}
             <input id="identity" type="text" bind:value={identity} autocomplete="username" placeholder={$t('输入账号或邮箱')} required />
           {:else}
             <input id="identity" type="email" bind:value={identity} autocomplete="username" placeholder="name@example.com" required />
           {/if}
-          <label for="password">{$t('密码')}</label>
-          <input id="password" type="password" bind:value={password} autocomplete={mode === 'login' ? 'current-password' : 'new-password'} placeholder={$t('输入密码')} required />
-          {#if mode === 'register'}
+          {#if mode !== 'register' || !requestingMembership}
+            <label for="password">{$t('密码')}</label>
+            <input id="password" type="password" bind:value={password} autocomplete={mode === 'login' ? 'current-password' : 'new-password'} placeholder={$t('输入密码')} required />
+          {/if}
+          {#if mode === 'register' && requestingMembership}
+            <label for="application-name">{$t('昵称')}</label>
+            <input id="application-name" bind:value={membershipApplicationName} maxlength="80" required />
+            <label for="application-reason">{$t('申请理由')}</label>
+            <textarea id="application-reason" bind:value={membershipApplicationReason} maxlength="2000" rows="4" required></textarea>
+          {/if}
+          {#if mode === 'register' && !requestingMembership}
             <label for="password-confirm">{$t('确认密码')}</label>
             <input id="password-confirm" type="password" bind:value={passwordConfirm} autocomplete="new-password" required />
             <label for="invite-code">{$t('邀请码')}</label>
             <input id="invite-code" bind:value={inviteCode} autocomplete="off" placeholder="HPA-XXXXXXXX" required />
           {/if}
           {#if error}<p class="message error" role="alert">{$t(error)}</p>{/if}
-          <button class="primary login-submit" type="submit" disabled={loading}>{loading ? $t('请稍候…') : (mode === 'login' ? $t('登录') : $t('注册'))} <span aria-hidden="true">↗</span></button>
+          {#if notice}<p class="message success" role="status">{$t(notice)}</p>{/if}
+          <button class="primary login-submit" type="submit" disabled={loading}>{loading ? $t('请稍候…') : (mode === 'login' ? $t('登录') : requestingMembership ? $t('提交加入申请') : $t('注册'))} <span aria-hidden="true">↗</span></button>
         </form>
         <p class="login-foot">{mode === 'login' ? $t('还没有账户？') : $t('已有账户？')} <a class="text-button" href={mode === 'login' ? '/join' : '/sign-in'}>{mode === 'login' ? $t('使用邀请码注册') : $t('返回登录')}</a></p>
       </section>

@@ -118,10 +118,12 @@ func TestPublicProfilesCardsAndShowcase(t *testing.T) {
 	want(jsonRequest("GET", base+"/me/profile/avatar", otherToken, ""), http.StatusNotFound)
 	want(multipartRequest("POST", base+"/me/cards", memberToken, map[string][]string{"title": {""}}, 0), http.StatusBadRequest)
 	want(multipartRequest("POST", base+"/me/cards", memberToken, map[string][]string{"title": {strings.Repeat("x", 81)}}, 0), http.StatusBadRequest)
-	want(multipartRequest("POST", base+"/me/cards", memberToken, map[string][]string{"title": {"Too many images"}}, 5), http.StatusBadRequest)
+	want(multipartRequest("POST", base+"/me/cards", memberToken, map[string][]string{"title": {"Too many images"}}, 6), http.StatusBadRequest)
 	want(multipartRequest("POST", base+"/me/cards", memberToken, map[string][]string{"title": {"Card"}, "text": {strings.Repeat("x", 281)}}, 0), http.StatusBadRequest)
 
-	card := multipartRequest("POST", base+"/me/cards", memberToken, map[string][]string{"title": {"Card"}, "text": {"Card text"}}, 2)
+	layout := `{"version":1,"items":[{"type":"text","text":"Canvas text","x":10,"y":20,"width":50,"rotation":20,"font":"serif","size":24},{"type":"image","image":1,"x":25,"y":30,"width":40,"rotation":-15}]}`
+ want(multipartRequest("POST", base+"/me/cards", memberToken, map[string][]string{"title": {"Invalid"}, "layout": {`{"version":1,"items":[{"type":"image","image":2,"x":0,"y":0,"width":20,"rotation":0}]}`}}, 0), http.StatusBadRequest)
+ card := multipartRequest("POST", base+"/me/cards", memberToken, map[string][]string{"title": {"Card"}, "text": {"Card text"}, "layout": {layout}}, 2)
 	want(card, http.StatusOK)
 	cardObject := object(card)
 	cardID, _ := cardObject["id"].(string)
@@ -130,6 +132,8 @@ func TestPublicProfilesCardsAndShowcase(t *testing.T) {
 	if err != nil { t.Fatal(err) }
 	cardImages := storedCard.GetStringSlice("images")
 	if len(cardImages) != 2 { t.Fatalf("card images = %v", cardImages) }
+ if !strings.Contains(jsonRequest("GET", base+"/me/cards", memberToken, "").Body.String(), "Canvas text") { t.Fatal("saved layout missing from editor") }
+ want(multipartRequest("PATCH", base+"/me/cards/"+cardID, memberToken, map[string][]string{"title": {"Card"}, "text": {"Card text"}, "keepImages": cardImages, "layout": {layout}}, 0), http.StatusOK)
 	want(multipartRequest("PATCH", base+"/me/cards/"+cardID, memberToken, map[string][]string{"keepImages": {"not-owned.png"}}, 0), http.StatusBadRequest)
 	cardImage := base+"/members/"+member.Id+"/cards/"+cardID+"/images/"+cardImages[0]
 	want(jsonRequest("GET", cardImage, "", ""), http.StatusNotFound)
@@ -149,7 +153,7 @@ func TestPublicProfilesCardsAndShowcase(t *testing.T) {
 	profile := jsonRequest("GET", base+"/members/"+member.Id, "", "")
 	want(profile, http.StatusOK)
 	noCache(profile)
-	if !strings.Contains(profile.Body.String(), "private biography") || !strings.Contains(profile.Body.String(), cardID) { t.Fatalf("missing public profile content: %s", profile.Body.String()) }
+	if !strings.Contains(profile.Body.String(), "Canvas text") || !strings.Contains(profile.Body.String(), "private biography") || !strings.Contains(profile.Body.String(), cardID) { t.Fatalf("missing public profile content: %s", profile.Body.String()) }
 
 	visibility := base + "/me/profile-visibility"
 	_, linkedSuperToken := identity(core.CollectionNameSuperusers, "octopus", "member")
@@ -172,7 +176,7 @@ func TestPublicProfilesCardsAndShowcase(t *testing.T) {
 	want(jsonRequest("PUT", visibility, memberToken, `{"profilePublic":true,"hiddenSections":["bio","avatar","status","cards","identities","projects","career","skills"]}`), http.StatusOK)
 	hidden := jsonRequest("GET", base+"/members/"+member.Id, "", "")
 	want(hidden, http.StatusOK)
-	if strings.Contains(hidden.Body.String(), "private biography") || strings.Contains(hidden.Body.String(), cardID) { t.Fatalf("hidden data leaked: %s", hidden.Body.String()) }
+	if strings.Contains(hidden.Body.String(), "Canvas text") || strings.Contains(hidden.Body.String(), "private biography") || strings.Contains(hidden.Body.String(), cardID) { t.Fatalf("hidden data leaked: %s", hidden.Body.String()) }
 	want(jsonRequest("GET", avatar, "", ""), http.StatusNotFound)
 	want(jsonRequest("GET", cardImage, "", ""), http.StatusNotFound)
 	want(jsonRequest("GET", base+"/me/profile/avatar", memberToken, ""), http.StatusOK)

@@ -11,16 +11,17 @@ import (
 )
 
 type managedMember struct {
-	ID                 string   `json:"id"`
-	Name               string   `json:"name"`
-	Email              string   `json:"email"`
-	Role               string   `json:"role"`
-	AccountStatus      string   `json:"accountStatus"`
-	RegistrationSource string   `json:"registrationSource"`
-	ProfilePublic      bool     `json:"profilePublic"`
-	Created            string   `json:"created"`
-	ActivityAreas      []string `json:"activityAreas"`
-	Professions        []string `json:"professions"`
+	ID                 string        `json:"id"`
+	Name               string        `json:"name"`
+	Email              string        `json:"email"`
+	Role               string        `json:"role"`
+	AccountStatus      string        `json:"accountStatus"`
+	RegistrationSource string        `json:"registrationSource"`
+	ProfilePublic      bool          `json:"profilePublic"`
+	Created            string        `json:"created"`
+	ActivityAreas      []string      `json:"activityAreas"`
+	Professions        []string      `json:"professions"`
+	Titles             []memberTitle `json:"titles"`
 }
 
 type managedApplication struct {
@@ -30,6 +31,9 @@ type managedApplication struct {
 	UserID       string `json:"userId"`
 	UserName     string `json:"userName"`
 	UserEmail    string `json:"userEmail"`
+	Profession   string `json:"profession"`
+	Ability      string `json:"ability"`
+	Time         string `json:"time"`
 	Message      string `json:"message"`
 	Source       string `json:"source"`
 	Created      string `json:"created"`
@@ -69,6 +73,10 @@ func bindAdminConsoleRoutes(e *core.ServeEvent) {
 		for _, row := range featured {
 			professions[row.GetString("user_id")] = append(professions[row.GetString("user_id")], identityNames[row.GetString("identity_id")])
 		}
+		titles, err := listTitlesForMembers(e.App, rows)
+		if err != nil {
+			return e.InternalServerError("Unable to load member titles.", err)
+		}
 		items := make([]managedMember, 0, len(rows))
 		for _, member := range rows {
 			professionNames := professions[member.Id]
@@ -90,6 +98,7 @@ func bindAdminConsoleRoutes(e *core.ServeEvent) {
 				Created:            member.GetString("created"),
 				ActivityAreas:      areas,
 				Professions:        professionNames,
+				Titles:             titles[member.Id],
 			})
 		}
 		return e.JSON(200, map[string]any{"items": items, "hasMore": hasMore})
@@ -117,11 +126,14 @@ func bindAdminConsoleRoutes(e *core.ServeEvent) {
 			project, _ := e.App.FindRecordById("projects", request.GetString("project_id"))
 			user, _ := e.App.FindRecordById("users", request.GetString("user_id"))
 			item := managedApplication{
-				ID:        request.Id,
-				ProjectID: request.GetString("project_id"),
-				Message:   request.GetString("message"),
-				Source:    request.GetString("source"),
-				Created:   request.GetString("created"),
+				ID:         request.Id,
+				ProjectID:  request.GetString("project_id"),
+				Profession: request.GetString("apply_profession"),
+				Ability:    request.GetString("apply_ability"),
+				Time:       request.GetString("apply_time"),
+				Message:    request.GetString("message"),
+				Source:     request.GetString("source"),
+				Created:    request.GetString("created"),
 			}
 			if project != nil {
 				item.ProjectTitle = project.GetString("title")
@@ -205,6 +217,9 @@ func bindAdminConsoleRoutes(e *core.ServeEvent) {
 				} else {
 					membership.Set("status", "active")
 					membership.Set("joined_at", time.Now())
+				}
+				if duties := joinRequestDuties(request); duties != "" {
+					membership.Set("duties", duties)
 				}
 				if err := tx.Save(membership); err != nil {
 					return e.InternalServerError("Unable to add project member.", err)

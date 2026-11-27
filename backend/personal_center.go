@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/pocketbase/dbx"
@@ -19,20 +20,38 @@ type centerContact struct {
 }
 
 type centerProfile struct {
-	ID            string          `json:"id"`
-	Email         string          `json:"email"`
-	Name          string          `json:"name"`
-	Bio           string          `json:"bio"`
-	AvatarURL     string          `json:"avatarUrl"`
-	ProfilePublic bool            `json:"profilePublic"`
-	Role          string          `json:"role"`
-	Member        bool            `json:"member"`
-	Gender        string          `json:"gender"`
-	Personality   string          `json:"personality"`
-	Age           int             `json:"age"`
-	Contacts      []centerContact `json:"contacts"`
-	ActivityAreas []string        `json:"activityAreas"`
-	CurrentStatus string          `json:"currentStatus"`
+	ID                string          `json:"id"`
+	Name              string          `json:"name"`
+	CanEditProfile    bool            `json:"canEditProfile"`
+	NextProfileEditAt string          `json:"nextProfileEditAt,omitempty"`
+	Bio               string          `json:"bio"`
+	AvatarURL         string          `json:"avatarUrl"`
+	ProfilePublic     bool            `json:"profilePublic"`
+	Role              string          `json:"role"`
+	Member            bool            `json:"member"`
+	Gender            string          `json:"gender"`
+	Personality       string          `json:"personality"`
+	Age               int             `json:"age"`
+	Birthday          string          `json:"birthday"`
+	ProfileTitle      string          `json:"profileTitle"`
+	ProfileTitleID    string          `json:"profileTitleId"`
+	Contacts          []centerContact `json:"contacts"`
+	ActivityAreas     []string        `json:"activityAreas"`
+	CurrentStatus     string          `json:"currentStatus"`
+	OfficialTitles    []memberTitle   `json:"officialTitles"`
+}
+
+const profileEditInterval = 7 * 24 * time.Hour
+
+var errProfileEditCooldown = errors.New("personal profile can only be changed once every 7 days")
+
+func profileEditAvailability(owner *core.Record, now time.Time) (bool, time.Time) {
+	lastEdit := owner.GetInt("profile_last_edit_at")
+	if lastEdit <= 0 {
+		return true, time.Time{}
+	}
+	nextEdit := time.Unix(int64(lastEdit), 0).Add(profileEditInterval)
+	return !now.Before(nextEdit), nextEdit
 }
 
 type centerIdentity struct {
@@ -90,16 +109,18 @@ type centerPreferences struct {
 }
 
 type centerProject struct {
-	ID             string `json:"id"`
-	Title          string `json:"title"`
-	Summary        string `json:"summary"`
-	Status         string `json:"status"`
-	ReviewStatus   string `json:"reviewStatus"`
-	Difficulty     string `json:"difficulty"`
-	AdventureStyle string `json:"adventureStyle"`
-	Relation       string `json:"relation"`
-	Duties         string `json:"duties"`
-	Updated        string `json:"updated"`
+	ID               string `json:"id"`
+	CompletionNumber int    `json:"completionNumber,omitempty"`
+	ProjectNumber    string `json:"projectNumber"`
+	Title            string `json:"title"`
+	Summary          string `json:"summary"`
+	Status           string `json:"status"`
+	ReviewStatus     string `json:"reviewStatus"`
+	Difficulty       string `json:"difficulty"`
+	AdventureStyle   string `json:"adventureStyle"`
+	Relation         string `json:"relation"`
+	Duties           string `json:"duties"`
+	Updated          string `json:"updated"`
 }
 
 type centerBadge struct {
@@ -385,8 +406,8 @@ func centerSkillLikeStats(app core.App, userSkillID, viewerUserID, ownerUserID s
 }
 
 // bindPersonalCenterRoutes exposes the signed-in account's own summary. It is
-// not a public profile endpoint: it returns the caller's email and account
-// details and requires a valid session. A superuser that also has a member
+// not a public profile endpoint: it returns account details and requires a
+// valid session. A superuser that also has a member
 // record with the same email sees that member profile (used by platform
 // operators that also participate in projects).
 func bindPersonalCenterRoutes(e *core.ServeEvent) {
@@ -429,7 +450,8 @@ func bindPersonalCenterRoutes(e *core.ServeEvent) {
 		}
 		input, err := readContentInput(e, map[string]bool{
 			"name": true, "bio": true, "profilePublic": true, "avatar": true, "avatarThumb": true, "removeAvatar": true,
-			"gender": true, "personality": true, "age": true, "contacts": true, "activityAreas": true, "identityIds": true, "currentStatus": true,
+			"gender": true, "personality": true, "age": true, "birthday": true, "profileTitle": true,
+			"contacts": true, "activityAreas": true, "identityIds": true, "currentStatus": true,
 		})
 		if e.Request.MultipartForm != nil {
 			defer e.Request.MultipartForm.RemoveAll()
@@ -465,6 +487,15 @@ func bindPersonalCenterRoutes(e *core.ServeEvent) {
 		}
 		var age int
 		hasAge, err := inputField(input, "age", &age)
+		if err != nil {
+			return e.BadRequestError("Invalid profile.", err)
+		}
+		var birthday, profileTitle string
+		hasBirthday, err := inputField(input, "birthday", &birthday)
+		if err != nil {
+			return e.BadRequestError("Invalid profile.", err)
+		}
+		hasProfileTitle, err := inputField(input, "profileTitle", &profileTitle)
 		if err != nil {
 			return e.BadRequestError("Invalid profile.", err)
 		}
@@ -531,6 +562,28 @@ func bindPersonalCenterRoutes(e *core.ServeEvent) {
 			}
 			owner.Set("age", age)
 		}
+		if hasBirthday {
+			birthday = strings.TrimSpace(birthday)
+			if birthday != "" {
+				if _, err := time.Parse("2006-01-02", birthday); err != nil || birthday > time.Now().Format("2006-01-02") {
+					return e.BadRequestError("Invalid profile.", nil)
+				}
+			}
+			owner.Set("birthday", birthday)
+		}
+		if hasProfileTitle {
+			profileTitle = strings.TrimSpace(profileTitle)
+			if profileTitle != "" {
+				title, err := e.App.FindRecordById("user_titles", profileTitle)
+				if err != nil || title.GetString("user_id") != owner.Id || title.GetString("revoked_at") != "" {
+					return e.BadRequestError("Choose a title you have earned.", nil)
+				}
+			}
+			if utf8.RuneCountInString(profileTitle) > 30 {
+				return e.BadRequestError("Invalid profile.", nil)
+			}
+			owner.Set("profile_title", profileTitle)
+		}
 		if hasContacts {
 			normalized, ok := normalizeCenterContacts(contacts)
 			if !ok {
@@ -554,13 +607,39 @@ func bindPersonalCenterRoutes(e *core.ServeEvent) {
 		if owner.GetBool("profilePublic") && strings.TrimSpace(owner.GetString("name")) == "" {
 			return e.BadRequestError("Invalid profile.", nil)
 		}
-		if err := e.App.Save(owner); err != nil {
-			return e.BadRequestError("Unable to save profile.", err)
-		}
-		if hasIdentities {
-			if err := updateFeaturedIdentities(e.App, owner.Id, identityIDs); err != nil {
-				return e.BadRequestError("Unable to save profile.", err)
+		now := time.Now().UTC()
+		err = e.App.RunInTransaction(func(tx core.App) error {
+			result, err := tx.DB().NewQuery(`UPDATE users SET profile_last_edit_at = {:now}
+				WHERE id = {:id} AND (profile_last_edit_at IS NULL OR profile_last_edit_at = 0 OR profile_last_edit_at <= {:cutoff})`).Bind(dbx.Params{
+				"now": now.Unix(), "id": owner.Id, "cutoff": now.Add(-profileEditInterval).Unix(),
+			}).Execute()
+			if err != nil {
+				return err
 			}
+			if affected, err := result.RowsAffected(); err != nil {
+				return err
+			} else if affected != 1 {
+				return errProfileEditCooldown
+			}
+			owner.Set("profile_last_edit_at", now.Unix())
+			if err := tx.Save(owner); err != nil {
+				return err
+			}
+			if hasIdentities {
+				return updateFeaturedIdentities(tx, owner.Id, identityIDs)
+			}
+			return nil
+		})
+		if errors.Is(err, errProfileEditCooldown) {
+			latest, findErr := e.App.FindRecordById("users", owner.Id)
+			if findErr != nil {
+				return e.InternalServerError("Unable to check profile edit limit.", findErr)
+			}
+			nextEdit := time.Unix(int64(latest.GetInt("profile_last_edit_at")), 0).Add(profileEditInterval)
+			return e.JSON(429, map[string]any{"message": errProfileEditCooldown.Error(), "nextProfileEditAt": nextEdit.UTC().Format(time.RFC3339)})
+		}
+		if err != nil {
+			return e.BadRequestError("Unable to save profile.", err)
 		}
 		data, err := personalCenterData(e.App, e.Auth)
 		if err != nil {
@@ -946,10 +1025,10 @@ func personalCenterData(app core.App, auth *core.Record) (centerResponse, error)
 	}
 	response := centerResponse{
 		Profile: centerProfile{
-			ID:     owner.Id,
-			Email:  owner.Email(),
-			Role:   siteRole(auth),
-			Member: member,
+			ID:             owner.Id,
+			Role:           siteRole(auth),
+			Member:         member,
+			OfficialTitles: []memberTitle{},
 		},
 		Identities:      []centerIdentity{},
 		IdentityOptions: []centerIdentity{},
@@ -966,22 +1045,41 @@ func personalCenterData(app core.App, auth *core.Record) (centerResponse, error)
 	if !member {
 		return response, nil
 	}
+	if canEdit, nextEdit := profileEditAvailability(owner, time.Now()); canEdit {
+		response.Profile.CanEditProfile = true
+	} else {
+		response.Profile.NextProfileEditAt = nextEdit.UTC().Format(time.RFC3339)
+	}
 
 	response.Profile.Name = owner.GetString("display_name")
 	if response.Profile.Name == "" {
 		response.Profile.Name = owner.GetString("name")
 	}
-	if response.Profile.Name == "" {
-		response.Profile.Name = owner.Email()
+	if response.Profile.Name == owner.Email() {
+		response.Profile.Name = ""
 	}
 	response.Profile.Bio = owner.GetString("bio")
 	response.Profile.ProfilePublic = owner.GetBool("profilePublic")
 	response.Profile.Gender = owner.GetString("gender")
 	response.Profile.Personality = owner.GetString("personality")
 	response.Profile.Age = owner.GetInt("age")
+	if owner.GetString("birthday") != "" {
+		response.Profile.Birthday = owner.GetDateTime("birthday").Time().Format("2006-01-02")
+	}
 	response.Profile.Contacts = parseCenterContacts(owner)
 	response.Profile.ActivityAreas = parseCenterStrings(owner, "activity_areas")
 	response.Profile.CurrentStatus = owner.GetString("current_status")
+	response.Profile.OfficialTitles, err = listMemberTitles(app, owner.Id)
+	if err != nil {
+		return response, err
+	}
+	for _, title := range response.Profile.OfficialTitles {
+		if title.ID == owner.GetString("profile_title") {
+			response.Profile.ProfileTitle = title.Name
+			response.Profile.ProfileTitleID = title.ID
+			break
+		}
+	}
 	if owner.GetString("avatar") != "" {
 		response.Profile.AvatarURL = contentURL("me", "center", "avatar")
 	}
@@ -1087,6 +1185,7 @@ func personalCenterData(app core.App, auth *core.Record) (centerResponse, error)
 		seen[project.Id] = true
 		item := centerProject{
 			ID:             project.Id,
+			ProjectNumber:  project.GetString("project_number"),
 			Title:          project.GetString("title"),
 			Summary:        project.GetString("summary"),
 			Status:         project.GetString("execution_status"),
@@ -1132,6 +1231,27 @@ func personalCenterData(app core.App, auth *core.Record) (centerResponse, error)
 		}
 		addProject(project, relation, membership.GetString("duties"))
 	}
+	completions, err := app.FindRecordsByFilter("project_completion_requests", `user_id = {:user} && status = "approved"`, "created", 0, 0, dbx.Params{"user": owner.Id})
+	if err != nil {
+		return response, err
+	}
+	for _, completion := range completions {
+		project, err := app.FindRecordById("projects", completion.GetString("project_id"))
+		if err != nil || project.GetString("deleted_at") != "" {
+			continue
+		}
+		item := centerProject{
+			ID: project.Id, ProjectNumber: project.GetString("project_number"), Title: project.GetString("title"), Summary: project.GetString("summary"),
+			Status: project.GetString("execution_status"), ReviewStatus: project.GetString("review_status"), Difficulty: project.GetString("difficulty"),
+			AdventureStyle: project.GetString("adventure_style"), Relation: "member", CompletionNumber: completion.GetInt("completion_number"), Updated: completion.GetString("created"),
+		}
+		if project.GetString("owner_user_id") == owner.Id {
+			item.Relation = "owner"
+			response.Projects.Completed = append(response.Projects.Completed, item)
+		} else {
+			response.Projects.Assisted = append(response.Projects.Assisted, item)
+		}
+	}
 	// Add followed projects (not already in initiated/participated)
 	follows, err := app.FindRecordsByFilter("project_follows", `user_id = {:user} && is_active = true`, "", 0, 0, dbx.Params{"user": owner.Id})
 	if err != nil {
@@ -1148,6 +1268,7 @@ func personalCenterData(app core.App, auth *core.Record) (centerResponse, error)
 		seen[project.Id] = true
 		item := centerProject{
 			ID:             project.Id,
+			ProjectNumber:  project.GetString("project_number"),
 			Title:          project.GetString("title"),
 			Summary:        project.GetString("summary"),
 			Status:         project.GetString("execution_status"),

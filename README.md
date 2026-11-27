@@ -4,6 +4,8 @@
 
 网站支持简体中文、繁體中文、日本語和 English。使用导航栏语言选择器切换，选择保存在当前浏览器；首次访问根据浏览器语言选择，其他语言默认简体中文。用户提交的内容不会自动翻译。
 
+个人卡片可使用画布摆放文字和图片，调整位置、旋转、宽度和文字字体；支持粘贴文字或图片。图片最多 4 张、每张 2 MiB，画布文字总计最多 280 字。已有 Markdown 卡片保持原样编辑和显示，可选择转换为纯文本画布。
+
 ## 部署
 
 安装 Docker 和 Docker Compose，然后运行：
@@ -16,7 +18,7 @@ docker compose up -d --build --remove-orphans
 
 访问 `http://localhost:18763`。设置 `PORT` 环境变量可更改宿主机端口。PocketBase 数据保存在 Docker 卷 `pb_data` 中，更新容器不会清除数据。
 
-已有硬件数据、仓库项目与文件由 PocketBase 管理，保存在 `pb_data`；硬件数据库功能当前已清空，等待重新设计；默认本地文件存储会随 PocketBase 备份一起保存。视频缩略图和预览依赖容器内的 FFmpeg、ffprobe。
+已有硬件数据、仓库项目与文件由 PocketBase 管理，保存在 `pb_data`；硬件数据库采用可扩展的分类、动态测试字段和测试表格，并将图文专栏与结构化测试报告分开保存；数据模型见 `backend/hardware-schema.md`；默认本地文件存储会随 PocketBase 备份一起保存。视频缩略图和预览依赖容器内的 FFmpeg、ffprobe。
 
 创建 PocketBase 超级管理员（将邮箱和密码替换为自己的值）：
 

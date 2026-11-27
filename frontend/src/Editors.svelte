@@ -5,6 +5,7 @@
   import AvatarCrop from './AvatarCrop.svelte';
   import Select from './Select.svelte';
   import MarkdownContent from './MarkdownContent.svelte';
+  import CardCanvas from './CardCanvas.svelte';
   import { difficultyRank } from './tiers.js';
   export let token;
   export let manage = false;
@@ -28,6 +29,49 @@
   let removeAvatar = false;
   let previews = {};
   let uploadPreviews = [];
+  let layout = { version: 1, items: [] };
+  let canvasMode = true;
+  let addingBackground = false;
+  $: canvasImages = [...keepImages.map(name => previews[current?.imageUrls?.[current.images.indexOf(name)]]), ...uploadPreviews];
+  function addCanvasFiles(input, asBackground = false) {
+    const selected = Array.from(input);
+    if (!selected.length) return;
+    const replacesBackground = asBackground && layout.backgroundImage != null;
+    if ((asBackground && selected.length !== 1) || selected.some(file => !['image/jpeg','image/png','image/webp','image/gif'].includes(file.type) || file.size > 2 * 1024 * 1024) || canvasImages.length - (replacesBackground ? 1 : 0) + selected.length > 5 || layout.items.length + (asBackground ? 0 : selected.length) > 24) {
+      error = '图片格式不支持、超过 2 MiB 或超出数量限制。'; return;
+    }
+    error = '';
+    const start = canvasImages.length - (replacesBackground ? 1 : 0);
+    if (replacesBackground) removeCanvasImage(layout.backgroundImage);
+    files = [...files, ...selected];
+    uploadPreviews = [...uploadPreviews, ...selected.map(file => URL.createObjectURL(file))];
+    layout = asBackground
+      ? { ...layout, backgroundImage: start }
+      : { ...layout, items: [...layout.items, ...selected.map((_, i) => ({ type: 'image', image: start + i, x: 10, y: 10, width: 35, rotation: 0 }))] };
+  }
+  function convertToCanvas() {
+    layout = { version: 1, backgroundImage: null, items: [
+      ...(text ? [{ type: 'text', text, x: 5, y: 5, width: 80, rotation: 0, font: 'sans-serif', size: 24 }] : []),
+      ...canvasImages.map((_, i) => ({ type: 'image', image: i, x: 5 + i * 20, y: 40, width: 25, rotation: 0 }))
+    ] };
+    canvasMode = true;
+  }
+  function removeCanvasImage(index) {
+    if (index < keepImages.length) keepImages = keepImages.filter((_, i) => i !== index);
+    else { const i = index - keepImages.length; URL.revokeObjectURL(uploadPreviews[i]); files = files.filter((_, n) => n !== i); uploadPreviews = uploadPreviews.filter((_, n) => n !== i); }
+    layout = { ...layout, backgroundImage: layout.backgroundImage == null ? null : layout.backgroundImage === index ? null : layout.backgroundImage > index ? layout.backgroundImage - 1 : layout.backgroundImage, items: layout.items.filter(entry => entry.type !== 'image' || entry.image !== index).map(entry => entry.type === 'image' && entry.image > index ? { ...entry, image: entry.image - 1 } : entry) };
+  }
+  function pasteCanvas(event) {
+    if (manage || !showEditor || !canvasMode) return;
+    const pasted = Array.from(event.clipboardData?.files || []);
+    if (pasted.length) { event.preventDefault(); addCanvasFiles(pasted); return; }
+    if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || event.target.isContentEditable) return;
+    const value = event.clipboardData?.getData('text/plain');
+    if (value && layout.items.length < 24) {
+      event.preventDefault();
+      layout = { ...layout, items: [...layout.items, { type: 'text', text: value, x: 10, y: 10, width: 40, rotation: 0, font: 'sans-serif', size: 24 }] };
+    }
+  }
   let avatarPreview = '';
   function selectFiles(event) {
     const selected = Array.from(event.currentTarget.files);
@@ -107,6 +151,11 @@
     text = record?.text || '';
     published = record?.published || false;
     keepImages = [...(record?.images || [])];
+    canvasMode = !record || record.layout?.version === 1;
+    layout = record?.layout?.version === 1 ? structuredClone(record.layout) : { version: 1, backgroundImage: null, items: [
+      ...(record?.text ? [{ type: 'text', text: record.text, x: 5, y: 5, width: 80, rotation: 0, font: 'sans-serif', size: 24 }] : []),
+      ...(record?.images || []).map((_, i) => ({ type: 'image', image: i, x: 5 + i * 20, y: 40, width: 25, rotation: 0 }))
+    ] };
     files = [];
     if (imagesInput) imagesInput.value = '';
     uploadPreviews.forEach(URL.revokeObjectURL); uploadPreviews = [];
@@ -139,7 +188,13 @@
   async function saveRecord() {
     busy = true; error = ''; notice = '';
     try {
-      const body = new FormData(); body.set('title', title); body.set('text', text);
+      const body = new FormData(); body.set('title', title);
+      if (!manage && canvasMode) {
+        text = layout.items.filter(item => item.type === 'text').map(item => item.text).join('\n');
+        if ([...text].length > 280) throw new Error('画布文字总长度不能超过 280 字。');
+        body.set('layout', JSON.stringify(layout));
+      }
+      body.set('text', text);
       if (manage) body.set('published', String(published));
       keepImages.forEach(name => body.append('keepImages', name));
       Array.from(files).forEach(file => body.append('images', file));
@@ -165,7 +220,7 @@
       project.approveCount = result.approveCounts?.[diff] || 0;
       project.opposeCount = result.opposeCounts?.[diff] || 0;
       difficultyNotice = result.consensusReached
-        ? `共识难度 ${result.consensus} 已确认。`
+        ? `项目级别 ${result.consensus} 已确认。`
         : `投票已提交，${result.approveCounts?.[diff] || 0} 票同意 ${diff}。`;
     } catch (e) {
       difficultyError = e.message || String(e);
@@ -187,7 +242,7 @@
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.message || '确认失败，请重试。');
       project.ownerConfirmed = confirmed;
-      difficultyNotice = confirmed ? '发起人已确认难度。' : '发起人已取消确认。';
+      difficultyNotice = confirmed ? '发起人已确认项目级别。' : '发起人已取消确认。';
     } catch (e) {
       difficultyError = e.message || String(e);
     } finally {
@@ -202,12 +257,13 @@
   }
 </script>
 
+<svelte:window on:paste={pasteCanvas} />
 <div class:dashboard={!cardsOnly} class="public-page editor-page">
   {#if !cardsOnly}<h1>{manage ? $t('项目大厅管理') : $t('修改个人名片')}</h1>{/if}
   {#if error}<p class="message error" role="alert">{$t(error, errorParams)}</p>{/if}{#if notice}<p class="message success" role="status">{$t(notice)}</p>{/if}
   {#if manage}
     <section class="difficulty-section">
-      <h2>{$t('项目难度')}</h2>
+      <h2>{$t('项目级别')}</h2>
       <p>{$t('由管理员判定，等级从 D（最低）到 S（最高）。')}</p>
       {#if difficultyError}<p class="message error" role="alert">{$t(difficultyError)}</p>{/if}
       {#if difficultyNotice}<p class="message success" role="status">{$t(difficultyNotice)}</p>{/if}
@@ -216,7 +272,7 @@
           {#each projects as project}
             <div class="difficulty-row">
               <div class="difficulty-info">
-                <strong>{project.title}</strong>
+                <strong>{project.title}</strong>{#if project.projectNumber}<small class="project-number">{project.projectNumber}</small>{/if}
                 <small>{$t(projectStatusLabels[project.status] || project.status)} · {project.ownerName || '—'}</small>
                 <small>
                   {#if project.proposedDifficulty}<span>{$t('发起人评级')}：<span class={`rank rank-text rank-${difficultyRank(project.proposedDifficulty)}`}>{project.proposedDifficulty}</span></span>{:else}<span>{$t('发起人评级')}：{$t('待定')}</span>{/if}
@@ -228,13 +284,13 @@
               </div>
               {#if project.status !== 'completed'}
                 <div class="vote-controls">
-                  <Select bind:value={voteDifficulties[project.id]} ariaLabel={`${project.title} ${$t('难度')}`} options={difficultyLevels.map((value) => ({ value, label: value }))} />
+                  <Select bind:value={voteDifficulties[project.id]} ariaLabel={`${project.title} ${$t('项目级别')}`} options={difficultyLevels.map((value) => ({ value, label: value }))} />
                   <Select bind:value={voteStances[project.id]} ariaLabel={`${project.title} ${$t('立场')}`} options={[{ value: 'approve', label: $t('同意') }, { value: 'oppose', label: $t('反对') }]} />
                   <button type="button" class="primary small" on:click={() => saveDifficulty(project)} disabled={savingDifficulty === project.id}>{$t('投票')}</button>
                   <button type="button" class="small" on:click={() => confirmOwner(project, true)} disabled={savingDifficulty === project.id}>{$t('发起人确认')}</button>
                 </div>
               {:else}
-                <span class="frozen">{$t('已完成，难度锁定')}</span>
+                <span class="frozen">{$t('已完成，项目级别锁定')}</span>
               {/if}
             </div>
           {/each}
@@ -246,6 +302,7 @@
   {/if}
   {#if !manage && !cardsOnly}
     <section><h2>{$t('公开资料')}</h2><form class="editor-form" on:submit|preventDefault={saveProfile}>
+      {#if profile.canEditProfile === false}<p class="message error" role="status">{$t('个人资料每7天只能修改一次')} · {new Date(profile.nextProfileEditAt).toLocaleString()}</p>{/if}
       {#if avatarPreview && !removeAvatar}<img class="avatar" src={avatarPreview} alt={$t('新头像预览')} />{:else if profile.avatarUrl && previews[profile.avatarUrl] && !removeAvatar}<img class="avatar" src={previews[profile.avatarUrl]} alt={$t('当前头像')} />{/if}
       <label>{$t('昵称')} <input bind:value={profile.name} maxlength="80" required /></label>
       <label>{$t('简介')} <textarea bind:value={profile.bio} maxlength="600" rows="4"></textarea></label>
@@ -253,14 +310,14 @@
       <AvatarCrop on:crop={selectAvatar} on:pending={(event) => cropPending = event.detail} />
       {#if profile.avatarUrl}<label class="check-label"><input type="checkbox" bind:checked={removeAvatar} on:change={() => { if (removeAvatar) { avatar = null; avatarThumb = null; } }} /> {$t('删除头像')}</label>{/if}
       <label class="check-label"><input type="checkbox" bind:checked={profile.profilePublic} /> {$t('公开我的资料和卡片')}</label>
-      <button class="primary" disabled={busy || cropPending}>{$t('保存资料')}</button>
+      <button class="primary" disabled={busy || cropPending || profile.canEditProfile === false}>{$t('保存资料')}</button>
       {#if publicProfileId}<a href={'/community/' + encodeURIComponent(publicProfileId)}>{$t('查看公开主页')}</a>{/if}
       <a href="/me/skills">{$t('技能管理')}</a>
     </form></section>
   {/if}
-  <section><h2>{manage ? $t('项目') : $t('我的卡片')}</h2>
+  <section><h2>{manage ? $t('项目') : $t('自定义卡片')}</h2>
     <div class="editor-toolbar"><button type="button" class="primary" on:click={() => edit()}>{manage ? $t('新建项目') : $t('新建卡片')}</button></div>
-    {#if records.length}<div class="editor-list">{#each records as record}<article><h3>{record.title} {#if manage}<small>{record.published ? $t('已发布') : $t('草稿')}</small>{/if}</h3>{#if manage}<p>{record.text}</p>{:else}<MarkdownContent text={record.text} />{/if}<div class="image-grid">{#each record.imageUrls || [] as url}{#if previews[url]}<a href={previews[url]} target="_blank" rel="noreferrer"><img src={previews[url]} alt={record.title} /></a>{/if}{/each}</div><div class="editor-actions"><button type="button" on:click={() => edit(record)}>{$t('编辑')}</button><button type="button" on:click={() => remove(record)} disabled={busy}>{$t('删除')}</button></div></article>{/each}</div>{:else}<p>{manage ? $t('暂无项目。') : $t('暂无卡片。')}</p>{/if}
+    {#if records.length}<div class="editor-list">{#each records as record}<article><h3>{record.title} {#if manage}<small>{record.published ? $t('已发布') : $t('草稿')}</small>{/if}</h3>{#if manage}<p>{record.text}</p>{:else if record.layout?.version === 1}<CardCanvas layout={record.layout} images={(record.imageUrls || []).map(url => previews[url])} />{:else}<MarkdownContent text={record.text} />{/if}{#if manage || record.layout?.version !== 1}<div class="image-grid">{#each record.imageUrls || [] as url}{#if previews[url]}<a href={previews[url]} target="_blank" rel="noreferrer"><img src={previews[url]} alt={record.title} /></a>{/if}{/each}</div>{/if}<div class="editor-actions"><button type="button" on:click={() => edit(record)}>{$t('编辑')}</button><button type="button" on:click={() => remove(record)} disabled={busy}>{$t('删除')}</button></div></article>{/each}</div>{:else}<p>{manage ? $t('暂无项目。') : $t('暂无卡片。')}</p>{/if}
   </section>
 </div>
 
@@ -271,10 +328,18 @@
         <button type="button" class="editor-modal-close" aria-label={$t('关闭')} on:click={closeEditor}>×</button>
       </div>
       <form class="editor-form" on:submit|preventDefault={saveRecord}>
-        <label>{$t('标题')} <input bind:value={title} maxlength="80" required /></label><label>{$t('文字')} <textarea bind:value={text} maxlength="280" rows="6"></textarea></label>{#if !manage}<p class="markdown-help">{$t('支持 Markdown：标题、列表、粗体、斜体、行内代码和链接。')}</p><div class="markdown-preview"><strong>{$t('预览')}</strong><MarkdownContent text={text} /></div>{/if}
-        {#if current?.images?.length}<fieldset><legend>{$t('保留图片')}</legend>{#each current.images as image, index}<label class="check-label"><input type="checkbox" value={image} bind:group={keepImages} /> {#if previews[current.imageUrls[index]]}<img class="editor-thumb" src={previews[current.imageUrls[index]]} alt="" />{/if} {image}</label>{/each}</fieldset>{/if}
-        <label>{$t('添加图片（最多 4 张，每张最多 2 MiB）')} <input type="file" bind:this={imagesInput} accept="image/jpeg,image/png,image/webp,image/gif" multiple on:change={selectFiles} /></label>
-        {#if uploadPreviews.length}<div class="image-grid">{#each uploadPreviews as url}<img src={url} alt={$t('待上传图片预览')} />{/each}</div>{/if}
+        {#if error}<p class="message error" role="alert">{$t(error, errorParams)}</p>{/if}
+        <label>{$t('标题')} <input bind:value={title} maxlength="80" required /></label>
+        {#if manage || !canvasMode}
+          {#if !manage}<button type="button" on:click={convertToCanvas}>{$t('转换为画布')}</button><p>{$t('转换后文字将按纯文本显示。')}</p>{/if}
+          <label>{$t('文字')} <textarea bind:value={text} maxlength="280" rows="6"></textarea></label>
+          {#if current?.images?.length}<fieldset><legend>{$t('保留图片')}</legend>{#each current.images as image, index}<label class="check-label"><input type="checkbox" value={image} bind:group={keepImages} /> {#if previews[current.imageUrls[index]]}<img class="editor-thumb" src={previews[current.imageUrls[index]]} alt="" />{/if} {image}</label>{/each}</fieldset>{/if}
+          <label>{$t('添加图片（最多 4 张，每张最多 2 MiB）')} <input type="file" bind:this={imagesInput} accept="image/jpeg,image/png,image/webp,image/gif" multiple on:change={selectFiles} /></label>
+          {#if uploadPreviews.length}<div class="image-grid">{#each uploadPreviews as url}<img src={url} alt={$t('待上传图片预览')} />{/each}</div>{/if}
+        {:else}
+          <input type="file" hidden bind:this={imagesInput} accept="image/jpeg,image/png,image/webp,image/gif" multiple on:change={(e) => { const asBackground = addingBackground; addingBackground = false; addCanvasFiles(e.currentTarget.files, asBackground); e.currentTarget.value = ''; }} />
+          <CardCanvas bind:layout images={canvasImages} editable on:addimage={() => { addingBackground = false; imagesInput.click(); }} on:addbackgroundimage={() => { addingBackground = true; imagesInput.click(); }} on:removeimage={(e) => removeCanvasImage(e.detail)} />
+        {/if}
         {#if manage}<label class="check-label"><input type="checkbox" bind:checked={published} /> {$t('发布项目')}</label>{/if}
         <div class="editor-actions"><button class="primary" disabled={busy}>{$t('保存')}</button><button type="button" on:click={closeEditor}>{$t('取消')}</button></div>
       </form>

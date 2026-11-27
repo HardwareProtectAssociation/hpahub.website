@@ -120,8 +120,20 @@ func TestPersonalCenterData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !data.Profile.Member || data.Profile.Email != "member@example.com" || data.Profile.Name != "member@example.com" {
+	// A registration email used as the legacy display name must stay hidden.
+	if !data.Profile.Member || data.Profile.Name != "" {
 		t.Fatalf("unexpected profile: %+v", data.Profile)
+	}
+	profileJSON, err := json.Marshal(data.Profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var profileFields map[string]any
+	if err := json.Unmarshal(profileJSON, &profileFields); err != nil {
+		t.Fatal(err)
+	}
+	if _, exposed := profileFields["email"]; exposed {
+		t.Fatal("profile exposes registration email")
 	}
 	if len(data.Identities) != 1 || data.Identities[0].Name != identity.GetString("name") {
 		t.Fatalf("unexpected identities: %+v", data.Identities)
