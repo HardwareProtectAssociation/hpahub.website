@@ -33,6 +33,16 @@
 <main class="dashboard create-project">
   <div class="page-heading"><div><h1>{$t('发起项目')}<span class="heading-dot">.</span></h1></div></div>
   <form on:submit|preventDefault={createProject}>
+    <fieldset class="needs"><legend>{$t('项目需要')}</legend>
+      {#each needOptions as [value, label]}
+        <label><input type="checkbox" bind:group={projectNeeds} value={value} />{$t(label)}</label>
+      {/each}
+    </fieldset>
+    <fieldset class="needs"><legend>{$t('发起人可提供')}</legend>
+      {#each offerOptions as [value, label]}
+        <label><input type="checkbox" bind:group={providerOffers} value={value} />{$t(label)}</label>
+      {/each}
+    </fieldset>
     <label>{$t('项目名称')}<input bind:value={title} maxlength="160" required /></label>
     <label>{$t('项目简介')}<textarea bind:value={summary} maxlength="2000" rows="3"></textarea></label>
     <label>{$t('项目详情')}<textarea bind:value={description} maxlength="10000" rows="7"></textarea></label>
@@ -51,16 +61,6 @@
       <div class="arrangement-row"><span>{$t('接受赞助')}</span><span class="choices" role="group" aria-label={$t('接受赞助')}><label><input type="radio" bind:group={sponsorship} value={true} />{$t('是')}</label><label><input type="radio" bind:group={sponsorship} value={false} />{$t('否')}</label></span></div>
       <div class="arrangement-row"><span>{$t('允许他人管理')}</span><span class="choices" role="group" aria-label={$t('允许他人管理')}><label><input type="radio" bind:group={allowOthersManagement} value={true} />{$t('是')}</label><label><input type="radio" bind:group={allowOthersManagement} value={false} />{$t('否')}</label></span></div>
       <div class="arrangement-row"><span>{$t('需要保密')}</span><span class="choices" role="group" aria-label={$t('需要保密')}><label><input type="radio" bind:group={confidentialityRequested} value={true} />{$t('是')}</label><label><input type="radio" bind:group={confidentialityRequested} value={false} />{$t('否')}</label></span></div>
-    </fieldset>
-    <fieldset class="needs"><legend>{$t('项目需要')}</legend>
-      {#each needOptions as [value, label]}
-        <label><input type="checkbox" bind:group={projectNeeds} value={value} />{$t(label)}</label>
-      {/each}
-    </fieldset>
-    <fieldset class="needs"><legend>{$t('发起人可提供')}</legend>
-      {#each offerOptions as [value, label]}
-        <label><input type="checkbox" bind:group={providerOffers} value={value} />{$t(label)}</label>
-      {/each}
     </fieldset>
     {#if confidentialityRequested}<label>{$t('保密协议')}<textarea bind:value={confidentialityTerms} maxlength="10000" rows="6" required></textarea></label>{/if}
     {#if error}<p class="message error" role="alert">{$t(error)}</p>{/if}
