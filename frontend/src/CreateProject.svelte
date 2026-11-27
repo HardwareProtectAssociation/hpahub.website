@@ -44,9 +44,9 @@
     </div>
     <label>{$t('时间安排')}<textarea bind:value={scheduleNote} maxlength="2000" rows="3"></textarea></label>
     <fieldset class="arrangements"><legend>{$t('项目安排')}</legend>
-      <label class="checkbox"><input type="checkbox" bind:checked={sponsorship} />{$t('是否接受赞助')}</label>
-      <label class="checkbox"><input type="checkbox" bind:checked={allowOthersManagement} />{$t('允许他人管理')}</label>
-      <label class="checkbox"><input type="checkbox" bind:checked={confidentialityRequested} />{$t('是否需要保密')}</label>
+      <div class="arrangement-row"><span>{$t('接受赞助')}</span><span class="choices" role="group" aria-label={$t('接受赞助')}><label><input type="radio" bind:group={sponsorship} value={true} />{$t('是')}</label><label><input type="radio" bind:group={sponsorship} value={false} />{$t('否')}</label></span></div>
+      <div class="arrangement-row"><span>{$t('允许他人管理')}</span><span class="choices" role="group" aria-label={$t('允许他人管理')}><label><input type="radio" bind:group={allowOthersManagement} value={true} />{$t('是')}</label><label><input type="radio" bind:group={allowOthersManagement} value={false} />{$t('否')}</label></span></div>
+      <div class="arrangement-row"><span>{$t('需要保密')}</span><span class="choices" role="group" aria-label={$t('需要保密')}><label><input type="radio" bind:group={confidentialityRequested} value={true} />{$t('是')}</label><label><input type="radio" bind:group={confidentialityRequested} value={false} />{$t('否')}</label></span></div>
     </fieldset>
     {#if confidentialityRequested}<label>{$t('保密协议')}<textarea bind:value={confidentialityTerms} maxlength="10000" rows="6" required></textarea></label>{/if}
     {#if error}<p class="message error" role="alert">{$t(error)}</p>{/if}
@@ -62,9 +62,14 @@
   input:focus, select:focus, textarea:focus { border-color: var(--accent); outline: 2px solid var(--accent-glow); }
   textarea { resize: vertical; }
   .fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 20px; }
-  .arrangements { display: flex; flex-wrap: wrap; gap: 14px 24px; margin: 0; padding: 14px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); }
+  .arrangements { display: grid; gap: 10px; margin: 0; padding: 14px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); }
   .arrangements legend { padding: 0 5px; color: var(--ink-secondary); font-size: 14px; }
-  .checkbox { display: flex; align-items: center; gap: 10px; }
+  .arrangement-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 20px; }
+  .arrangement-row > span:first-child { color: var(--ink-secondary); font-size: 14px; }
+  .choices { display: inline-flex; gap: 8px; }
+  .choices label { display: inline-flex; flex-direction: row; align-items: center; gap: 6px; padding: 4px 12px; border: 1px solid var(--border-default); border-radius: 999px; color: var(--ink-secondary); font-size: 13px; cursor: pointer; transition: border-color var(--t-fast) var(--ease-out), background-color var(--t-fast) var(--ease-out), color var(--t-fast) var(--ease-out); }
+  .choices label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-deep); }
+  .choices input { accent-color: var(--accent); margin: 0; }
   .actions { display: flex; align-items: center; gap: 12px; }
   .actions .secondary { width: auto; min-height: 44px; padding: 0 18px; justify-content: center; }
   @media (max-width: 600px) { form { padding: 18px; } }
