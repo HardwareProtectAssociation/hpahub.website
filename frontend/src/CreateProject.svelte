@@ -1,10 +1,12 @@
 <script>
+  import { onDestroy } from 'svelte';
   import { t } from './i18n.js';
   export let token;
   let title = '', summary = '', description = '', difficulty = '', nature = '';
   let collaboration = 'collaborative', joinMode = 'open', sponsorship = false;
   let startDate = '', duration = '', scheduleNote = '', error = '', creating = false;
   let executionStatus = 'not_started', allowOthersManagement = false, confidentialityRequested = false, confidentialityTerms = '';
+  let cover = null, coverPreview = '', createdId = '';
   let projectNeeds = [];
   let providerOffers = [];
   const needOptions = [['funding', '资金支持'], ['technical', '技术支持'], ['equipment', '设备支持'], ['venue', '场地支持'], ['manpower', '人手支持'], ['promotion', '宣传支持'], ['emotional', '情绪支持']];
@@ -22,12 +24,39 @@
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.message || '创建失败，请重试。');
+      if (cover) {
+        const body = new FormData();
+        body.set('cover', cover);
+        const upload = await fetch(`/api/hpahub/me/projects/${encodeURIComponent(result.id)}/cover`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          body,
+        });
+        if (!upload.ok) {
+          createdId = result.id;
+          const failure = await upload.json().catch(() => ({}));
+          throw new Error(failure.message || '项目已创建，但封面上传失败。');
+        }
+      }
       location.assign('/showcase/' + encodeURIComponent(result.id));
     } catch (err) {
       error = err.message || String(err);
       creating = false;
     }
   }
+  function selectCover(event) {
+    const file = event.currentTarget.files?.[0] || null;
+    if (file && file.size > 2 * 1024 * 1024) {
+      error = '封面不能超过 2 MiB。';
+      event.currentTarget.value = '';
+      return;
+    }
+    error = '';
+    if (coverPreview) URL.revokeObjectURL(coverPreview);
+    cover = file;
+    coverPreview = file ? URL.createObjectURL(file) : '';
+  }
+  onDestroy(() => { if (coverPreview) URL.revokeObjectURL(coverPreview); });
 </script>
 
 <main class="dashboard create-project">
@@ -46,6 +75,8 @@
     <label>{$t('项目名称')}<input bind:value={title} maxlength="160" required /></label>
     <label>{$t('项目简介')}<textarea bind:value={summary} maxlength="2000" rows="3"></textarea></label>
     <label>{$t('项目详情')}<textarea bind:value={description} maxlength="10000" rows="7"></textarea></label>
+    <label>{$t('项目封面（可选，最多 2 MiB）')}<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" on:change={selectCover} /></label>
+    {#if coverPreview}<img class="cover-preview" src={coverPreview} alt={$t('封面预览')} />{/if}
 
     <div class="fields">
       <label>{$t('项目状态')}<select bind:value={executionStatus}><option value="not_started">{$t('未开始')}</option><option value="ongoing">{$t('已启动')}</option><option value="long_term">{$t('长期项目')}</option><option value="paused">{$t('暂停中')}</option><option value="completed">{$t('已完成')}</option></select></label>
@@ -64,12 +95,13 @@
     </fieldset>
     {#if confidentialityRequested}<label>{$t('保密协议')}<textarea bind:value={confidentialityTerms} maxlength="10000" rows="6" required></textarea></label>{/if}
     {#if error}<p class="message error" role="alert">{$t(error)}</p>{/if}
-    <div class="actions"><button class="primary" type="submit" disabled={creating}>{$t(creating ? '正在创建…' : '创建项目')}</button><a class="secondary" href="/my-projects">{$t('取消')}</a></div>
+    <div class="actions"><button class="primary" type="submit" disabled={creating}>{$t(creating ? '正在创建…' : '创建项目')}</button>{#if createdId}<a class="secondary" href={'/showcase/' + encodeURIComponent(createdId)}>{$t('前往项目')}</a>{/if}<a class="secondary" href="/my-projects">{$t('取消')}</a></div>
   </form>
 </main>
 
 <style>
   .create-project { width: min(880px, 88%); }
+  .cover-preview { display: block; max-width: 100%; max-height: 260px; object-fit: cover; border: 1px solid var(--border-default); border-radius: var(--radius-sm); }
   form { display: grid; gap: 20px; padding: 28px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface); }
   label { display: grid; gap: 8px; color: var(--ink-secondary); font-size: 14px; }
   input:not([type="checkbox"]), select, textarea { width: 100%; padding: 11px 12px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--ink-primary); font: inherit; }

@@ -1,7 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
+	"image"
+	"image/png"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -143,6 +147,40 @@ func TestCreateProjectDetails(t *testing.T) {
 	}
 	if response = call(`{"title":"无效提供","projectNature":"research","providerOffers":["unknown"]}`); response.Code != http.StatusBadRequest {
 		t.Fatalf("invalid provider offers = %d: %s", response.Code, response.Body.String())
+	}
+	var coverData bytes.Buffer
+	if err := png.Encode(&coverData, image.NewRGBA(image.Rect(0, 0, 4, 4))); err != nil {
+		t.Fatal(err)
+	}
+	var coverBody bytes.Buffer
+	coverWriter := multipart.NewWriter(&coverBody)
+	coverPart, err := coverWriter.CreateFormFile("cover", "cover.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := coverPart.Write(coverData.Bytes()); err != nil {
+		t.Fatal(err)
+	}
+	if err := coverWriter.Close(); err != nil {
+		t.Fatal(err)
+	}
+	coverRequest := httptest.NewRequest("POST", "/api/hpahub/me/projects/"+project.Id+"/cover", &coverBody)
+	coverRequest.Header.Set("Authorization", "Bearer "+token)
+	coverRequest.Header.Set("Content-Type", coverWriter.FormDataContentType())
+	coverResponse := httptest.NewRecorder()
+	mux.ServeHTTP(coverResponse, coverRequest)
+	if coverResponse.Code != http.StatusOK {
+		t.Fatalf("cover upload = %d: %s", coverResponse.Code, coverResponse.Body.String())
+	}
+	savedCover, err := app.FindRecordById("projects", project.Id)
+	if err != nil || savedCover.GetString("cover") == "" {
+		t.Fatalf("cover not saved: %v", err)
+	}
+	coverImage := httptest.NewRequest("GET", "/api/hpahub/projects/"+project.Id+"/cover", nil)
+	coverImageResponse := httptest.NewRecorder()
+	mux.ServeHTTP(coverImageResponse, coverImage)
+	if coverImageResponse.Code != http.StatusOK {
+		t.Fatalf("public cover = %d: %s", coverImageResponse.Code, coverImageResponse.Body.String())
 	}
 	other := publicProjectTestUser(t, app, "other-create@example.com", "其他人")
 	otherToken, err := other.NewAuthToken()

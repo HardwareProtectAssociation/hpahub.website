@@ -9,6 +9,7 @@ import (
 
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/tools/filesystem"
 )
 
 type myProject struct {
@@ -183,6 +184,40 @@ func bindMyProjectRoutes(e *core.ServeEvent) {
 			return e.InternalServerError("Unable to create project.", err)
 		}
 		return e.JSON(200, map[string]any{"ok": true, "id": project.Id})
+	})
+	e.Router.POST("/api/hpahub/me/projects/{id}/cover", func(e *core.RequestEvent) error {
+		noCache(e)
+		if e.Auth == nil {
+			return e.UnauthorizedError("Authentication required.", nil)
+		}
+		member, ok, err := personalCenterOwner(e.App, e.Auth)
+		if err != nil {
+			return e.InternalServerError("Unable to save cover.", err)
+		}
+		if !ok {
+			return e.ForbiddenError("No member profile is linked to this account.", nil)
+		}
+		project, err := e.App.FindRecordById("projects", e.Request.PathValue("id"))
+		if err != nil || (project.GetString("owner_user_id") != member.Id && project.GetString("creator_user_id") != member.Id) {
+			return e.NotFoundError("Not found.", nil)
+		}
+		if err := e.Request.ParseMultipartForm(4 << 20); err != nil {
+			return e.BadRequestError("Invalid cover.", err)
+		}
+		defer e.Request.MultipartForm.RemoveAll()
+		files := e.Request.MultipartForm.File["cover"]
+		if len(files) != 1 {
+			return e.BadRequestError("Invalid cover.", nil)
+		}
+		file, err := filesystem.NewFileFromMultipart(files[0])
+		if err != nil {
+			return e.BadRequestError("Invalid cover.", err)
+		}
+		project.Set("cover", file)
+		if err := e.App.Save(project); err != nil {
+			return e.BadRequestError("Unable to save cover.", err)
+		}
+		return e.JSON(200, map[string]any{"ok": true, "coverUrl": projectCoverURL(project)})
 	})
 	e.Router.GET("/api/hpahub/me/projects", func(e *core.RequestEvent) error {
 		noCache(e)

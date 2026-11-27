@@ -30,6 +30,7 @@ type publicProject struct {
 	OwnerName        string                `json:"ownerName"`
 	OwnerAvatarURL   string                `json:"ownerAvatarUrl"`
 	PublishedAt      string                `json:"publishedAt"`
+	CoverURL         string                `json:"coverUrl,omitempty"`
 	Updated          string                `json:"updated"`
 }
 
@@ -104,6 +105,14 @@ type managedProject struct {
 // pending and rejected projects stay private.
 func bindPublicProjectRoutes(e *core.ServeEvent) {
 	bindProjectManagementRoutes(e)
+	e.Router.GET("/api/hpahub/projects/{id}/cover", func(e *core.RequestEvent) error {
+		noCache(e)
+		project, err := e.App.FindRecordById("projects", e.Request.PathValue("id"))
+		if err != nil || project.GetString("review_status") != "approved" || project.GetString("deleted_at") != "" {
+			return e.NotFoundError("Not found.", nil)
+		}
+		return serveContentFile(e, project, "cover", project.GetString("cover"))
+	})
 	e.Router.GET("/api/hpahub/projects", func(e *core.RequestEvent) error {
 		noCache(e)
 		rows, err := e.App.FindRecordsByFilter("projects", `review_status = "approved"`, "-published_at,-updated", 100, 0)
@@ -553,8 +562,16 @@ func projectSummary(e *core.RequestEvent, project *core.Record, owners map[strin
 		OwnerName:      ownerName,
 		OwnerAvatarURL: ownerAvatarURL,
 		PublishedAt:    project.GetString("published_at"),
+		CoverURL:       projectCoverURL(project),
 		Updated:        project.GetString("updated"),
 	}
+}
+
+func projectCoverURL(project *core.Record) string {
+	if project.GetString("cover") == "" {
+		return ""
+	}
+	return contentURL("projects", project.Id, "cover")
 }
 
 func publicPersonName(record *core.Record) string {

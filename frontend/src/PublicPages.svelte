@@ -414,6 +414,7 @@
         <div class="project-meta"><span class:done={data.status === 'completed'} class="project-status">{statusLabel(data.status)}</span>{#if data.difficulty}<span class={`rank rank-pill difficulty-badge rank-${difficultyRank(data.difficulty)}`}>{$t('难度')} {data.difficulty}</span>{:else}<span class="rank-pending">{$t('难度')} {$t('待定')}</span>{/if}{#if data.currentStage}<span class="project-stage">{$t('当前阶段')}：{data.currentStage}</span>{/if}</div>
         <h1>{data.title}</h1>
         <p>{data.summary}</p>
+        {#if data.coverUrl}<img class="project-detail-cover" src={data.coverUrl} alt={data.title} />{/if}
         <p class="project-owner">{$t('负责人')}：<RedactedText text={data.ownerName || '—'} hidden={!!data.ownerRedacted} />{#if data.updated} · {$t('更新于')} {formatDate(data.updated)}{/if}</p>
         <p class="project-owner">{$t('发起人')}：<RedactedText text={data.creatorName || '—'} hidden={!!data.creatorRedacted} /></p>
         <p class="project-owner">{$t('管理员')}：{data.managers?.length || 0}{#if data.managers?.length} · {#each data.managers as manager, index}{#if index}、{/if}<RedactedText text={manager.name || '—'} hidden={!!manager.redacted} />{/each}{/if}</p>
@@ -529,6 +530,7 @@
         <div class="public-grid">
           {#each items as project}
             <a class="public-card project-card project-card-link" href={'/showcase/' + encodeURIComponent(project.id)}>
+              {#if project.coverUrl}<img class="project-card-cover" src={project.coverUrl} alt={project.title} loading="lazy" />{/if}
               <div class="project-meta"><span class:done={project.status === 'completed'} class="project-status">{statusLabel(project.status)}</span>{#if project.difficulty}<span class={`rank rank-pill difficulty-badge rank-${difficultyRank(project.difficulty)}`}>{$t('难度')} {project.difficulty}</span>{:else}<span class="rank-pending">{$t('难度')} {$t('待定')}</span>{/if}</div>
               <h2>{project.title}</h2>
               <p>{project.summary}</p>
@@ -748,6 +750,8 @@
   .people-avatar-slot { display: inline-flex; }
   .owner-avatar { width: 22px; height: 22px; margin-right: 6px; border-radius: 50%; object-fit: cover; vertical-align: middle; background: var(--surface-tint); border: 1px solid var(--border-subtle); }
   .project-card-link { display: block; color: inherit; text-decoration: none; }
+  .project-card-cover { display: block; width: 100%; height: 150px; object-fit: cover; border-radius: var(--radius-sm); margin-bottom: 12px; background: var(--surface-tint); }
+  .project-detail-cover { display: block; width: 100%; max-height: 420px; object-fit: cover; border-radius: var(--radius-md); border: 1px solid var(--border-subtle); margin: 16px 0 8px; }
   .project-card-link:hover h2 { color: var(--accent-deep); }
   .project-card h2 a { text-decoration: none; color: var(--ink-primary); transition: color var(--t-fast) var(--ease-out); }
   .project-card:hover h2 a { color: var(--accent-deep); }
