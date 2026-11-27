@@ -396,6 +396,7 @@
         <p>{data.summary}</p>
         <p class="project-owner">{$t('负责人')}：<RedactedText text={data.ownerName || '—'} hidden={!!data.ownerRedacted} />{#if data.updated} · {$t('更新于')} {formatDate(data.updated)}{/if}</p>
         {#if data.description && data.description !== data.summary}<p class="project-description">{data.description}</p>{/if}
+        {#if data.projectNature}<p class="project-owner">{$t('项目性质')}：{$t(({ commercial: '商业盈利', learning: '学习交流', showcase: '技术展示', research: '科学研究' })[data.projectNature])}</p>{/if}
         {#if data.longTerm}<p class="project-owner">{$t('预计周期')}：{$t('长期项目')}</p>{:else if data.estimatedDurationDays}<p class="project-owner">{$t('预计周期')}：{data.estimatedDurationDays} {$t('天')}</p>{/if}
         {#if data.proposedDifficulty}<p class="project-owner">{$t('发起人自评')}：<span class={`rank rank-text rank-${difficultyRank(data.proposedDifficulty)}`}>{data.proposedDifficulty}</span></p>{:else}<p class="project-owner">{$t('发起人自评')}：{$t('待定')}</p>{/if}
         {#if data.difficulty}<p class="project-owner">{$t('共识')}：<span class={`rank rank-text rank-${difficultyRank(data.difficulty)}`}>{data.difficulty}</span></p>{:else}<p class="project-owner">{$t('共识')}：{$t('待定')}</p>{/if}

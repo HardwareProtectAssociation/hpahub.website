@@ -51,6 +51,7 @@ func bindMyProjectRoutes(e *core.ServeEvent) {
 			ScheduleNote          string `json:"scheduleNote"`
 			ProposedDifficulty    string `json:"proposedDifficulty"`
 			AdventureStyle        string `json:"adventureStyle"`
+			ProjectNature         string `json:"projectNature"`
 		}
 		if err := e.BindBody(&input); err != nil {
 			return e.BadRequestError("Invalid project.", err)
@@ -85,6 +86,9 @@ func bindMyProjectRoutes(e *core.ServeEvent) {
 		if input.ProposedDifficulty != "" && !validProjectDifficulty(input.ProposedDifficulty) {
 			return e.BadRequestError("Invalid difficulty.", nil)
 		}
+		if input.ProjectNature != "" && input.ProjectNature != "commercial" && input.ProjectNature != "learning" && input.ProjectNature != "showcase" && input.ProjectNature != "research" {
+			return e.BadRequestError("Invalid project purpose.", nil)
+		}
 		if input.AdventureStyle == "" {
 			input.AdventureStyle = "project"
 		}
@@ -118,6 +122,7 @@ func bindMyProjectRoutes(e *core.ServeEvent) {
 			project.Set("estimated_duration_days", input.EstimatedDurationDays)
 		}
 		project.Set("adventure_style", input.AdventureStyle)
+		project.Set("project_nature", input.ProjectNature)
 		project.Set("version", 1)
 		project.Set("published_at", time.Now())
 		if input.ProposedDifficulty != "" {

@@ -48,6 +48,7 @@ type publicProjectMember struct {
 type publicProjectDetail struct {
 	publicProject
 	Description           string                `json:"description"`
+	ProjectNature         string                `json:"projectNature"`
 	PlannedStartDate      string                `json:"plannedStartDate"`
 	EstimatedDurationDays int                   `json:"estimatedDurationDays"`
 	LongTerm              bool                  `json:"longTerm"`
@@ -114,6 +115,7 @@ func bindPublicProjectRoutes(e *core.ServeEvent) {
 		detail := publicProjectDetail{
 			publicProject:         projectSummary(e, project, owners),
 			Description:           projectDescriptionText(project),
+			ProjectNature:         project.GetString("project_nature"),
 			PlannedStartDate:      project.GetString("planned_start_date"),
 			EstimatedDurationDays: project.GetInt("estimated_duration_days"),
 			LongTerm:              project.GetBool("is_long_term"),

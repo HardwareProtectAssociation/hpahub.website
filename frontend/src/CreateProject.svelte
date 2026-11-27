@@ -1,7 +1,7 @@
 <script>
   import { t } from './i18n.js';
   export let token;
-  let title = '', summary = '', description = '', difficulty = '', style = 'project';
+  let title = '', summary = '', description = '', difficulty = '', nature = '';
   let collaboration = 'collaborative', joinMode = 'open', sponsorship = false;
   let startDate = '', duration = '', scheduleNote = '', error = '', creating = false;
   let completed = false, longTerm = false;
@@ -14,7 +14,7 @@
       const response = await fetch('/api/hpahub/me/projects', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: title.trim(), summary: summary.trim(), description: description.trim(), proposedDifficulty: difficulty, adventureStyle: style, collaborationMode: collaboration, joinMode, acceptsSponsorship: sponsorship, plannedStartDate: startDate, estimatedDurationDays: !longTerm && duration ? Number(duration) : 0, longTerm, completed, scheduleNote: scheduleNote.trim() }),
+        body: JSON.stringify({ title: title.trim(), summary: summary.trim(), description: description.trim(), proposedDifficulty: difficulty, projectNature: nature, collaborationMode: collaboration, joinMode, acceptsSponsorship: sponsorship, plannedStartDate: startDate, estimatedDurationDays: !longTerm && duration ? Number(duration) : 0, longTerm, completed, scheduleNote: scheduleNote.trim() }),
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.message || '创建失败，请重试。');
@@ -35,7 +35,7 @@
     <label class="checkbox"><input type="checkbox" bind:checked={completed} />{$t('已完成项目')}</label>
     <div class="fields">
       <label>{$t('发起人自评难度')}<select bind:value={difficulty}><option value="">{$t('暂不设置')}</option>{#each ['D', 'C', 'B', 'A', 'S'] as level}<option value={level}>{level}</option>{/each}</select></label>
-      <label>{$t('冒险风格')}<select bind:value={style}><option value="project">{$t('项目')}</option><option value="dungeon">{$t('地牢')}</option><option value="boss">Boss</option></select></label>
+      <label>{$t('项目性质')}<select bind:value={nature} required><option value="" disabled>{$t('请选择')}</option><option value="commercial">{$t('商业盈利')}</option><option value="learning">{$t('学习交流')}</option><option value="showcase">{$t('技术展示')}</option><option value="research">{$t('科学研究')}</option></select></label>
       <label>{$t('协作方式')}<select bind:value={collaboration}><option value="collaborative">{$t('协作项目')}</option><option value="independent">{$t('独立项目')}</option></select></label>
       {#if collaboration === 'collaborative'}<label>{$t('加入方式')}<select bind:value={joinMode}><option value="open">{$t('自由加入')}</option><option value="approval">{$t('申请加入')}</option></select></label>{/if}
       <label>{$t('计划开始日期')}<input type="date" bind:value={startDate} /></label>
