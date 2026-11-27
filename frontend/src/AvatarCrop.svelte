@@ -61,6 +61,8 @@
       if (next.src !== url) return;
       image = next; width = next.naturalWidth; height = next.naturalHeight;
       await tick();
+      if (image !== next || !canvas) return;
+      drawPreview(canvas, 360);
       cropDialog?.showModal();
     };
     next.onerror = () => { if (next.src === url) { cancel(); error = '无法读取图片。'; } };
