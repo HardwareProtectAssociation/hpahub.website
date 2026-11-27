@@ -1,6 +1,7 @@
 package main
 
 import (
+ "bytes"
  "encoding/json"
  "fmt"
  "io"
@@ -36,7 +37,8 @@ func readContentInput(e *core.RequestEvent, allowed map[string]bool) (*contentIn
    for _, header := range headers { file, err := filesystem.NewFileFromMultipart(header); if err != nil { return nil, err }; in.files[key] = append(in.files[key], file) }
   }
  } else {
-  dec := json.NewDecoder(io.LimitReader(e.Request.Body, 1<<20))
+  body, err := io.ReadAll(io.LimitReader(e.Request.Body, (1<<20)+1)); if err != nil { return nil, err }; if len(body) > 1<<20 { return nil, fmt.Errorf("request too large") }
+  dec := json.NewDecoder(bytes.NewReader(body))
   if err := dec.Decode(&in.values); err != nil { return nil, err }; var extra any; if err := dec.Decode(&extra); err != io.EOF { return nil, fmt.Errorf("invalid JSON") }
   for key := range in.values { if !allowed[key] || key == "images" || key == "avatar" || key == "avatarThumb" { return nil, fmt.Errorf("unknown field %s", key) } }
  }

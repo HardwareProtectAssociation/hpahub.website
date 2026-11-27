@@ -15,6 +15,7 @@ import (
 
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
+	pbrouter "github.com/pocketbase/pocketbase/tools/router"
 )
 
 func TestPublicProfilesCardsAndShowcase(t *testing.T) {
@@ -46,6 +47,7 @@ func TestPublicProfilesCardsAndShowcase(t *testing.T) {
 	request := func(method, path, token, contentType string, body io.Reader) *httptest.ResponseRecorder {
 		t.Helper()
 		req := httptest.NewRequest(method, path, body)
+		if contentType == "application/json" { req.Body = &pbrouter.RereadableReadCloser{ReadCloser: req.Body} }
 		if token != "" { req.Header.Set("Authorization", token) }
 		if contentType != "" { req.Header.Set("Content-Type", contentType) }
 		res := httptest.NewRecorder()
@@ -166,6 +168,7 @@ func TestPublicProfilesCardsAndShowcase(t *testing.T) {
 	want(multipartRequest("PATCH", base+"/me/cards/"+linkedCardID, linkedSuperToken, map[string][]string{"title": {"Admin card 2"}}, 0), http.StatusOK)
 	want(jsonRequest("DELETE", base+"/me/cards/"+linkedCardID, linkedSuperToken, ""), http.StatusNoContent)
 	want(jsonRequest("PUT", visibility, memberToken, `{"profilePublic":true,"hiddenSections":["unknown"]}`), http.StatusBadRequest)
+	want(jsonRequest("PUT", visibility, memberToken, `{"profilePublic":true,"hiddenSections":[]} {}`), http.StatusBadRequest)
 	want(jsonRequest("PUT", visibility, memberToken, `{"profilePublic":true,"hiddenSections":["bio","avatar","status","cards","identities","projects","career","skills"]}`), http.StatusOK)
 	hidden := jsonRequest("GET", base+"/members/"+member.Id, "", "")
 	want(hidden, http.StatusOK)
