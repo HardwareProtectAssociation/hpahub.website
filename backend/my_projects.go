@@ -38,16 +38,42 @@ func bindMyProjectRoutes(e *core.ServeEvent) {
 			return e.ForbiddenError("No member profile is linked to this account.", nil)
 		}
 		var input struct {
-			Title              string `json:"title"`
-			Summary            string `json:"summary"`
-			ProposedDifficulty string `json:"proposedDifficulty"`
-			AdventureStyle     string `json:"adventureStyle"`
+			Title                 string `json:"title"`
+			Summary               string `json:"summary"`
+			Description           string `json:"description"`
+			CollaborationMode     string `json:"collaborationMode"`
+			JoinMode              string `json:"joinMode"`
+			AcceptsSponsorship    bool   `json:"acceptsSponsorship"`
+			EstimatedDurationDays int    `json:"estimatedDurationDays"`
+			PlannedStartDate      string `json:"plannedStartDate"`
+			ScheduleNote          string `json:"scheduleNote"`
+			ProposedDifficulty    string `json:"proposedDifficulty"`
+			AdventureStyle        string `json:"adventureStyle"`
 		}
 		if err := e.BindBody(&input); err != nil {
 			return e.BadRequestError("Invalid project.", err)
 		}
 		input.Title = strings.TrimSpace(input.Title)
 		input.Summary = strings.TrimSpace(input.Summary)
+		input.Description = strings.TrimSpace(input.Description)
+		input.ScheduleNote = strings.TrimSpace(input.ScheduleNote)
+		if utf8.RuneCountInString(input.Description) > 10000 || utf8.RuneCountInString(input.ScheduleNote) > 2000 || input.EstimatedDurationDays < 0 || input.EstimatedDurationDays > 36500 {
+			return e.BadRequestError("Invalid project details.", nil)
+		}
+		if input.PlannedStartDate != "" {
+			if _, err := time.Parse("2006-01-02", input.PlannedStartDate); err != nil {
+				return e.BadRequestError("Invalid start date.", nil)
+			}
+		}
+		if input.CollaborationMode == "" {
+			input.CollaborationMode = "collaborative"
+		}
+		if input.JoinMode == "" {
+			input.JoinMode = "open"
+		}
+		if (input.CollaborationMode != "independent" && input.CollaborationMode != "collaborative") || (input.JoinMode != "open" && input.JoinMode != "approval") {
+			return e.BadRequestError("Invalid collaboration settings.", nil)
+		}
 		if input.Title == "" || utf8.RuneCountInString(input.Title) > 160 || utf8.RuneCountInString(input.Summary) > 2000 {
 			return e.BadRequestError("Invalid project.", nil)
 		}
@@ -71,8 +97,17 @@ func bindMyProjectRoutes(e *core.ServeEvent) {
 		project.Set("summary", input.Summary)
 		project.Set("review_status", "approved")
 		project.Set("execution_status", "ongoing")
-		project.Set("collaboration_mode", "collaborative")
-		project.Set("join_mode", "open")
+		project.Set("collaboration_mode", input.CollaborationMode)
+		project.Set("join_mode", input.JoinMode)
+		project.Set("accepts_sponsorship", input.AcceptsSponsorship)
+		project.Set("description", map[string]string{"text": input.Description})
+		project.Set("schedule_note", input.ScheduleNote)
+		if input.PlannedStartDate != "" {
+			project.Set("planned_start_date", input.PlannedStartDate)
+		}
+		if input.EstimatedDurationDays > 0 {
+			project.Set("estimated_duration_days", input.EstimatedDurationDays)
+		}
 		project.Set("adventure_style", input.AdventureStyle)
 		project.Set("version", 1)
 		project.Set("published_at", time.Now())

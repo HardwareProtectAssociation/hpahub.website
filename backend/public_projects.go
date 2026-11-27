@@ -198,7 +198,7 @@ func bindPublicProjectRoutes(e *core.ServeEvent) {
 				if !activeMember && !hasPending {
 					if project.GetString("execution_status") == "completed" {
 						detail.CanRequestImprovement = true
-					} else {
+					} else if project.GetString("collaboration_mode") != "independent" {
 						detail.CanApply = true
 					}
 				}
@@ -227,6 +227,9 @@ func bindPublicProjectRoutes(e *core.ServeEvent) {
 		}
 		if project.GetString("execution_status") == "completed" {
 			return e.BadRequestError("Completed projects accept improvement requests instead.", nil)
+		}
+		if project.GetString("collaboration_mode") == "independent" {
+			return e.BadRequestError("This is an independent project.", nil)
 		}
 
 		var input struct {

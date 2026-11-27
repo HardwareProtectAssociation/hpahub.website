@@ -85,3 +85,69 @@ func TestMyProjectsAndFollow(t *testing.T) {
 		t.Fatalf("follow = %d: %s", response.Code, response.Body.String())
 	}
 }
+
+func TestCreateProjectDetails(t *testing.T) {
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+	member := publicProjectTestUser(t, app, "create@example.com", "创建者")
+	router, err := apis.NewRouter(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bindMyProjectRoutes(&core.ServeEvent{App: app, Router: router})
+	bindPublicProjectRoutes(&core.ServeEvent{App: app, Router: router})
+	mux, err := router.BuildMux()
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := member.NewAuthToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	call := func(body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("POST", "/api/hpahub/me/projects", strings.NewReader(body))
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Content-Type", "application/json")
+		response := httptest.NewRecorder()
+		mux.ServeHTTP(response, req)
+		return response
+	}
+	response := call(`{"title":" 新项目 ","summary":"简介","description":"项目详情","proposedDifficulty":"A","adventureStyle":"boss","collaborationMode":"independent","joinMode":"approval","acceptsSponsorship":true,"estimatedDurationDays":30,"plannedStartDate":"2027-01-01","scheduleNote":"计划"}`)
+	if response.Code != http.StatusOK {
+		t.Fatalf("create = %d: %s", response.Code, response.Body.String())
+	}
+	var result struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	project, err := app.FindRecordById("projects", result.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if project.GetString("title") != "新项目" || projectDescriptionText(project) != "项目详情" || project.GetString("collaboration_mode") != "independent" || project.GetString("join_mode") != "approval" || !project.GetBool("accepts_sponsorship") || project.GetInt("estimated_duration_days") != 30 || project.GetString("planned_start_date") == "" || project.GetString("schedule_note") != "计划" {
+		t.Fatalf("project details not saved: %v", project)
+	}
+	other := publicProjectTestUser(t, app, "other-create@example.com", "其他人")
+	otherToken, err := other.NewAuthToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest("POST", "/api/hpahub/projects/"+project.Id+"/apply", strings.NewReader(`{}`))
+	req.Header.Set("Authorization", "Bearer "+otherToken)
+	req.Header.Set("Content-Type", "application/json")
+	blocked := httptest.NewRecorder()
+	mux.ServeHTTP(blocked, req)
+	if blocked.Code != http.StatusBadRequest {
+		t.Fatalf("independent project application = %d: %s", blocked.Code, blocked.Body.String())
+	}
+	for _, body := range []string{`{"title":"x","estimatedDurationDays":36501}`, `{"title":"x","plannedStartDate":"2027-02-30"}`, `{"title":"x","joinMode":"unknown"}`} {
+		if response := call(body); response.Code != http.StatusBadRequest {
+			t.Fatalf("invalid input = %d: %s", response.Code, response.Body.String())
+		}
+	}
+}

@@ -6,6 +6,7 @@
   import SkillEditor from './SkillEditor.svelte';
   import AdminDirectory from './AdminDirectory.svelte';
   import MyProjects from './MyProjects.svelte';
+  import CreateProject from './CreateProject.svelte';
   import Messages from './Messages.svelte';
   import PublicPages from './PublicPages.svelte';
   import Editors from './Editors.svelte';
@@ -359,6 +360,12 @@
       <Messages {token} />
     {:else}
       <main class="dashboard"><h1>{$t('站内消息')}</h1><p>{$t('请先登录后查看消息。')}</p><a href="/sign-in">{$t('登录')}</a></main>
+    {/if}
+  {:else if pathname === '/my-projects/new'}
+    {#if token}
+      <CreateProject {token} />
+    {:else}
+      <main class="dashboard"><h1>{$t('发起项目')}</h1><p>{$t('请先登录后查看我的项目。')}</p><a href="/sign-in">{$t('登录')}</a></main>
     {/if}
   {:else if pathname === '/my-projects'}
     {#if token}
