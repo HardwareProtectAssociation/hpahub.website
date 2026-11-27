@@ -202,7 +202,7 @@
   .message-list { display: grid; gap: 12px; }
   .message-card { position: relative; padding: 16px 18px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface); cursor: pointer; box-shadow: var(--shadow-xs); transition: transform var(--t-fast) var(--ease-out), border-color var(--t-fast) var(--ease-out), box-shadow var(--t-fast) var(--ease-out); }
   .message-card:hover { transform: translateY(-2px); border-color: var(--border-strong); box-shadow: var(--shadow-sm); }
-  .message-card.unread { border-left: 3px solid var(--accent-bright); background: #f2fbf6; }
+  .message-card.unread { border-left: 3px solid var(--accent-bright); background: var(--surface-tint); }
   .message-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
   .message-head strong { display: block; margin-top: 4px; color: var(--ink-primary); }
   .category-tag { display: inline-block; padding: 2px 9px; border-radius: 999px; background: var(--surface-tint); color: var(--accent-deep); font-size: 11px; font-weight: 600; }
