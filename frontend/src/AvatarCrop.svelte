@@ -1,9 +1,9 @@
 <script>
-  import { createEventDispatcher, onDestroy } from 'svelte';
+  import { createEventDispatcher, onDestroy, tick } from 'svelte';
   import { t } from './i18n.js';
   import { cropRect } from './avatarCrop.js';
   const dispatch = createEventDispatcher();
-  let image, url = '', canvas, x = 50, y = 50, zoom = 1, error = '', busy = false, dragOrigin;
+  let image, url = '', canvas, fileInput, cropDialog, x = 50, y = 50, zoom = 1, error = '', busy = false, dragOrigin;
   let width = 0, height = 0;
   $: if (canvas && image && width && height) { x; y; zoom; drawPreview(canvas, 360); }
 
@@ -35,6 +35,19 @@
   function stopDrag(event) {
     if (dragOrigin?.pointerId === event.pointerId) dragOrigin = null;
   }
+  function moveWithKeys(event) {
+    const step = event.shiftKey ? 5 : 1;
+    const side = Math.min(width, height) / Number(zoom);
+    const maxX = Math.max(1, width - side);
+    const maxY = Math.max(1, height - side);
+    if (event.key === 'ArrowLeft') x = Math.min(100, Number(x) + (step / maxX) * 100);
+    else if (event.key === 'ArrowRight') x = Math.max(0, Number(x) - (step / maxX) * 100);
+    else if (event.key === 'ArrowUp') y = Math.min(100, Number(y) + (step / maxY) * 100);
+    else if (event.key === 'ArrowDown') y = Math.max(0, Number(y) - (step / maxY) * 100);
+    else return;
+    event.preventDefault();
+  }
+  function openPicker() { if (!busy) fileInput?.click(); }
   function choose(event) {
     const file = event.currentTarget.files?.[0];
     event.currentTarget.value = '';
@@ -44,7 +57,12 @@
     url = URL.createObjectURL(file); image = null; width = height = 0; error = '';
     x = y = 50; zoom = 1;
     const next = new Image();
-    next.onload = () => { if (next.src !== url) return; image = next; width = next.naturalWidth; height = next.naturalHeight; };
+    next.onload = async () => {
+      if (next.src !== url) return;
+      image = next; width = next.naturalWidth; height = next.naturalHeight;
+      await tick();
+      cropDialog?.showModal();
+    };
     next.onerror = () => { if (next.src === url) { cancel(); error = '无法读取图片。'; } };
     next.src = url;
   }
@@ -63,37 +81,54 @@
     } catch { error = '无法处理图片，请重试。'; }
     finally { busy = false; }
   }
-  function cancel() { if (url) URL.revokeObjectURL(url); url = ''; image = null; width = height = 0; dispatch('pending', false); }
+  function cancel() {
+    if (cropDialog?.open) cropDialog.close();
+    if (url) URL.revokeObjectURL(url);
+    url = ''; image = null; width = height = 0; dispatch('pending', false);
+  }
   onDestroy(cancel);
 </script>
 
-<label class="file-label">{$t('更换头像')}<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" on:change={choose} /></label>
+<button type="button" class="file-label" on:click={openPicker}>{$t('更换头像')}</button>
+<input class="sr-only" type="file" accept="image/jpeg,image/png,image/webp,image/gif" bind:this={fileInput} on:change={choose} />
 {#if error}<p role="alert">{$t(error)}</p>{/if}
 {#if image}
-  <div class="crop" aria-label={$t('裁切头像')}>
-    <strong>{$t('裁切头像')}</strong>
-    <div class="crop-stage" aria-label={$t('头像裁切预览')} on:pointerdown={startDrag} on:pointermove={moveCrop} on:pointerup={stopDrag} on:pointercancel={stopDrag}>
-      <canvas bind:this={canvas} aria-hidden="true"></canvas>
-      <span class="crop-mask" aria-hidden="true"></span>
+  <dialog class="crop-dialog" aria-label={$t('裁切头像')} bind:this={cropDialog} on:cancel|preventDefault={cancel}>
+    <div class="crop">
+      <div class="crop-heading"><strong>{$t('裁切头像')}</strong><button type="button" class="crop-close" aria-label={$t('取消')} on:click={cancel}>×</button></div>
+      <button type="button" class="crop-stage" aria-label={$t('头像裁切预览')} aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown" on:keydown={moveWithKeys} on:pointerdown={startDrag} on:pointermove={moveCrop} on:pointerup={stopDrag} on:pointercancel={stopDrag}>
+        <canvas bind:this={canvas} aria-hidden="true"></canvas>
+        <span class="crop-mask" aria-hidden="true"></span>
+      </button>
+      <label>{$t('缩放')}<input type="range" min="1" max="4" step="0.01" bind:value={zoom} /></label>
+      {#if error}<p role="alert">{$t(error)}</p>{/if}
+      <div class="crop-actions"><button type="button" class="crop-confirm" on:click={confirmCrop} disabled={busy}>{$t('确认裁切')}</button><button type="button" class="crop-cancel" on:click={cancel} disabled={busy}>{$t('取消')}</button></div>
     </div>
-    <label>{$t('缩放')}<input type="range" min="1" max="4" step="0.01" bind:value={zoom} /></label>
-    <label>{$t('水平位置')}<input type="range" min="0" max="100" bind:value={x} aria-label={$t('水平位置')} /></label>
-    <label>{$t('垂直位置')}<input type="range" min="0" max="100" bind:value={y} aria-label={$t('垂直位置')} /></label>
-    <div><button type="button" on:click={confirmCrop} disabled={busy}>{$t('确认裁切')}</button> <button type="button" on:click={cancel} disabled={busy}>{$t('取消')}</button></div>
-  </div>
+  </dialog>
 {/if}
 
 <style>
-  .crop { display: grid; gap: 12px; width: min(360px, 100%); margin-top: 12px; padding: 16px; border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--surface-elevated); box-shadow: var(--shadow-md); }
-  .crop-stage { position: relative; width: 100%; aspect-ratio: 1; overflow: hidden; border-radius: var(--radius-sm); background: var(--surface-soft); cursor: grab; touch-action: none; }
+  .file-label { padding: 0; border: 0; background: none; color: var(--accent-deep); font: inherit; font-size: 13px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+  .crop-dialog { width: min(460px, calc(100% - 32px)); max-height: min(90dvh, 720px); overflow: auto; padding: 0; border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--surface-elevated); color: var(--ink-primary); box-shadow: var(--shadow-lg, var(--shadow-md)); }
+  .crop-dialog::backdrop { background: #000a; backdrop-filter: blur(3px); }
+  .crop { display: grid; gap: 16px; width: 100%; padding: 20px; }
+  .crop-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .crop-heading strong { font-size: 18px; }
+  .crop-close { width: 40px; height: 40px; border: 0; border-radius: 50%; background: var(--surface-tint); color: var(--ink-secondary); font-size: 25px; line-height: 1; cursor: pointer; }
+  .crop-close:hover { background: var(--border-subtle); }
+  .crop-stage { position: relative; display: block; width: 100%; aspect-ratio: 1; overflow: hidden; padding: 0; border: 0; border-radius: var(--radius-sm); background: var(--surface-soft); color: inherit; text-align: left; cursor: grab; touch-action: none; }
   .crop-stage:active { cursor: grabbing; }
+  .crop-stage:focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 3px; }
   canvas { display: block; width: 100%; height: 100%; }
   .crop-mask { position: absolute; inset: 0; pointer-events: none; }
-  .crop-mask::before { content: ''; position: absolute; inset: 8%; border: 1px solid rgba(235, 255, 241, .92); border-radius: 50%; box-shadow: 0 0 0 999px rgba(3, 10, 6, .56); }
-  .crop-stage:focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 3px; }
+  .crop-mask::before { content: ''; position: absolute; inset: 0; border: 1px solid rgba(235, 255, 241, .92); border-radius: 50%; box-shadow: 0 0 0 999px rgba(3, 10, 6, .58); }
   .crop label { display: grid; gap: 6px; font-size: 12.5px; color: var(--ink-secondary); }
   .crop input { width: 100%; accent-color: var(--accent); }
-  .crop button { padding: 7px 14px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--accent-deep); font-size: 13px; font-weight: 600; }
-  .crop button:hover:not(:disabled) { background: var(--surface-tint); border-color: var(--border-strong); }
-  @media (max-width: 520px) { .crop { width: min(100%, 320px); padding: 12px; } }
+  .crop-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+  .crop-actions button { min-height: 40px; padding: 8px 14px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); font-size: 13px; font-weight: 600; cursor: pointer; }
+  .crop-confirm { background: var(--accent); color: var(--ink-on-accent, #06210f); }
+  .crop-confirm:hover:not(:disabled) { filter: brightness(1.06); }
+  .crop-cancel { background: var(--surface-elevated); color: var(--ink-secondary); }
+  .crop-actions button:disabled { opacity: .6; cursor: wait; }
+  @media (max-width: 520px) { .crop { padding: 16px; } }
 </style>

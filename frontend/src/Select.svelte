@@ -112,7 +112,8 @@
   .select > button:focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 2px; }
   .select > button svg { flex: none; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; transition: transform var(--t-fast) var(--ease-out); }
   .select.open > button svg { transform: rotate(180deg); }
-  .select-options { position: fixed; inset: auto; z-index: 100; margin: 0; max-height: min(280px, 40vh); overflow-y: auto; padding: 4px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--ink-primary); box-shadow: var(--shadow-md); }
-  .select-options button { display: block; width: 100%; min-height: 40px; padding: 8px 10px; border: 0; border-radius: 4px; background: transparent; color: var(--ink-secondary); text-align: left; cursor: pointer; }
+  .select-options { position: fixed; inset: auto; z-index: 100; margin: 0; max-height: min(280px, 40vh); overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; padding: 4px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--ink-primary); box-shadow: var(--shadow-md); }
+  .select-options::-webkit-scrollbar { display: none; }
+  .select-options button { display: block; width: 100%; min-height: 40px; padding: 8px 10px; border: 0; border-radius: 4px; background: transparent; color: var(--ink-secondary); text-align: left; white-space: normal; overflow-wrap: anywhere; cursor: pointer; }
   .select-options button:hover, .select-options button:focus-visible, .select-options button[aria-selected="true"] { outline: none; background: var(--surface-tint); color: var(--ink-primary); }
 </style>

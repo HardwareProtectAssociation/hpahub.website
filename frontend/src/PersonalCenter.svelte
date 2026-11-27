@@ -21,7 +21,6 @@
   let formBio = '';
   let formPublic = false;
   let formGender = '';
-  let formPersonality = '';
   let formAge = '';
   let formCurrentStatus = '';
   let formContacts = [];
@@ -53,7 +52,6 @@
   const genderLabels = { male: '男', female: '女', nonbinary: '非二元', private: '不愿透露' };
   const genderOptions = Object.entries(genderLabels);
   const currentStatusLabels = { busy: '忙碌', free: '空闲' };
-  const personalityPresets = ['外向开朗', '内向沉稳', '理性冷静', '热情奔放', '细心谨慎', '大胆冒险', '幽默风趣', '勤奋踏实', '创新思维', '团队协作', '独立自主', '追求完美', '随和友善', '果断干练'];
   const contactTypes = [
     { value: 'email', label: '邮箱' },
     { value: 'wechat', label: '微信' },
@@ -140,7 +138,6 @@
     formBio = data?.profile?.bio || '';
     formPublic = !!data?.profile?.profilePublic;
     formGender = data?.profile?.gender || '';
-    formPersonality = data?.profile?.personality || '';
     formAge = data?.profile?.age || '';
     formCurrentStatus = data?.profile?.currentStatus || '';
     formContacts = (data?.profile?.contacts || []).map((contact) => ({ ...contact }));
@@ -179,21 +176,6 @@
 
   function removeActivityArea(index) {
     formActivityAreas = formActivityAreas.filter((_, itemIndex) => itemIndex !== index);
-  }
-
-  function togglePersonality(preset) {
-    const parts = formPersonality.split(/[,，、\s]+/).filter(Boolean);
-    const idx = parts.indexOf(preset);
-    if (idx >= 0) {
-      parts.splice(idx, 1);
-    } else {
-      parts.push(preset);
-    }
-    formPersonality = parts.join('、');
-  }
-
-  function isPersonalitySelected(preset) {
-    return formPersonality.split(/[,，、\s]+/).includes(preset);
   }
 
   function toggleIdentity(id) {
@@ -242,7 +224,6 @@
       body.set('name', name);
       body.set('bio', formBio);
       body.set('gender', formGender);
-      body.set('personality', formPersonality);
       body.set('age', String(formAge || 0));
       body.set('currentStatus', formCurrentStatus);
       body.set('contacts', JSON.stringify(formContacts.filter((contact) => contact.value.trim())));
@@ -455,7 +436,6 @@
             {#if data.profile.activityAreas?.length}<span class="profile-badge profile-fact">{$t('活动范围')} · {data.profile.activityAreas.join('、')}</span>{/if}
           </div>
         {/if}
-        {#if data.profile.personality}<p class="center-personality">{$t('性格')}：{data.profile.personality}</p>{/if}
         {#if data.profile.contacts?.length}
           <div class="center-contacts">
             <strong>{$t('联系方式')}</strong>
@@ -504,12 +484,6 @@
         <div class="edit-grid">
           <div class="edit-field"><span>{$t('性别')}</span><Select bind:value={formGender} ariaLabel={$t('性别')} options={[{ value: '', label: $t('未填写') }, ...genderOptions.map(([value, label]) => ({ value, label: $t(label) }))]} /></div>
           <label class="edit-field">{$t('年龄')}<input type="number" min="1" max="120" bind:value={formAge} placeholder={$t('可不填')} /></label>
-        </div>
-        <label class="edit-field">{$t('性格')}<input bind:value={formPersonality} maxlength="200" placeholder={$t('点击下方标签快速选择，或自由输入')} /></label>
-        <div class="personality-presets">
-          {#each personalityPresets as preset}
-            <button type="button" class:active={isPersonalitySelected(preset)} class="preset-chip" on:click={() => togglePersonality(preset)}>{preset}</button>
-          {/each}
         </div>
         <div class="edit-field"><span>{$t('当前状态')}</span><Select bind:value={formCurrentStatus} ariaLabel={$t('当前状态')} options={[{ value: '', label: $t('未设置') }, { value: 'busy', label: $t('忙碌') }, { value: 'free', label: $t('空闲') }]} /></div>
         <fieldset class="edit-block">
@@ -648,7 +622,7 @@
         {#if data.badges.length}
           <ul class="badge-list">
             {#each data.badges as badge (badge.careerId)}
-              <li class="badge-card">
+              <li class="badge-card career-badge">
                 <div class="badge-icon" aria-hidden="true">✦</div>
                 <div class="badge-body">
                   <strong>{badge.careerName}</strong>
@@ -821,10 +795,8 @@
   .center-email { margin: 0 0 12px; color: var(--ink-subtle); font-size: 14px; font-family: var(--font-mono); }
   .center-bio { margin: 0 0 14px; max-width: 70ch; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink-secondary); }
   .profile-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin: 0 0 10px; font-size: 12px; }
-  .center-personality { margin: 0 0 8px; color: var(--ink-muted); font-size: 13px; max-width: 70ch; }
   .center-contacts { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0 0 10px; color: var(--ink-muted); font-size: 13px; }
   .center-contacts strong { color: var(--accent-deep); }
-  .personality-presets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: -6px; }
   .project-categories { display: grid; gap: 10px; }
   .project-tabs { display: flex; flex-wrap: wrap; gap: 6px; padding-bottom: 10px; border-bottom: 1px solid var(--border-subtle); }
   .project-tabs button { border: 1px solid transparent; border-radius: var(--radius-sm); background: none; padding: 7px 12px; color: var(--ink-secondary); font-size: 13px; font-weight: 500; cursor: pointer; transition: background-color var(--t-fast) var(--ease-out), color var(--t-fast) var(--ease-out); }
@@ -919,6 +891,7 @@
   .status-pill.done { background: var(--surface-tint); border-color: var(--border-strong); color: var(--accent-deep); }
   .badge-card { display: flex; gap: 14px; padding-top: 12px; border-top: 1px solid var(--border-subtle); }
   .badge-card:first-child { padding-top: 0; border-top: 0; }
+  .career-badge .rank { animation: none; background-image: none; color: var(--accent-deep); filter: none; }
   .badge-icon { display: grid; flex: none; width: 42px; height: 42px; place-items: center; border-radius: 50%; background: var(--surface-tint); border: 1px solid var(--border-default); color: var(--accent-deep); }
   .badge-body { flex: 1; min-width: 0; }
   .badge-body p { margin: 2px 0 6px; color: var(--ink-muted); font-size: 13px; }

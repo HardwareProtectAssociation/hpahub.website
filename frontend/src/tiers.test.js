@@ -2,8 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { difficultyRank, levelRank } from './tiers.js';
 
-test('difficulty letters map S..D to ranks 5..1', () => {
-  assert.deepEqual(['S', 'A', 'B', 'C', 'D'].map(difficultyRank), [5, 4, 3, 2, 1]);
+test('difficulty letters map SSS..D to ranks 6..1', () => {
+  assert.deepEqual(['SSS', 'S', 'A', 'B', 'C', 'D'].map(difficultyRank), [6, 5, 4, 3, 2, 1]);
   assert.equal(difficultyRank('a'), 4);
   assert.equal(difficultyRank(''), 1);
 });

@@ -262,9 +262,10 @@
   .skill-featured { color: var(--accent-deep); }
   .row-actions { display: flex; gap: 8px; }
   .row-actions .secondary { width: auto; min-width: 82px; justify-content: center; }
-  .skill-dialog { width: min(720px, calc(100% - 32px)); max-height: min(90dvh, 900px); padding: 0; border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--surface-elevated); color: var(--ink-primary); box-shadow: var(--shadow-md); }
+  .skill-dialog { width: min(720px, calc(100% - 32px)); max-height: min(90dvh, 900px); overflow-x: hidden; overflow-y: auto; padding: 0; border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--surface-elevated); color: var(--ink-primary); box-shadow: var(--shadow-md); }
   .skill-dialog::backdrop { background: #0009; }
-  .skill-form { display: grid; gap: 14px; padding: 24px; }
+  .skill-form { display: grid; min-width: 0; gap: 14px; padding: 24px; }
+  .skill-form > *, .form-grid > * { min-width: 0; }
   .dialog-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .dialog-heading h2 { margin: 0; font-size: 20px; }
   .dialog-close { min-width: 44px; min-height: 44px; border: 0; background: none; color: var(--ink-muted); font-size: 26px; }
@@ -273,7 +274,7 @@
   .skill-form label { display: grid; gap: 6px; color: var(--ink-secondary); font-size: 13px; font-weight: 500; }
   .skill-form label.check-label { display: flex; align-items: center; gap: 8px; }
   .meta { margin: 6px 0 0; color: var(--ink-subtle); font-size: 12px; }
-  .skill-form input:not([type=checkbox]), .skill-form textarea { width: 100%; min-height: 44px; padding: 9px 11px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--ink-primary); font: inherit; transition: border-color var(--t-fast) var(--ease-out), box-shadow var(--t-fast) var(--ease-out); }
+  .skill-form input:not([type=checkbox]), .skill-form textarea { width: 100%; min-width: 0; max-width: 100%; min-height: 44px; padding: 9px 11px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--ink-primary); font: inherit; transition: border-color var(--t-fast) var(--ease-out), box-shadow var(--t-fast) var(--ease-out); }
   .skill-form input:not([type=checkbox]):focus, .skill-form textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); outline: none; }
   .skill-form input[type=checkbox] { width: auto; margin: 0; }
   .skill-form textarea { resize: vertical; }
