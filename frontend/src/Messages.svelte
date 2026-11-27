@@ -1,6 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import { t } from './i18n.js';
+  import Select from './Select.svelte';
 
   export let token;
 
@@ -92,7 +93,8 @@
   }
 
   async function send() {
-    if (!recipientId || !content.trim()) return;
+    if (!recipientId) { error = '请选择成员。'; return; }
+    if (!content.trim()) return;
     sending = true;
     error = '';
     try {
@@ -140,14 +142,7 @@
           <button type="button" class="reply-cancel" on:click={cancelReply}>{$t('取消回复')}</button>
         </div>
       {/if}
-      <label>{$t('收件人')}
-        <select bind:value={recipientId} required>
-          <option value="">{$t('选择成员')}</option>
-          {#each members as member}
-            <option value={member.id}>{member.name || member.id}</option>
-          {/each}
-        </select>
-      </label>
+      <div class="select-field"><span>{$t('收件人')}</span><Select bind:value={recipientId} ariaLabel={$t('选择成员')} options={[{ value: '', label: $t('选择成员') }, ...members.map((member) => ({ value: member.id, label: member.name || member.id }))]} /></div>
       <label>{$t('主题')}<input bind:value={subject} maxlength="200" /></label>
       <label>{$t('内容')}<textarea bind:value={content} maxlength="5000" rows="5" required></textarea></label>
       <button type="submit" class="primary" disabled={sending}>{sending ? $t('正在发送…') : $t('发送')}</button>
@@ -160,13 +155,13 @@
     {:else}
       <div class="message-list">
         {#each messages as msg (msg.id)}
-          <article class:unread={!msg.read} class="message-card" on:click={() => markRead(msg)} on:keydown={(e) => e.key === 'Enter' && markRead(msg)} tabindex="0">
+          <article class:unread={!msg.read} class="message-card">
             <div class="message-head">
               <div>
                 <span class="category-tag">{msg.category === 'user' ? $t('用户消息') : msg.category === 'system' ? $t('系统通知') : $t('项目审核')}</span>
                 <strong>{msg.subject || (msg.senderName || '—')}</strong>
               </div>
-              <time>{new Date(msg.created).toLocaleString()}</time>
+              <div class="message-head-actions">{#if !msg.read}<button type="button" class="read-button" on:click={() => markRead(msg)}>{$t('标记为已读')}</button>{/if}<time>{new Date(msg.created).toLocaleString()}</time></div>
             </div>
             {#if msg.subject}<p class="sender">{$t('来自')}：{msg.senderName || '—'}</p>{/if}
             {#if msg.projectTitle}<p class="project-ref">{$t('相关项目')}：{msg.projectTitle}</p>{/if}
@@ -196,13 +191,17 @@
   .compose-form { display: grid; gap: 12px; padding: 22px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--shadow-sm); }
   .compose-form h2 { margin: 0; font-size: 18px; }
   .compose-form label { display: grid; gap: 5px; color: var(--ink-secondary); font-size: 13px; font-weight: 500; }
-  .compose-form input, .compose-form select, .compose-form textarea { width: 100%; padding: 9px 11px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--ink-primary); font: inherit; }
-  .compose-form input:focus, .compose-form select:focus, .compose-form textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); outline: none; }
+  .compose-form input, .compose-form textarea { width: 100%; padding: 9px 11px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--ink-primary); font: inherit; }
+  .compose-form input:focus, .compose-form textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); outline: none; }
   .compose-form textarea { resize: vertical; }
   .message-list { display: grid; gap: 12px; }
-  .message-card { position: relative; padding: 16px 18px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface); cursor: pointer; box-shadow: var(--shadow-xs); transition: transform var(--t-fast) var(--ease-out), border-color var(--t-fast) var(--ease-out), box-shadow var(--t-fast) var(--ease-out); }
-  .message-card:hover { transform: translateY(-2px); border-color: var(--border-strong); box-shadow: var(--shadow-sm); }
-  .message-card.unread { border-left: 3px solid var(--accent-bright); background: var(--surface-tint); }
+  .message-card { position: relative; padding: 16px 18px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--shadow-xs); transition: border-color var(--t-fast) var(--ease-out), box-shadow var(--t-fast) var(--ease-out); }
+  .message-card:hover { border-color: var(--border-strong); box-shadow: var(--shadow-sm); }
+  .message-card.unread { border-color: var(--border-strong); background: var(--surface-tint); }
+  .message-head-actions { display: flex; align-items: center; gap: 12px; }
+  .read-button { min-height: 38px; padding: 0 10px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--accent-deep); cursor: pointer; }
+  .read-button:hover { border-color: var(--border-strong); background: var(--surface-tint); }
+  @media (max-width: 600px) { .message-head { align-items: flex-start; flex-direction: column; }.message-head-actions { width: 100%; justify-content: space-between; } }
   .message-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
   .message-head strong { display: block; margin-top: 4px; color: var(--ink-primary); }
   .category-tag { display: inline-block; padding: 2px 9px; border-radius: 999px; background: var(--surface-tint); color: var(--accent-deep); font-size: 11px; font-weight: 600; }

@@ -11,6 +11,7 @@
   import PublicPages from './PublicPages.svelte';
   import Editors from './Editors.svelte';
   import ProfileVisibility from './ProfileVisibility.svelte';
+  import Select from './Select.svelte';
 
   const pathname = location.pathname.replace(/\/+$/, '') || '/';
   if (pathname === '/gpu') location.replace('/hardware');
@@ -337,7 +338,7 @@
         {:else if !checking}
           <a class="text-button" href="/sign-in">{$t('登录')}</a>
         {/if}
-        <label><span class="sr-only">{$t('语言')}</span><select bind:value={$locale} aria-label={$t('语言')}>{#each Object.entries(languages) as [code, name]}<option value={code} lang={code}>{name}</option>{/each}</select></label>
+        <div class="language-select"><Select bind:value={$locale} ariaLabel={$t('语言')} options={Object.entries(languages).map(([value, label]) => ({ value, label }))} /></div>
       </div>
     </nav>
   </header>
@@ -381,7 +382,7 @@
     {/if}
   {:else if pathname === '/settings' || pathname === '/manage/showcase'}
     {#if token && (pathname === '/settings' ? ['member', 'admin', 'octopus'].includes(role) : isAdmin)}
-      {#if pathname === '/settings'}<ProfileVisibility {token} />{:else}<Editors {token} {role} manage={true} />{/if}
+      {#if pathname === '/settings'}<ProfileVisibility {token} />{:else}<Editors {token} manage={true} />{/if}
     {:else}
       <main class="dashboard"><h1>{$t('无权访问')}</h1><p>{$t('请使用有权限的账户登录。')}</p><a href="/sign-in">{$t('登录')}</a></main>
     {/if}

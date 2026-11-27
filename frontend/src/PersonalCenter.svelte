@@ -1,8 +1,9 @@
 <script>
-  import { createEventDispatcher, onDestroy, onMount } from 'svelte';
+  import { createEventDispatcher, onDestroy, onMount, tick } from 'svelte';
   import { t } from './i18n.js';
   import AvatarCrop from './AvatarCrop.svelte';
   import Editors from './Editors.svelte';
+  import Select from './Select.svelte';
   import { difficultyRank, levelRank } from './tiers.js';
 
   export let token;
@@ -44,6 +45,9 @@
   let hwError = '';
   let hwNotice = '';
   let hwRows = [];
+  let hwEditRow = null;
+  let hwEditIndex = -1;
+  let hwDialog;
   const hwCategories = ['CPU', 'GPU', '主板', '内存', '存储', '显示器', '键盘', '鼠标', '耳机', '其他'];
 
   const genderLabels = { male: '男', female: '女', nonbinary: '非二元', private: '不愿透露' };
@@ -58,13 +62,10 @@
     { value: 'phone', label: '电话' },
     { value: 'other', label: '其他' },
   ];
-  const activityOptions = ['线上', '同城', '省内', '全国', '海外'];
   $: featuredIdentities = (data?.identities || []).filter((identity) => identity.featured);
   $: completedProjects = [...(data?.projects?.completed || []), ...(data?.projects?.assisted || [])];
-  // shortcut: 演示数据用于查看难度标签配色，完成项目都设置 difficulty 后自动失效，之后可删
-  const demoDifficultyTags = [{ level: 'S', count: 4 }, { level: 'A', count: 3 }, { level: 'B', count: 2 }, { level: 'C', count: 1 }, { level: 'D', count: 1 }];
   $: difficultyTags = ['S', 'A', 'B', 'C', 'D'].map((level) => ({ level, count: completedProjects.filter((project) => (project.difficulty || '').toUpperCase() === level).length })).filter((tag) => tag.count > 0);
-  $: completedDifficulties = difficultyTags.length ? difficultyTags : (completedProjects.length ? demoDifficultyTags : []);
+  $: completedDifficulties = difficultyTags;
   let showAllRatings = false;
   function sliceRatingRuns(runs, budget) {
     const out = [];
@@ -80,15 +81,8 @@
   $: ratingLetters = ratingRuns.reduce((sum, run) => sum + run.text.length, 0);
   $: collapsedRatings = !showAllRatings && ratingLetters > 8;
   $: shownRatingRuns = collapsedRatings ? sliceRatingRuns(ratingRuns, 8) : ratingRuns;
-  // shortcut: 演示认可数用于查看五档徽章效果，会覆盖前五个技能的真实计数，看完删除
-  const demoLikeCounts = [10, 50, 100, 1000, 5000];
-  $: realSkills = data?.skills || [];
-  $: displaySkills = realSkills.map((skill, index) => (index < demoLikeCounts.length ? { ...skill, likeCount: demoLikeCounts[index], likeTier: index + 1 } : skill));
   $: totalLevel = (data?.badges || []).reduce((sum, badge) => sum + (badge.level || 0), 0);
   let skillsExpanded = false;
-  // shortcut: 演示等级徽章的分档特效，会覆盖前六个徽章的等级，看完删除
-  const demoBadgeLevels = [100, 90, 80, 70, 60, 50];
-  $: displayBadges = (data?.badges || []).map((badge, index) => (index < demoBadgeLevels.length ? { ...badge, level: demoBadgeLevels[index] } : badge));
 
   const rewardLabels = { money: '资金', product: '实物', title: '头衔', credit: '署名', learning: '学习', none: '无', other: '其他' };
   const statusLabels = { not_started: '未开始', ongoing: '已启动', long_term: '长期项目', paused: '暂停中', terminated: '已终止', completed: '已完成' };
@@ -370,15 +364,29 @@
 
   function startHwEdit() {
     hwRows = hardwareConfig.map((item) => ({ ...item }));
-    if (!hwRows.length) hwRows = [{ category: 'CPU', name: '', detail: '' }];
     hwError = '';
     hwNotice = '';
     hwEditing = true;
   }
 
-  function addHwRow() {
-    if (hwRows.length >= 50) return;
-    hwRows = [...hwRows, { category: '其他', name: '', detail: '' }];
+  async function editHwRow(index = hwRows.length) {
+    if (index >= 50) return;
+    hwEditIndex = index;
+    hwEditRow = { ...(hwRows[index] || { category: '其他', name: '', detail: '' }) };
+    hwError = '';
+    await tick();
+    hwDialog?.showModal();
+  }
+
+  function saveHwRow() {
+    if (hwEditRow.category === '其他' && !hwEditRow.name.trim()) {
+      hwError = '请填写硬件名称。';
+      return;
+    }
+    const row = { ...hwEditRow, name: hwEditRow.category === '其他' ? hwEditRow.name.trim() : hwEditRow.category };
+    hwRows = hwEditIndex === hwRows.length ? [...hwRows, row] : hwRows.map((item, index) => index === hwEditIndex ? row : item);
+    hwEditRow = null;
+    hwDialog?.close();
   }
 
   function removeHwRow(index) {
@@ -389,7 +397,7 @@
     hwSaving = true;
     hwError = '';
     try {
-      const items = hwRows.filter((r) => r.name.trim());
+      const items = hwRows.map((r) => ({ ...r, name: r.category === '其他' ? r.name.trim() : r.category })).filter((r) => r.name);
       const response = await fetch('/api/hpahub/me/hardware-config', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
@@ -494,7 +502,7 @@
         <label class="edit-field">{$t('昵称')}<input bind:value={formName} maxlength="80" required /></label>
         <label class="edit-field">{$t('简介')}<textarea bind:value={formBio} maxlength="600" rows="4"></textarea></label>
         <div class="edit-grid">
-          <label class="edit-field">{$t('性别')}<select bind:value={formGender}><option value="">{$t('未填写')}</option>{#each genderOptions as [value, label]}<option {value}>{$t(label)}</option>{/each}</select></label>
+          <div class="edit-field"><span>{$t('性别')}</span><Select bind:value={formGender} ariaLabel={$t('性别')} options={[{ value: '', label: $t('未填写') }, ...genderOptions.map(([value, label]) => ({ value, label: $t(label) }))]} /></div>
           <label class="edit-field">{$t('年龄')}<input type="number" min="1" max="120" bind:value={formAge} placeholder={$t('可不填')} /></label>
         </div>
         <label class="edit-field">{$t('性格')}<input bind:value={formPersonality} maxlength="200" placeholder={$t('点击下方标签快速选择，或自由输入')} /></label>
@@ -503,12 +511,12 @@
             <button type="button" class:active={isPersonalitySelected(preset)} class="preset-chip" on:click={() => togglePersonality(preset)}>{preset}</button>
           {/each}
         </div>
-        <label class="edit-field">{$t('当前状态')}<select bind:value={formCurrentStatus}><option value="">{$t('未设置')}</option><option value="busy">{$t('忙碌')}</option><option value="free">{$t('空闲')}</option></select></label>
+        <div class="edit-field"><span>{$t('当前状态')}</span><Select bind:value={formCurrentStatus} ariaLabel={$t('当前状态')} options={[{ value: '', label: $t('未设置') }, { value: 'busy', label: $t('忙碌') }, { value: 'free', label: $t('空闲') }]} /></div>
         <fieldset class="edit-block">
           <legend>{$t('联系方式（最多 5 项）')}</legend>
           {#each formContacts as contact, index}
             <div class="contact-row">
-              <select bind:value={contact.type}>{#each contactTypes as type}<option value={type.value}>{$t(type.label)}</option>{/each}</select>
+              <Select bind:value={contact.type} ariaLabel={`${$t('联系方式')} ${index + 1}`} options={contactTypes.map((type) => ({ value: type.value, label: $t(type.label) }))} />
               <input bind:value={contact.value} maxlength="200" placeholder={$t('填写具体账号或号码')} />
               <button type="button" class="small" on:click={() => removeContact(index)}>{$t('删除')}</button>
             </div>
@@ -526,10 +534,9 @@
           {/if}
           {#if formActivityAreas.length < 2}
             <div class="tag-input">
-              <input bind:value={activityDraft} list="activity-options" maxlength="40" placeholder={$t('线上 / 上海 / 江浙沪')} />
+              <input bind:value={activityDraft} maxlength="40" placeholder={$t('线上 / 上海 / 江浙沪')} />
               <button type="button" class="small" on:click={addActivityArea}>{$t('添加')}</button>
             </div>
-            <datalist id="activity-options">{#each activityOptions as option}<option value={option}></option>{/each}</datalist>
           {/if}
         </fieldset>
         <fieldset class="edit-block">
@@ -640,7 +647,7 @@
         </div>
         {#if data.badges.length}
           <ul class="badge-list">
-            {#each displayBadges as badge (badge.careerId)}
+            {#each data.badges as badge (badge.careerId)}
               <li class="badge-card">
                 <div class="badge-icon" aria-hidden="true">✦</div>
                 <div class="badge-body">
@@ -673,7 +680,7 @@
         </div>
         {#if data.skills.length}
           <ul class="skill-list">
-            {#each displaySkills as skill (skill.id)}
+            {#each data.skills as skill (skill.id)}
               <li class="skill-card">
                 <div class="skill-head"><strong>{skill.name}</strong>{#if skill.category}<span class="chip small">{$t(skill.category)}</span>{/if}{#if skill.featured}<span class="chip small">{$t('公开展示')}</span>{/if}</div>
                 {#if skill.proficiency}<span class="meta">{$t('熟练程度')}：{$t(skill.proficiency)}</span>{/if}
@@ -714,16 +721,14 @@
         {#if hwEditing}
           <div class="hw-edit">
             {#if hwError}<p class="message error" role="alert">{hwError}</p>{/if}
-            {#each hwRows as row, index}
-              <div class="hw-row">
-                <select bind:value={row.category}>{#each hwCategories as cat}<option value={cat}>{cat}</option>{/each}</select>
-                <input bind:value={row.name} maxlength="200" placeholder={$t('硬件名称')} />
-                <input bind:value={row.detail} maxlength="500" placeholder={$t('型号或补充说明')} />
-                <button type="button" class="small danger" on:click={() => removeHwRow(index)}>{$t('删除')}</button>
+          {#each hwRows as row, index}
+              <div class="hw-item">
+                <span class="hw-category">{row.category}</span><strong>{row.name}</strong>{#if row.detail}<span class="hw-detail">{row.detail}</span>{/if}
+                <div class="hw-row-actions"><button type="button" class="small" on:click={() => editHwRow(index)}>{$t('编辑')}</button><button type="button" class="small danger" on:click={() => removeHwRow(index)}>{$t('删除')}</button></div>
               </div>
             {/each}
             <div class="hw-actions">
-              <button type="button" class="secondary" on:click={addHwRow}>{$t('添加硬件')}</button>
+              <button type="button" class="secondary" on:click={() => editHwRow()} disabled={hwRows.length >= 50}>{$t('添加硬件')}</button>
               <button type="button" class="primary" on:click={saveHwConfig} disabled={hwSaving}>{hwSaving ? $t('正在保存…') : $t('保存硬件配置')}</button>
               <button type="button" on:click={() => { hwEditing = false; }}>{$t('取消')}</button>
             </div>
@@ -743,11 +748,24 @@
         {/if}
       </section>
 
+      {#if hwEditRow}
+        <dialog class="hw-dialog" bind:this={hwDialog} on:cancel|preventDefault={() => { hwEditRow = null; hwDialog?.close(); }}>
+          <form class="hw-dialog-form" on:submit|preventDefault={saveHwRow}>
+            <div class="dialog-heading"><h2>{hwEditIndex === hwRows.length ? $t('添加硬件') : $t('编辑硬件')}</h2><button type="button" class="dialog-close" aria-label={$t('关闭')} on:click={() => { hwEditRow = null; hwDialog?.close(); }}>×</button></div>
+            <div class="hw-dialog-field"><span>{$t('硬件类别')}</span><Select bind:value={hwEditRow.category} ariaLabel={$t('硬件类别')} options={hwCategories.map((category) => ({ value: category, label: category }))} /></div>
+            {#if hwEditRow.category === '其他'}<label>{$t('硬件名称')}<input bind:value={hwEditRow.name} maxlength="200" required /></label>{/if}
+            <label>{$t('型号或补充说明')}<input bind:value={hwEditRow.detail} maxlength="500" /></label>
+            {#if hwError}<p class="message error" role="alert">{$t(hwError)}</p>{/if}
+            <div class="hw-actions"><button type="submit" class="primary">{$t('保存')}</button><button type="button" class="secondary" on:click={() => { hwEditRow = null; hwDialog?.close(); }}>{$t('取消')}</button></div>
+          </form>
+        </dialog>
+      {/if}
+
       <section class="center-section wide" aria-labelledby="center-invitations">
           <div class="section-head">
             <div><h2 id="center-invitations">{$t('我的邀请码')}</h2><p>{$t('邀请码有效 24 小时，最多持有 10 个未使用的邀请码。')}</p></div>
             <div class="invite-controls">
-              <label>{$t('使用次数')}<select bind:value={inviteMaxUses} aria-label={$t('使用次数')}><option value={1}>1</option><option value={5}>5</option><option value={10}>10</option></select></label>
+              <div class="invite-count-select"><span>{$t('使用次数')}</span><Select bind:value={inviteMaxUses} ariaLabel={$t('使用次数')} options={[1, 5, 10].map((value) => ({ value, label: String(value) }))} /></div>
               <button type="button" class="link-button" on:click={generateInvitation} disabled={generatingInvitation}>{generatingInvitation ? $t('正在生成…') : $t('生成邀请码')}</button>
             </div>
           </div>
@@ -828,8 +846,6 @@
   .mini-status.done { color: var(--accent); }
   .mini-empty { color: var(--ink-subtle); font-size: 12px; margin: 0; }
   .hw-edit { display: grid; gap: 10px; }
-  .hw-row { display: grid; grid-template-columns: 100px 1fr 1fr auto; gap: 8px; align-items: center; }
-  .hw-row select, .hw-row input { padding: 8px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-elevated); font: inherit; font-size: 13px; }
   .hw-actions { display: flex; flex-wrap: wrap; gap: 10px; }
   .hw-display { display: grid; gap: 8px; }
   .hw-item { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; padding: 10px 12px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-elevated); }
@@ -851,16 +867,15 @@
   .edit-avatar { display: flex; flex-wrap: wrap; align-items: center; gap: 18px; }
   .avatar-controls { display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
   .file-label { display: inline-flex; align-items: center; gap: 8px; color: var(--accent-deep); font-size: 13px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
-  .file-label input { max-width: 220px; }
   .edit-field { display: grid; gap: 6px; max-width: 620px; color: var(--ink-secondary); font-size: 13px; font-weight: 500; }
-  .edit-field input, .edit-field textarea, .edit-field select { width: 100%; padding: 10px 12px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--ink-primary); font: inherit; transition: border-color var(--t-fast) var(--ease-out), box-shadow var(--t-fast) var(--ease-out); }
-  .edit-field input:focus, .edit-field textarea:focus, .edit-field select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); outline: none; }
+  .edit-field input, .edit-field textarea { width: 100%; padding: 10px 12px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--ink-primary); font: inherit; transition: border-color var(--t-fast) var(--ease-out), box-shadow var(--t-fast) var(--ease-out); }
+  .edit-field input:focus, .edit-field textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); outline: none; }
   .edit-field textarea { resize: vertical; }
   .edit-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; max-width: 620px; }
   .edit-block { display: grid; gap: 10px; margin: 0; padding: 14px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-elevated); }
   .edit-block legend { padding: 0 6px; color: var(--ink-secondary); font-size: 13px; font-weight: 600; }
   .contact-row { display: grid; grid-template-columns: 120px minmax(0, 1fr) auto; gap: 8px; align-items: center; }
-  .contact-row select, .contact-row input { width: 100%; padding: 8px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--ink-primary); font: inherit; }
+  .contact-row input { width: 100%; padding: 8px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--ink-primary); font: inherit; }
   .tag-list { display: flex; flex-wrap: wrap; gap: 8px; }
   .chip button { margin-left: 6px; padding: 0; border: 0; background: none; color: inherit; cursor: pointer; font-size: 14px; line-height: 1; }
   .tag-input { display: flex; gap: 8px; }
@@ -901,8 +916,6 @@
   .center-section .section-head { margin-bottom: 16px; }
   .center-section h2 { margin: 0; font-size: 18px; }
   .center-list, .badge-list, .skill-list { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
-  .center-list > li { display: flex; justify-content: space-between; gap: 16px; padding-top: 12px; border-top: 1px solid var(--border-subtle); }
-  .center-list > li:first-child { padding-top: 0; border-top: 0; }
   .meta { color: var(--ink-subtle); font-size: 12px; }
   .status-pill { flex: none; height: fit-content; padding: 3px 10px; border: 1px solid var(--border-default); border-radius: 999px; background: var(--surface-soft); color: var(--ink-secondary); font-size: 12px; white-space: nowrap; }
   .status-pill.done { background: var(--surface-tint); border-color: var(--border-strong); color: var(--accent-deep); }
@@ -931,8 +944,6 @@
   .like-count svg { flex: none; }
   .invitation-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
   .invite-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
-  .invite-controls label { display: flex; align-items: center; gap: 6px; color: var(--ink-secondary); font-size: 12px; }
-  .invite-controls select { padding: 6px 8px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--ink-primary); }
   .invitation-code { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-family: var(--font-mono); }
   .copy-button { padding: 3px 9px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--accent-deep); font-size: 12px; }
   .copy-button:hover { background: var(--surface-tint); }

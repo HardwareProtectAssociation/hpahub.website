@@ -3,6 +3,8 @@
   import { locale, t } from './i18n.js';
   import { difficultyRank, levelRank } from './tiers.js';
   import RedactedText from './RedactedText.svelte';
+  import Select from './Select.svelte';
+  import MarkdownContent from './MarkdownContent.svelte';
   export let pathname;
   export let token = '';
   let data = null;
@@ -346,7 +348,7 @@
           {#if !token}<p class="relation-hint">{$t('登录后可设置互动关系。')}</p>{/if}
         </div>
       {/if}
-      {#if data.cards?.length}<div class="public-grid">{#each data.cards as card}<article class="public-card"><h2><RedactedText text={card.title} hidden={!!card.redacted} /></h2><p><RedactedText text={card.text} hidden={!!card.redacted} /></p><div class="image-grid">{#if card.redacted}{#each Array(card.imageCount || 0) as _}<span class="redacted-image" title={$t('资料隐藏')} aria-label={$t('资料隐藏')}></span>{/each}{/if}{#each card.imageUrls || [] as url}<a href={url} target="_blank" rel="noreferrer"><img src={url} alt={card.title} loading="lazy" /></a>{/each}</div></article>{/each}</div>{:else}<p>{$t('暂无公开卡片。')}</p>{/if}
+      {#if data.cards?.length}<div class="public-grid">{#each data.cards as card}<article class="public-card"><h2><RedactedText text={card.title} hidden={!!card.redacted} /></h2>{#if card.redacted}<p><RedactedText text={card.text} hidden={true} /></p>{:else}<MarkdownContent text={card.text} />{/if}<div class="image-grid">{#if card.redacted}{#each Array(card.imageCount || 0) as _}<span class="redacted-image" title={$t('资料隐藏')} aria-label={$t('资料隐藏')}></span>{/each}{/if}{#each card.imageUrls || [] as url}<a href={url} target="_blank" rel="noreferrer"><img src={url} alt={card.title} loading="lazy" /></a>{/each}</div></article>{/each}</div>{:else}<p>{$t('暂无公开卡片。')}</p>{/if}
       <nav class="profile-tabs" aria-label={$t('公开资料')}>
         <button type="button" class:active={activeTab === 'completed'} on:click={() => activeTab = 'completed'}>{$t('完成项目')}<span>{data.projectsCompleted?.length || 0}</span></button>
         <button type="button" class:active={activeTab === 'ongoing'} on:click={() => activeTab = 'ongoing'}>{$t('进行中项目')}<span>{data.projectsOngoing?.length || 0}</span></button>
@@ -579,7 +581,7 @@
       <p>{$t('浏览公开的共创项目。')}</p>
       <div class="hall-toolbar">
         <input type="search" bind:value={hallQuery} placeholder={$t('搜索项目名称、简介或负责人')} aria-label={$t('搜索项目')} />
-        <label class="hall-sort">{$t('排序')}<select bind:value={hallSort}><option value="latest">{$t('最新发布')}</option><option value="hot">{$t('热度')}</option><option value="difficulty">{$t('难度')}</option><option value="participants">{$t('参与人数')}</option></select></label>
+        <div class="hall-sort"><span>{$t('排序')}</span><Select bind:value={hallSort} ariaLabel={$t('排序')} options={[{ value: 'latest', label: $t('最新发布') }, { value: 'hot', label: $t('热度') }, { value: 'difficulty', label: $t('难度') }, { value: 'participants', label: $t('参与人数') }]} /></div>
       </div>
       <div class="hall-filters">
         <div class="filter-row" role="group" aria-label={$t('项目状态')}><button type="button" class:active={!hallStatus} on:click={() => hallStatus = ''}>{$t('全部')}</button>{#each hallStatuses as status}<button type="button" class:active={hallStatus === status} on:click={() => hallStatus = hallStatus === status ? '' : status}>{$t(statusLabels[status])}</button>{/each}</div>
@@ -626,11 +628,7 @@
     margin: 8px 0 42px;
     border: 1px solid var(--border-default);
     border-radius: var(--radius-lg);
-    background:
-      linear-gradient(to right, rgba(15, 138, 95, 0.055) 1px, transparent 1px),
-      linear-gradient(to bottom, rgba(15, 138, 95, 0.055) 1px, transparent 1px),
-      linear-gradient(135deg, rgba(255, 255, 255, 0.94) 0%, rgba(226, 245, 234, 0.86) 100%);
-    background-size: 26px 26px, 26px 26px, auto;
+    background: linear-gradient(135deg, var(--surface), var(--surface-elevated));
     box-shadow: var(--shadow-md);
   }
   .hero-orb {
@@ -688,10 +686,7 @@
     line-height: 1.12;
     letter-spacing: -0.035em;
     margin: 0 0 12px;
-    background: linear-gradient(125deg, var(--ink-primary) 20%, var(--accent-deep) 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
+    color: var(--ink-primary);
   }
   .hero-en {
     position: relative;
@@ -822,7 +817,6 @@
   .hall-toolbar { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0 12px; }
   .hall-toolbar input { flex: 1 1 260px; min-width: 0; padding: 9px 12px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--ink-primary); font: inherit; }
   .hall-sort { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-secondary); font-size: 13px; }
-  .hall-sort select { padding: 9px 12px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--ink-primary); font: inherit; }
   .hall-filters { display: grid; gap: 8px; margin-bottom: 8px; }
   .filter-row { display: flex; flex-wrap: wrap; gap: 6px; }
   .filter-row button { padding: 4px 12px; border: 1px solid var(--border-default); border-radius: 999px; background: transparent; color: var(--ink-secondary); font-size: 12px; cursor: pointer; transition: background-color var(--t-fast) var(--ease-out), border-color var(--t-fast) var(--ease-out), color var(--t-fast) var(--ease-out); }
