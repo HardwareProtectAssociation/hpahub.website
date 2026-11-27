@@ -1,7 +1,7 @@
 <script>
   import { createEventDispatcher, onDestroy, tick } from 'svelte';
   import { t } from './i18n.js';
-  import { cropRect } from './avatarCrop.js';
+  import { cropRect, zoomCropPosition } from './avatarCrop.js';
   const dispatch = createEventDispatcher();
   let image, url = '', canvas, fileInput, cropDialog, x = 50, y = 50, zoom = 1, error = '', busy = false, dragOrigin;
   let width = 0, height = 0;
@@ -46,6 +46,11 @@
     else if (event.key === 'ArrowDown') y = Math.max(0, Number(y) - (step / maxY) * 100);
     else return;
     event.preventDefault();
+  }
+  function changeZoom(event) {
+    const nextZoom = Number(event.currentTarget.value);
+    const position = zoomCropPosition(width, height, zoom, x, y, nextZoom);
+    x = position.x; y = position.y; zoom = nextZoom;
   }
   function openPicker() { if (!busy) fileInput?.click(); }
   function choose(event) {
@@ -102,7 +107,7 @@
         <canvas bind:this={canvas} aria-hidden="true"></canvas>
         <span class="crop-mask" aria-hidden="true"></span>
       </button>
-      <label>{$t('缩放')}<input type="range" min="1" max="4" step="0.01" bind:value={zoom} /></label>
+      <label>{$t('缩放')}<input type="range" min="1" max="4" step="0.01" value={zoom} on:input={changeZoom} /></label>
       {#if error}<p role="alert">{$t(error)}</p>{/if}
       <div class="crop-actions"><button type="button" class="crop-confirm" on:click={confirmCrop} disabled={busy}>{$t('确认裁切')}</button><button type="button" class="crop-cancel" on:click={cancel} disabled={busy}>{$t('取消')}</button></div>
     </div>
