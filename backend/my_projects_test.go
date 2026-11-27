@@ -182,6 +182,39 @@ func TestCreateProjectDetails(t *testing.T) {
 	if coverImageResponse.Code != http.StatusOK {
 		t.Fatalf("public cover = %d: %s", coverImageResponse.Code, coverImageResponse.Body.String())
 	}
+	editRequest := httptest.NewRequest("PATCH", "/api/hpahub/me/projects/"+project.Id, strings.NewReader(`{"title":"更新后的项目","summary":"新简介","description":"新详情","projectNature":"learning","executionStatus":"ongoing","projectNeeds":["venue"],"providerOffers":["technical"]}`))
+	editRequest.Header.Set("Authorization", "Bearer "+token)
+	editRequest.Header.Set("Content-Type", "application/json")
+	editResponse := httptest.NewRecorder()
+	mux.ServeHTTP(editResponse, editRequest)
+	if editResponse.Code != http.StatusOK {
+		t.Fatalf("project edit = %d: %s", editResponse.Code, editResponse.Body.String())
+	}
+	edited, err := app.FindRecordById("projects", project.Id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if edited.GetString("title") != "更新后的项目" || edited.GetInt("version") != 2 || projectDescriptionText(edited) != "新详情" || len(edited.GetStringSlice("project_needs")) != 1 || edited.GetStringSlice("project_needs")[0] != "venue" {
+		t.Fatalf("project edit not saved: %v", edited)
+	}
+	versionsRequest := httptest.NewRequest("GET", "/api/hpahub/me/projects/"+project.Id+"/versions", nil)
+	versionsRequest.Header.Set("Authorization", "Bearer "+token)
+	versionsResponse := httptest.NewRecorder()
+	mux.ServeHTTP(versionsResponse, versionsRequest)
+	if versionsResponse.Code != http.StatusOK {
+		t.Fatalf("versions = %d: %s", versionsResponse.Code, versionsResponse.Body.String())
+	}
+	var versionList struct {
+		Items []struct {
+			Version int `json:"version"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(versionsResponse.Body.Bytes(), &versionList); err != nil {
+		t.Fatal(err)
+	}
+	if len(versionList.Items) != 1 || versionList.Items[0].Version != 2 {
+		t.Fatalf("unexpected versions: %+v", versionList.Items)
+	}
 	other := publicProjectTestUser(t, app, "other-create@example.com", "其他人")
 	otherToken, err := other.NewAuthToken()
 	if err != nil {

@@ -23,6 +23,25 @@ type myProject struct {
 	OwnerName      string `json:"ownerName"`
 	OwnerAvatarURL string `json:"ownerAvatarUrl"`
 	Updated        string `json:"updated"`
+	Version        int    `json:"version"`
+}
+
+var validProjectNeeds = map[string]bool{"funding": true, "technical": true, "equipment": true, "venue": true, "manpower": true, "promotion": true, "emotional": true}
+var validProjectOffers = map[string]bool{"technical": true, "funding": true, "equipment": true, "venue": true, "manpower": true, "promotion": true}
+
+func cleanProjectSelection(values []string, allowed map[string]bool) ([]string, bool) {
+	cleaned := make([]string, 0, len(values))
+	seen := map[string]bool{}
+	for _, value := range values {
+		if !allowed[value] {
+			return nil, false
+		}
+		if !seen[value] {
+			seen[value] = true
+			cleaned = append(cleaned, value)
+		}
+	}
+	return cleaned, true
 }
 
 func bindMyProjectRoutes(e *core.ServeEvent) {
@@ -113,29 +132,13 @@ func bindMyProjectRoutes(e *core.ServeEvent) {
 		if input.ProjectNature != "" && input.ProjectNature != "commercial" && input.ProjectNature != "learning" && input.ProjectNature != "showcase" && input.ProjectNature != "research" {
 			return e.BadRequestError("Invalid project purpose.", nil)
 		}
-		validNeeds := map[string]bool{"funding": true, "technical": true, "equipment": true, "venue": true, "manpower": true, "promotion": true, "emotional": true}
-		projectNeeds := make([]string, 0, len(input.ProjectNeeds))
-		seenNeeds := map[string]bool{}
-		for _, need := range input.ProjectNeeds {
-			if !validNeeds[need] {
-				return e.BadRequestError("Invalid project needs.", nil)
-			}
-			if !seenNeeds[need] {
-				seenNeeds[need] = true
-				projectNeeds = append(projectNeeds, need)
-			}
+		projectNeeds, ok := cleanProjectSelection(input.ProjectNeeds, validProjectNeeds)
+		if !ok {
+			return e.BadRequestError("Invalid project needs.", nil)
 		}
-		validOffers := map[string]bool{"technical": true, "funding": true, "equipment": true, "venue": true, "manpower": true, "promotion": true}
-		providerOffers := make([]string, 0, len(input.ProviderOffers))
-		seenOffers := map[string]bool{}
-		for _, offer := range input.ProviderOffers {
-			if !validOffers[offer] {
-				return e.BadRequestError("Invalid provider offers.", nil)
-			}
-			if !seenOffers[offer] {
-				seenOffers[offer] = true
-				providerOffers = append(providerOffers, offer)
-			}
+		providerOffers, ok := cleanProjectSelection(input.ProviderOffers, validProjectOffers)
+		if !ok {
+			return e.BadRequestError("Invalid provider offers.", nil)
 		}
 		if input.AdventureStyle == "" {
 			input.AdventureStyle = "project"
@@ -219,6 +222,143 @@ func bindMyProjectRoutes(e *core.ServeEvent) {
 		}
 		return e.JSON(200, map[string]any{"ok": true, "coverUrl": projectCoverURL(project)})
 	})
+	loadOwned := func(e *core.RequestEvent) (*core.Record, *core.Record, error) {
+		if e.Auth == nil {
+			return nil, nil, e.UnauthorizedError("Authentication required.", nil)
+		}
+		member, ok, err := personalCenterOwner(e.App, e.Auth)
+		if err != nil {
+			return nil, nil, e.InternalServerError("Unable to load project.", err)
+		}
+		if !ok {
+			return nil, nil, e.ForbiddenError("No member profile is linked to this account.", nil)
+		}
+		project, err := e.App.FindRecordById("projects", e.Request.PathValue("id"))
+		if err != nil || project.GetString("deleted_at") != "" || (project.GetString("owner_user_id") != member.Id && project.GetString("creator_user_id") != member.Id) {
+			return nil, nil, e.NotFoundError("Not found.", nil)
+		}
+		return project, member, nil
+	}
+	e.Router.GET("/api/hpahub/me/projects/{id}", func(e *core.RequestEvent) error {
+		noCache(e)
+		project, _, err := loadOwned(e)
+		if err != nil {
+			return err
+		}
+		return e.JSON(200, map[string]any{
+			"id":              project.Id,
+			"title":           project.GetString("title"),
+			"summary":         project.GetString("summary"),
+			"description":     projectDescriptionText(project),
+			"projectNature":   project.GetString("project_nature"),
+			"executionStatus": project.GetString("execution_status"),
+			"projectNeeds":    project.GetStringSlice("project_needs"),
+			"providerOffers":  project.GetStringSlice("provider_offers"),
+			"version":         project.GetInt("version"),
+		})
+	})
+	e.Router.GET("/api/hpahub/me/projects/{id}/versions", func(e *core.RequestEvent) error {
+		noCache(e)
+		project, _, err := loadOwned(e)
+		if err != nil {
+			return err
+		}
+		rows, err := e.App.FindRecordsByFilter("project_versions", "project_id = {:project}", "-version", 0, 0, dbx.Params{"project": project.Id})
+		if err != nil {
+			return e.InternalServerError("Unable to load versions.", err)
+		}
+		items := make([]map[string]any, 0, len(rows))
+		for _, row := range rows {
+			editorName := ""
+			if editor, err := e.App.FindRecordById("users", row.GetString("editor_id")); err == nil {
+				editorName = publicPersonName(editor)
+			}
+			items = append(items, map[string]any{
+				"version":    row.GetInt("version"),
+				"created":    row.GetString("created"),
+				"editorName": editorName,
+			})
+		}
+		return e.JSON(200, map[string]any{"items": items})
+	})
+	e.Router.PATCH("/api/hpahub/me/projects/{id}", func(e *core.RequestEvent) error {
+		noCache(e)
+		project, member, err := loadOwned(e)
+		if err != nil {
+			return err
+		}
+		var input struct {
+			Title           string   `json:"title"`
+			Summary         string   `json:"summary"`
+			Description     string   `json:"description"`
+			ProjectNature   string   `json:"projectNature"`
+			ExecutionStatus string   `json:"executionStatus"`
+			ProjectNeeds    []string `json:"projectNeeds"`
+			ProviderOffers  []string `json:"providerOffers"`
+		}
+		if err := e.BindBody(&input); err != nil {
+			return e.BadRequestError("Invalid project.", err)
+		}
+		input.Title = strings.TrimSpace(input.Title)
+		input.Summary = strings.TrimSpace(input.Summary)
+		input.Description = strings.TrimSpace(input.Description)
+		if input.Title == "" || utf8.RuneCountInString(input.Title) > 160 || utf8.RuneCountInString(input.Summary) > 2000 || utf8.RuneCountInString(input.Description) > 10000 {
+			return e.BadRequestError("Invalid project details.", nil)
+		}
+		if input.ProjectNature != "" && input.ProjectNature != "commercial" && input.ProjectNature != "learning" && input.ProjectNature != "showcase" && input.ProjectNature != "research" {
+			return e.BadRequestError("Invalid project purpose.", nil)
+		}
+		if input.ExecutionStatus != "not_started" && input.ExecutionStatus != "ongoing" && input.ExecutionStatus != "long_term" && input.ExecutionStatus != "paused" && input.ExecutionStatus != "completed" {
+			return e.BadRequestError("Invalid project status.", nil)
+		}
+		needs, ok := cleanProjectSelection(input.ProjectNeeds, validProjectNeeds)
+		if !ok {
+			return e.BadRequestError("Invalid project needs.", nil)
+		}
+		offers, ok := cleanProjectSelection(input.ProviderOffers, validProjectOffers)
+		if !ok {
+			return e.BadRequestError("Invalid provider offers.", nil)
+		}
+		nextVersion := project.GetInt("version") + 1
+		if nextVersion < 2 {
+			nextVersion = 2
+		}
+		err = e.App.RunInTransaction(func(tx core.App) error {
+			project.Set("title", input.Title)
+			project.Set("summary", input.Summary)
+			project.Set("description", map[string]string{"text": input.Description})
+			project.Set("project_nature", input.ProjectNature)
+			project.Set("execution_status", input.ExecutionStatus)
+			project.Set("project_needs", needs)
+			project.Set("provider_offers", offers)
+			project.Set("version", nextVersion)
+			if err := tx.Save(project); err != nil {
+				return err
+			}
+			versions, err := tx.FindCollectionByNameOrId("project_versions")
+			if err != nil {
+				return err
+			}
+			snapshot := core.NewRecord(versions)
+			snapshot.Set("project_id", project.Id)
+			snapshot.Set("version", nextVersion)
+			snapshot.Set("editor_id", member.Id)
+			snapshot.Set("snapshot", map[string]any{
+				"title":           input.Title,
+				"summary":         input.Summary,
+				"description":     input.Description,
+				"projectNature":   input.ProjectNature,
+				"executionStatus": input.ExecutionStatus,
+				"projectNeeds":    needs,
+				"providerOffers":  offers,
+			})
+			return tx.Save(snapshot)
+		})
+		if err != nil {
+			return e.BadRequestError("Unable to save project.", err)
+		}
+		return e.JSON(200, map[string]any{"ok": true, "version": nextVersion})
+	})
 	e.Router.GET("/api/hpahub/me/projects", func(e *core.RequestEvent) error {
 		noCache(e)
 		if e.Auth == nil {
@@ -260,6 +400,7 @@ func bindMyProjectRoutes(e *core.ServeEvent) {
 				OwnerName:      ownerName,
 				OwnerAvatarURL: ownerAvatarURL,
 				Updated:        project.GetString("updated"),
+				Version:        project.GetInt("version"),
 			}
 		}
 		owned, err := e.App.FindRecordsByFilter("projects", `owner_user_id = {:user} && deleted_at = ""`, "-updated", 0, 0, dbx.Params{"user": member.Id})
