@@ -45,6 +45,8 @@ func bindMyProjectRoutes(e *core.ServeEvent) {
 			JoinMode              string `json:"joinMode"`
 			AcceptsSponsorship    bool   `json:"acceptsSponsorship"`
 			EstimatedDurationDays int    `json:"estimatedDurationDays"`
+			LongTerm              bool   `json:"longTerm"`
+			Completed             bool   `json:"completed"`
 			PlannedStartDate      string `json:"plannedStartDate"`
 			ScheduleNote          string `json:"scheduleNote"`
 			ProposedDifficulty    string `json:"proposedDifficulty"`
@@ -59,6 +61,9 @@ func bindMyProjectRoutes(e *core.ServeEvent) {
 		input.ScheduleNote = strings.TrimSpace(input.ScheduleNote)
 		if utf8.RuneCountInString(input.Description) > 10000 || utf8.RuneCountInString(input.ScheduleNote) > 2000 || input.EstimatedDurationDays < 0 || input.EstimatedDurationDays > 36500 {
 			return e.BadRequestError("Invalid project details.", nil)
+		}
+		if input.LongTerm && input.EstimatedDurationDays != 0 {
+			return e.BadRequestError("Long-term projects cannot have an estimated duration.", nil)
 		}
 		if input.PlannedStartDate != "" {
 			if _, err := time.Parse("2006-01-02", input.PlannedStartDate); err != nil {
@@ -97,6 +102,10 @@ func bindMyProjectRoutes(e *core.ServeEvent) {
 		project.Set("summary", input.Summary)
 		project.Set("review_status", "approved")
 		project.Set("execution_status", "ongoing")
+		if input.Completed {
+			project.Set("execution_status", "completed")
+		}
+		project.Set("is_long_term", input.LongTerm)
 		project.Set("collaboration_mode", input.CollaborationMode)
 		project.Set("join_mode", input.JoinMode)
 		project.Set("accepts_sponsorship", input.AcceptsSponsorship)

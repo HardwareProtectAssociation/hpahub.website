@@ -432,6 +432,8 @@ export default {
   '加入方式': ['加入方式', '参加方法', 'Joining'],
   '自由加入': ['自由加入', '自由参加', 'Open'],
   '计划开始日期': ['計劃開始日期', '開始予定日', 'Planned start date'],
+  '已完成项目': ['已完成專案', '完了したプロジェクト', 'Completed project'],
+  '长期项目': ['長期專案', '長期プロジェクト', 'Long-term project'],
   '预计周期（天）': ['預計週期（天）', '予定期間（日）', 'Estimated duration (days)'],
   '时间安排': ['時間安排', 'スケジュール', 'Schedule'],
   '接受赞助': ['接受贊助', 'スポンサーを受け付ける', 'Accept sponsorship'],

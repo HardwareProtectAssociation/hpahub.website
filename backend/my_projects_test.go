@@ -145,7 +145,34 @@ func TestCreateProjectDetails(t *testing.T) {
 	if blocked.Code != http.StatusBadRequest {
 		t.Fatalf("independent project application = %d: %s", blocked.Code, blocked.Body.String())
 	}
-	for _, body := range []string{`{"title":"x","estimatedDurationDays":36501}`, `{"title":"x","plannedStartDate":"2027-02-30"}`, `{"title":"x","joinMode":"unknown"}`} {
+	response = call(`{"title":"长期完成项目","completed":true,"longTerm":true}`)
+	if response.Code != http.StatusOK {
+		t.Fatalf("completed long-term project = %d: %s", response.Code, response.Body.String())
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	longProject, err := app.FindRecordById("projects", result.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if longProject.GetString("execution_status") != "completed" || !longProject.GetBool("is_long_term") || longProject.GetInt("estimated_duration_days") != 0 {
+		t.Fatalf("completed long-term values not saved: %v", longProject)
+	}
+	detailRequest := httptest.NewRequest("GET", "/api/hpahub/projects/"+result.ID, nil)
+	detailResponse := httptest.NewRecorder()
+	mux.ServeHTTP(detailResponse, detailRequest)
+	var detail struct {
+		LongTerm bool   `json:"longTerm"`
+		Status   string `json:"status"`
+	}
+	if err := json.Unmarshal(detailResponse.Body.Bytes(), &detail); err != nil {
+		t.Fatal(err)
+	}
+	if detailResponse.Code != http.StatusOK || !detail.LongTerm || detail.Status != "completed" {
+		t.Fatalf("unexpected detail: %d %s", detailResponse.Code, detailResponse.Body.String())
+	}
+	for _, body := range []string{`{"title":"x","longTerm":true,"estimatedDurationDays":30}`, `{"title":"x","estimatedDurationDays":36501}`, `{"title":"x","plannedStartDate":"2027-02-30"}`, `{"title":"x","joinMode":"unknown"}`} {
 		if response := call(body); response.Code != http.StatusBadRequest {
 			t.Fatalf("invalid input = %d: %s", response.Code, response.Body.String())
 		}

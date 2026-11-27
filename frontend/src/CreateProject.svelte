@@ -4,6 +4,7 @@
   let title = '', summary = '', description = '', difficulty = '', style = 'project';
   let collaboration = 'collaborative', joinMode = 'open', sponsorship = false;
   let startDate = '', duration = '', scheduleNote = '', error = '', creating = false;
+  let completed = false, longTerm = false;
 
   async function createProject() {
     if (!title.trim() || creating) return;
@@ -13,7 +14,7 @@
       const response = await fetch('/api/hpahub/me/projects', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: title.trim(), summary: summary.trim(), description: description.trim(), proposedDifficulty: difficulty, adventureStyle: style, collaborationMode: collaboration, joinMode, acceptsSponsorship: sponsorship, plannedStartDate: startDate, estimatedDurationDays: duration ? Number(duration) : 0, scheduleNote: scheduleNote.trim() }),
+        body: JSON.stringify({ title: title.trim(), summary: summary.trim(), description: description.trim(), proposedDifficulty: difficulty, adventureStyle: style, collaborationMode: collaboration, joinMode, acceptsSponsorship: sponsorship, plannedStartDate: startDate, estimatedDurationDays: !longTerm && duration ? Number(duration) : 0, longTerm, completed, scheduleNote: scheduleNote.trim() }),
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.message || '创建失败，请重试。');
@@ -31,14 +32,16 @@
     <label>{$t('项目名称')}<input bind:value={title} maxlength="160" required /></label>
     <label>{$t('项目简介')}<textarea bind:value={summary} maxlength="2000" rows="3"></textarea></label>
     <label>{$t('项目详情')}<textarea bind:value={description} maxlength="10000" rows="7"></textarea></label>
+    <label class="checkbox"><input type="checkbox" bind:checked={completed} />{$t('已完成项目')}</label>
     <div class="fields">
       <label>{$t('发起人自评难度')}<select bind:value={difficulty}><option value="">{$t('暂不设置')}</option>{#each ['D', 'C', 'B', 'A', 'S'] as level}<option value={level}>{level}</option>{/each}</select></label>
       <label>{$t('冒险风格')}<select bind:value={style}><option value="project">{$t('项目')}</option><option value="dungeon">{$t('地牢')}</option><option value="boss">Boss</option></select></label>
       <label>{$t('协作方式')}<select bind:value={collaboration}><option value="collaborative">{$t('协作项目')}</option><option value="independent">{$t('独立项目')}</option></select></label>
       {#if collaboration === 'collaborative'}<label>{$t('加入方式')}<select bind:value={joinMode}><option value="open">{$t('自由加入')}</option><option value="approval">{$t('申请加入')}</option></select></label>{/if}
       <label>{$t('计划开始日期')}<input type="date" bind:value={startDate} /></label>
-      <label>{$t('预计周期（天）')}<input type="number" min="1" max="36500" step="1" bind:value={duration} /></label>
+      {#if !longTerm}<label>{$t('预计周期（天）')}<input type="number" min="1" max="36500" step="1" bind:value={duration} /></label>{/if}
     </div>
+    <label class="checkbox"><input type="checkbox" bind:checked={longTerm} />{$t('长期项目')}</label>
     <label>{$t('时间安排')}<textarea bind:value={scheduleNote} maxlength="2000" rows="3"></textarea></label>
     <label class="checkbox"><input type="checkbox" bind:checked={sponsorship} />{$t('接受赞助')}</label>
     {#if error}<p class="message error" role="alert">{$t(error)}</p>{/if}
