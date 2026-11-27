@@ -6,5 +6,5 @@
 </script>
 {#if hidden}<span class="redaction" title={$t('资料隐藏')} aria-label={$t('资料隐藏')}>{mask}</span>{:else}{text}{/if}
 <style>
-  .redaction { color:#000; background:#000; display:inline; white-space:pre-wrap; overflow-wrap:anywhere; }
+  .redaction { color: var(--ink-primary); background: var(--ink-primary); display:inline; white-space:pre-wrap; overflow-wrap:anywhere; }
 </style>
