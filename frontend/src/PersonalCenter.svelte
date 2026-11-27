@@ -447,13 +447,13 @@
           <p class="center-email">{data.profile.email}</p>
         {/if}
         {#if data.profile.bio}<p class="center-bio">{data.profile.bio}</p>{/if}
-        {#if data.profile.gender || data.profile.age || data.profile.activityAreas?.length}
-          <p class="profile-meta">
-            {#if data.profile.currentStatus}<span class:busy={data.profile.currentStatus === 'busy'} class="current-status">{$t('当前状态')}：{$t(currentStatusLabels[data.profile.currentStatus] || data.profile.currentStatus)}</span>{/if}
-            {#if data.profile.gender}<span>{$t('性别')}：{$t(genderLabels[data.profile.gender] || data.profile.gender)}</span>{/if}
-            {#if data.profile.age}<span>{$t('年龄')}：{data.profile.age}</span>{/if}
-            {#if data.profile.activityAreas?.length}<span>{$t('活动范围')}：{data.profile.activityAreas.join('、')}</span>{/if}
-          </p>
+        {#if data.profile.currentStatus || data.profile.gender || data.profile.age || data.profile.activityAreas?.length}
+          <div class="profile-meta" aria-label={$t('个人资料')}>
+            {#if data.profile.currentStatus}<span class={`profile-badge status-badge status-${data.profile.currentStatus}`}>{$t('当前状态')} · {$t(currentStatusLabels[data.profile.currentStatus] || data.profile.currentStatus)}</span>{/if}
+            {#if data.profile.gender}<span class={`profile-badge gender-badge gender-${data.profile.gender}`}>{$t('性别')} · {$t(genderLabels[data.profile.gender] || data.profile.gender)}</span>{/if}
+            {#if data.profile.age}<span class="profile-badge profile-fact">{$t('年龄')} · {data.profile.age}</span>{/if}
+            {#if data.profile.activityAreas?.length}<span class="profile-badge profile-fact">{$t('活动范围')} · {data.profile.activityAreas.join('、')}</span>{/if}
+          </div>
         {/if}
         {#if data.profile.personality}<p class="center-personality">{$t('性格')}：{data.profile.personality}</p>{/if}
         {#if data.profile.contacts?.length}
@@ -820,12 +820,10 @@
   .center-profile h1 { margin: 0 0 6px; font-size: clamp(28px, 3vw, 40px); line-height: 1.2; letter-spacing: -0.035em; font-weight: 700; }
   .center-email { margin: 0 0 12px; color: var(--ink-subtle); font-size: 14px; font-family: var(--font-mono); }
   .center-bio { margin: 0 0 14px; max-width: 70ch; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink-secondary); }
-  .profile-meta { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0 0 8px; color: var(--ink-muted); font-size: 13px; }
+  .profile-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin: 0 0 10px; font-size: 12px; }
   .center-personality { margin: 0 0 8px; color: var(--ink-muted); font-size: 13px; max-width: 70ch; }
   .center-contacts { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0 0 10px; color: var(--ink-muted); font-size: 13px; }
   .center-contacts strong { color: var(--accent-deep); }
-  .current-status { padding: 2px 10px; border-radius: 999px; background: var(--surface-tint); color: var(--accent-deep); border: 1px solid var(--border-subtle); font-weight: 500; }
-  .current-status.busy { background: var(--warn-bg); border-color: #ecd1a2; color: var(--warn-ink); }
   .personality-presets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: -6px; }
   .project-categories { display: grid; gap: 10px; }
   .project-tabs { display: flex; flex-wrap: wrap; gap: 6px; padding-bottom: 10px; border-bottom: 1px solid var(--border-subtle); }
@@ -911,7 +909,7 @@
     .tag-level { animation: none; }
   }
   .show-all { border: 0; background: none; padding: 0; color: var(--ink-subtle); font-size: 11px; text-decoration: underline; cursor: pointer; white-space: nowrap; }
-  .center-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+  .center-grid { grid-template-columns: minmax(0, 1fr); align-items: start; }
   .center-section { min-width: 0; padding: 24px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--shadow-sm); }
   .center-section .section-head { margin-bottom: 16px; }
   .center-section h2 { margin: 0; font-size: 18px; }
@@ -956,7 +954,7 @@
   .invitation-card small { color: var(--ink-muted); }
   .recognized { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border: 1px solid transparent; border-radius: 999px; font-size: 11px; font-weight: 600; letter-spacing: 0.02em; }
   .recognized::before { content: '✦'; }
-  @media (max-width: 600px) { .center-grid { grid-template-columns: 1fr; } .edit-grid, .contact-row { grid-template-columns: 1fr; } }
+  @media (max-width: 600px) { .edit-grid, .contact-row { grid-template-columns: 1fr; } }
   .reward-note { margin: 12px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
   .center-empty { color: var(--ink-subtle); font-size: 13px; }
   .center-empty p { margin: 0 0 6px; }

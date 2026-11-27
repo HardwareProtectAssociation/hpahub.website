@@ -79,10 +79,11 @@ func visibleProfileSections(r *core.Record) []string {
 }
 func profileData(r *core.Record, public bool) map[string]any {
  avatar := ""; if r.GetString("avatar") != "" && (!public || !profileSectionHidden(r,"avatar")) { if public { avatar = contentURL("members", r.Id, "avatar") } else { avatar = contentURL("me", "profile", "avatar") } }
- bio, status := r.GetString("bio"), r.GetString("current_status")
+ bio, status, gender := r.GetString("bio"), r.GetString("current_status"), r.GetString("gender")
  bioHidden := public && profileSectionHidden(r,"bio"); statusHidden := public && profileSectionHidden(r,"status")
+ if public && gender == "private" { gender = "" }
  if bioHidden { bio = maskedText(bio) }; if statusHidden { if status == "busy" { status = "忙碌" } else if status == "free" { status = "空闲" }; status = maskedText(status) }
- return map[string]any{"id":r.Id,"name":r.GetString("name"),"bio":bio,"profilePublic":r.GetBool("profilePublic"),"avatarUrl":avatar,"currentStatus":status,"bioRedacted":bioHidden,"statusRedacted":statusHidden,"avatarRedacted":public && profileSectionHidden(r,"avatar")}
+ return map[string]any{"id":r.Id,"name":r.GetString("name"),"bio":bio,"gender":gender,"profilePublic":r.GetBool("profilePublic"),"avatarUrl":avatar,"currentStatus":status,"bioRedacted":bioHidden,"statusRedacted":statusHidden,"avatarRedacted":public && profileSectionHidden(r,"avatar")}
 }
 func contentData(r *core.Record, base []string) map[string]any {
  names := r.GetStringSlice("images"); if names == nil { names = []string{} }; urls := make([]string, 0, len(names))

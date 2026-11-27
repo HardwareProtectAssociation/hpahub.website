@@ -133,6 +133,7 @@
       return new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0);
     });
   const currentStatusLabels = { busy: '忙碌', free: '空闲' };
+  const genderLabels = { male: '男', female: '女', nonbinary: '非二元' };
   const relationLabels = { admire: '关注', watch: '监视', investigate: '调查' };
   const recognizedLabels = { 1: '有点东西', 2: '他不对劲', 3: '他真会啊', 4: '他太强了！', 5: '他是超人！' };
   const relationOptions = Object.entries(relationLabels);
@@ -327,8 +328,25 @@
   {:else if error}<p class="message error" role="alert">{$t(error, errorParams)}</p>
   {:else if section === 'community'}
     {#if id}
-      <a href="/community">{$t('返回成员列表')}</a><header class="profile-heading">{#if data.avatarRedacted}<span class="avatar redacted-avatar" title={$t('资料隐藏')} aria-label={$t('资料隐藏')}></span>{:else if data.avatarUrl}<img class="avatar" src={data.avatarUrl} alt="" />{:else}<span class="avatar avatar-default" aria-hidden="true"></span>{/if}<div><h1>{data.name}</h1><p><RedactedText text={data.bio} hidden={!!data.bioRedacted} /></p>{#if data.currentStatus}<span class:busy={data.currentStatus === 'busy'} class="public-current-status">{$t('当前状态')}：<RedactedText text={$t(currentStatusLabels[data.currentStatus] || data.currentStatus)} hidden={!!data.statusRedacted} /></span>{/if}</div></header>
-      {#if data.identities?.length}<div class="member-identities">{#each data.identities as identity}{#if identity.redacted}<RedactedText text={identity.name} hidden={true} />{:else}<span class={`rank rank-pill rank-${identity.category === 'main' ? 4 : 3}`}>{$t(identity.category === 'main' ? '主力职业' : '辅助职业')} · {identity.name}</span>{/if}{/each}</div>{/if}
+      <a href="/community">{$t('返回成员列表')}</a>
+      <header class="profile-heading member-profile-heading">
+        {#if data.avatarRedacted}<span class="avatar redacted-avatar" title={$t('资料隐藏')} aria-label={$t('资料隐藏')}></span>{:else if data.avatarUrl}<img class="avatar" src={data.avatarUrl} alt="" />{:else}<span class="avatar avatar-default" aria-hidden="true"></span>{/if}
+        <div class="member-profile-copy">
+          <h1>{data.name}</h1>
+          <p><RedactedText text={data.bio} hidden={!!data.bioRedacted} /></p>
+          {#if data.currentStatus || data.gender || data.identities?.length}
+            <div class="profile-badges" aria-label={$t('个人资料')}>
+              {#if data.currentStatus}<span class={`profile-badge status-badge status-${data.statusRedacted ? 'redacted' : data.currentStatus}`}>{$t('当前状态')} · <RedactedText text={$t(currentStatusLabels[data.currentStatus] || data.currentStatus)} hidden={!!data.statusRedacted} /></span>{/if}
+              {#if data.gender}<span class={`profile-badge gender-badge gender-${data.gender}`}>{$t('性别')} · {$t(genderLabels[data.gender] || data.gender)}</span>{/if}
+              {#each data.identities as identity}
+                <span class={`profile-badge role-badge role-${identity.category === 'main' ? 'main' : 'support'}`}>
+                  {#if identity.redacted}<RedactedText text={identity.name} hidden={true} />{:else}{$t(identity.category === 'main' ? '主力职业' : '辅助职业')} · {identity.name}{/if}
+                </span>
+              {/each}
+            </div>
+          {/if}
+        </div>
+      </header>
       {#if data.relations}
         <div class="relation-panel">
           <div class="relation-counts">
@@ -856,9 +874,11 @@
   .public-skill p { margin: 6px 0; color: var(--ink-muted); font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
   .public-skill-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
   .meta { color: var(--ink-subtle); font-size: 12px; }
-  .member-identities { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 20px; }
-  .public-current-status { display: inline-block; margin-top: 8px; padding: 3px 10px; border-radius: 999px; background: var(--surface-tint); border: 1px solid var(--border-subtle); color: var(--accent-deep); font-size: 12px; font-weight: 500; }
-  .public-current-status.busy { background: var(--warn-bg); border-color: #ecd1a2; color: var(--warn-ink); }
+  .member-profile-heading { align-items: flex-start; gap: 20px; }
+  .member-profile-copy { flex: 1; min-width: 0; }
+  .member-profile-copy h1 { margin: 0 0 8px; }
+  .member-profile-copy > p { margin: 0; }
+  .member-profile-copy .profile-badges { margin-top: 12px; }
   .relation-panel { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; margin: 0 0 22px; padding: 14px 16px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--shadow-xs); }
   .relation-counts { display: flex; flex-wrap: wrap; gap: 14px; color: var(--ink-muted); font-size: 12.5px; }
   .relation-counts strong { color: var(--accent-deep); font-family: var(--font-mono); }
