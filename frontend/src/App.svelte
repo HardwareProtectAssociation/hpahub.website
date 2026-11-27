@@ -326,7 +326,7 @@
             {#if accountOpen}
               <div id="account-menu" class="account-popover">
                 <a href="/me">{$t('个人中心')}</a>
-                {#if ['member', 'admin'].includes(role)}<a href="/settings">{$t('个人设置')}</a>{/if}
+                {#if ['member', 'admin'].includes(role)}<a href="/settings">{$t('修改个人名片')}</a>{/if}
                 {#if ['member', 'admin', 'octopus'].includes(role)}<a href="/my-projects">{$t('我的项目')}</a>{/if}
                 <button type="button" on:click={logout}>{$t('退出登录')}</button>
               </div>
@@ -373,7 +373,7 @@
     {/if}
   {:else if pathname === '/settings' || pathname === '/manage/showcase'}
     {#if token && (pathname === '/settings' ? ['member', 'admin'].includes(role) : isAdmin)}
-      <Editors {token} {role} manage={pathname === '/manage/showcase'} />
+      <Editors {token} {role} manage={pathname === '/manage/showcase'} on:profileSaved={(event) => { accountName = event.detail.name || accountName; }} />
     {:else}
       <main class="dashboard"><h1>{$t('无权访问')}</h1><p>{$t('请使用有权限的账户登录。')}</p><a href="/sign-in">{$t('登录')}</a></main>
     {/if}

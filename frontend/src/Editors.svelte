@@ -1,5 +1,5 @@
 <script>
-  import { onMount, onDestroy } from 'svelte';
+  import { createEventDispatcher, onMount, onDestroy } from 'svelte';
   import { get } from 'svelte/store';
   import { t } from './i18n.js';
   import AvatarCrop from './AvatarCrop.svelte';
@@ -7,7 +7,9 @@
   export let token;
   export let role;
   export let manage = false;
-  let profile = { name: '', bio: '', profilePublic: false, avatarUrl: '' };
+  const dispatch = createEventDispatcher();
+  let profile = { name: '', bio: '', profilePublic: false, avatarUrl: '', currentStatus: '' };
+  let publicProfileId = '';
   let records = [];
   let current = null;
   let showEditor = false;
@@ -78,11 +80,14 @@
     clearPreviews();
     const [list, nextProfile, managed] = await Promise.all([
       request(base),
-      manage ? null : request('/api/hpahub/me/profile'),
+      manage ? null : request('/api/hpahub/me/center'),
       manage ? request('/api/hpahub/manage/projects') : null,
     ]);
     records = list.items;
-    if (nextProfile) profile = nextProfile;
+    if (nextProfile) {
+      profile = nextProfile.profile;
+      publicProfileId = profile.profilePublic ? profile.id : '';
+    }
     if (managed) projects = managed.items;
     await Promise.all([...(profile.avatarUrl && !manage ? [preview(profile.avatarUrl)] : []), ...records.flatMap(record => (record.imageUrls || []).map(preview))]);
   }
@@ -96,7 +101,7 @@
     published = record?.published || false;
     keepImages = [...(record?.images || [])];
     files = [];
-    imagesInput.value = '';
+    if (imagesInput) imagesInput.value = '';
     uploadPreviews.forEach(URL.revokeObjectURL); uploadPreviews = [];
     error = ''; notice = '';
   }
@@ -105,10 +110,11 @@
     busy = true; error = ''; notice = '';
     try {
       const body = new FormData();
-      body.set('name', profile.name); body.set('bio', profile.bio); body.set('profilePublic', String(profile.profilePublic));
+      body.set('name', profile.name); body.set('bio', profile.bio); body.set('profilePublic', String(profile.profilePublic)); body.set('currentStatus', profile.currentStatus || '');
       if (avatar && !removeAvatar) { body.set('avatar', avatar); body.set('avatarThumb', avatarThumb); }
       if (removeAvatar) body.set('removeAvatar', 'true');
-      await request('/api/hpahub/me/profile', { method: 'PATCH', body });
+      const result = await request('/api/hpahub/me/center/profile', { method: 'PATCH', body });
+      dispatch('profileSaved', { name: result.profile?.name });
       avatar = null; avatarThumb = null; if (avatarPreview) URL.revokeObjectURL(avatarPreview); avatarPreview = ''; removeAvatar = false; await load(); notice = '资料已保存。';
     } catch (e) { error = e.message; errorParams = e.params || {}; } finally { busy = false; }
   }
@@ -179,7 +185,7 @@
 </script>
 
 <main class="dashboard public-page editor-page">
-  <h1>{manage ? $t('项目大厅管理') : $t('个人设置')}</h1>
+  <h1>{manage ? $t('项目大厅管理') : $t('修改个人名片')}</h1>
   {#if error}<p class="message error" role="alert">{$t(error, errorParams)}</p>{/if}{#if notice}<p class="message success" role="status">{$t(notice)}</p>{/if}
   {#if manage}
     <section class="difficulty-section">
@@ -226,14 +232,17 @@
     </section>
   {/if}
   {#if !manage}
-    <section><h2>{$t('成员资料')}</h2><form class="editor-form" on:submit|preventDefault={saveProfile}>
+    <section><h2>{$t('公开资料')}</h2><form class="editor-form" on:submit|preventDefault={saveProfile}>
       {#if avatarPreview && !removeAvatar}<img class="avatar" src={avatarPreview} alt={$t('新头像预览')} />{:else if profile.avatarUrl && previews[profile.avatarUrl] && !removeAvatar}<img class="avatar" src={previews[profile.avatarUrl]} alt={$t('当前头像')} />{/if}
-      <label>{$t('昵称')} <input bind:value={profile.name} maxlength="80" required={profile.profilePublic} /></label>
+      <label>{$t('昵称')} <input bind:value={profile.name} maxlength="80" required /></label>
       <label>{$t('简介')} <textarea bind:value={profile.bio} maxlength="600" rows="4"></textarea></label>
+      <label>{$t('当前状态')} <select bind:value={profile.currentStatus}><option value="">{$t('未设置')}</option><option value="busy">{$t('忙碌')}</option><option value="free">{$t('空闲')}</option></select></label>
       <AvatarCrop on:crop={selectAvatar} on:pending={(event) => cropPending = event.detail} />
       {#if profile.avatarUrl}<label class="check-label"><input type="checkbox" bind:checked={removeAvatar} on:change={() => { if (removeAvatar) { avatar = null; avatarThumb = null; } }} /> {$t('删除头像')}</label>{/if}
       <label class="check-label"><input type="checkbox" bind:checked={profile.profilePublic} /> {$t('公开我的资料和卡片')}</label>
       <button class="primary" disabled={busy || cropPending}>{$t('保存资料')}</button>
+      {#if publicProfileId}<a href={'/community/' + encodeURIComponent(publicProfileId)}>{$t('查看公开主页')}</a>{/if}
+      <a href="/me/skills">{$t('技能管理')}</a>
     </form></section>
   {/if}
   <section><h2>{manage ? $t('项目') : $t('我的卡片')}</h2>

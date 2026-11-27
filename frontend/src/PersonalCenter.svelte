@@ -459,7 +459,7 @@
         {#if data.profile.member}
           <div class="profile-actions">
             {#if !editing}<button type="button" class="link-button" on:click={startEdit}>{$t('编辑资料')}</button>{/if}
-            <a class="text-link" href="/settings">{$t('个人设置')}</a>
+            <a class="text-link" href="/settings">{$t('修改个人名片')}</a>
             {#if data.profile.profilePublic}
               <a class="text-link" href={`/community/${data.profile.id}`}>{$t('查看公开主页')}</a>
             {/if}
@@ -789,7 +789,6 @@
         {:else}
           <div class="center-empty">
             <p>{$t('还没有填写期望回报')}</p>
-            {#if data.profile.member}<a href="/settings">{$t('去个人设置填写')}</a>{/if}
           </div>
         {/if}
       </section>
@@ -936,7 +935,6 @@
   .reward-note { margin: 12px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
   .center-empty { color: var(--ink-subtle); font-size: 13px; }
   .center-empty p { margin: 0 0 6px; }
-  .center-empty a { color: var(--accent-deep); }
   .wide { grid-column: 1 / -1; }
   @media (max-width: 900px) {
     .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
