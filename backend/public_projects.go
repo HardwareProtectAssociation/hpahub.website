@@ -25,6 +25,7 @@ type publicProject struct {
 	Title            string                `json:"title"`
 	Summary          string                `json:"summary"`
 	Status           string                `json:"status"`
+	ProjectNature    string                `json:"projectNature,omitempty"`
 	Difficulty       string                `json:"difficulty"`
 	AdventureStyle   string                `json:"adventureStyle"`
 	OwnerID          string                `json:"ownerId"`
@@ -565,6 +566,7 @@ func projectSummary(e *core.RequestEvent, project *core.Record, owners map[strin
 		Title:          project.GetString("title"),
 		Summary:        project.GetString("summary"),
 		Status:         project.GetString("execution_status"),
+		ProjectNature:  project.GetString("project_nature"),
 		Difficulty:     project.GetString("difficulty"),
 		AdventureStyle: project.GetString("adventure_style"),
 		OwnerID:        ownerID,

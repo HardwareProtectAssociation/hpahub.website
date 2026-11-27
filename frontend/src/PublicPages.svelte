@@ -80,6 +80,26 @@
   $: featuredSkills = (data?.skills || []).filter((skill) => skill.featured);
   $: shownSkills = featuredSkills.length ? featuredSkills : (data?.skills || []);
   const statusLabels = { not_started: '未开始', ongoing: '已启动', long_term: '长期项目', paused: '暂停中', terminated: '已中止', completed: '已完成' };
+  const hallStatuses = ['not_started', 'ongoing', 'long_term', 'paused', 'completed', 'terminated'];
+  const natureLabels = { commercial: '商业盈利', learning: '学习交流', showcase: '技术展示', research: '科学研究' };
+  let hallQuery = '';
+  let hallSort = 'latest';
+  let hallStatus = '';
+  let hallNature = '';
+  $: hallQueryText = hallQuery.trim().toLowerCase();
+  $: hallProjects = [...items]
+    .filter((project) => {
+      if (hallStatus && project.status !== hallStatus) return false;
+      if (hallNature && project.projectNature !== hallNature) return false;
+      if (!hallQueryText) return true;
+      return [project.title, project.summary, project.creatorName, project.ownerName].some((value) => String(value || '').toLowerCase().includes(hallQueryText));
+    })
+    .sort((a, b) => {
+      if (hallSort === 'hot') return (b.followCount || 0) - (a.followCount || 0) || (b.participantCount || 0) - (a.participantCount || 0);
+      if (hallSort === 'difficulty') return difficultyRank(b.difficulty) - difficultyRank(a.difficulty) || (b.followCount || 0) - (a.followCount || 0);
+      if (hallSort === 'participants') return (b.participantCount || 0) - (a.participantCount || 0);
+      return new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0);
+    });
   const currentStatusLabels = { busy: '忙碌', free: '空闲' };
   const relationLabels = { admire: '关注', watch: '监视', investigate: '调查' };
   const recognizedLabels = { 1: '有点东西', 2: '他不对劲', 3: '他真会啊', 4: '他太强了！', 5: '他是超人！' };
@@ -526,9 +546,18 @@
     {:else}
       <h1>{$t('项目大厅')}</h1>
       <p>{$t('浏览公开的共创项目。')}</p>
-      {#if items.length}
+      <div class="hall-toolbar">
+        <input type="search" bind:value={hallQuery} placeholder={$t('搜索项目名称、简介或负责人')} aria-label={$t('搜索项目')} />
+        <label class="hall-sort">{$t('排序')}<select bind:value={hallSort}><option value="latest">{$t('最新发布')}</option><option value="hot">{$t('热度')}</option><option value="difficulty">{$t('难度')}</option><option value="participants">{$t('参与人数')}</option></select></label>
+      </div>
+      <div class="hall-filters">
+        <div class="filter-row" role="group" aria-label={$t('项目状态')}><button type="button" class:active={!hallStatus} on:click={() => hallStatus = ''}>{$t('全部')}</button>{#each hallStatuses as status}<button type="button" class:active={hallStatus === status} on:click={() => hallStatus = hallStatus === status ? '' : status}>{$t(statusLabels[status])}</button>{/each}</div>
+        <div class="filter-row" role="group" aria-label={$t('项目性质')}><button type="button" class:active={!hallNature} on:click={() => hallNature = ''}>{$t('全部')}</button>{#each Object.entries(natureLabels) as [value, label]}<button type="button" class:active={hallNature === value} on:click={() => hallNature = hallNature === value ? '' : value}>{$t(label)}</button>{/each}</div>
+      </div>
+      <p class="hall-count">{$t('共 {count} 个项目', { count: hallProjects.length })}</p>
+      {#if hallProjects.length}
         <div class="public-grid">
-          {#each items as project}
+          {#each hallProjects as project}
             <a class="public-card project-card project-card-link" href={'/showcase/' + encodeURIComponent(project.id)}>
               {#if project.coverUrl}<img class="project-card-cover" src={project.coverUrl} alt={project.title} loading="lazy" />{/if}
               <div class="project-meta"><span class:done={project.status === 'completed'} class="project-status">{statusLabel(project.status)}</span>{#if project.difficulty}<span class={`rank rank-pill difficulty-badge rank-${difficultyRank(project.difficulty)}`}>{$t('难度')} {project.difficulty}</span>{:else}<span class="rank-pending">{$t('难度')} {$t('待定')}</span>{/if}</div>
@@ -544,7 +573,7 @@
             </a>
           {/each}
         </div>
-      {:else}<p>{$t('暂无公开项目。')}</p>{/if}
+      {:else}<p>{$t(items.length ? '没有符合筛选条件的项目。' : '暂无公开项目。')}</p>{/if}
     {/if}
   {:else}<h1>{$t('页面不存在')}</h1><a href="/">{$t('返回首页')}</a>{/if}
 </main>
@@ -752,6 +781,16 @@
   .people-avatar-slot { display: inline-flex; }
   .owner-avatar { width: 22px; height: 22px; margin-right: 6px; border-radius: 50%; object-fit: cover; vertical-align: middle; background: var(--surface-tint); border: 1px solid var(--border-subtle); }
   .project-card-link { display: block; color: inherit; text-decoration: none; }
+  .hall-toolbar { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0 12px; }
+  .hall-toolbar input { flex: 1 1 260px; min-width: 0; padding: 9px 12px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--ink-primary); font: inherit; }
+  .hall-sort { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-secondary); font-size: 13px; }
+  .hall-sort select { padding: 9px 12px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--ink-primary); font: inherit; }
+  .hall-filters { display: grid; gap: 8px; margin-bottom: 8px; }
+  .filter-row { display: flex; flex-wrap: wrap; gap: 6px; }
+  .filter-row button { padding: 4px 12px; border: 1px solid var(--border-default); border-radius: 999px; background: transparent; color: var(--ink-secondary); font-size: 12px; cursor: pointer; transition: background-color var(--t-fast) var(--ease-out), border-color var(--t-fast) var(--ease-out), color var(--t-fast) var(--ease-out); }
+  .filter-row button:hover { background: var(--surface-tint); }
+  .filter-row button.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-deep); }
+  .hall-count { color: var(--ink-subtle); font-size: 12px; margin: 0 0 16px; }
   .project-card-cover { display: block; width: 100%; height: 150px; object-fit: cover; border-radius: var(--radius-sm); margin-bottom: 12px; background: var(--surface-tint); }
   .project-detail-cover { display: block; width: 100%; max-height: 420px; object-fit: cover; border-radius: var(--radius-md); border: 1px solid var(--border-subtle); margin: 16px 0 8px; }
   .project-card-link:hover h2 { color: var(--accent-deep); }
