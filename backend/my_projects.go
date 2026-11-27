@@ -78,8 +78,11 @@ func bindMyProjectRoutes(e *core.ServeEvent) {
 				input.ExecutionStatus = "ongoing"
 			}
 		}
-		if input.ExecutionStatus != "not_started" && input.ExecutionStatus != "ongoing" && input.ExecutionStatus != "completed" {
+		if input.ExecutionStatus != "not_started" && input.ExecutionStatus != "ongoing" && input.ExecutionStatus != "long_term" && input.ExecutionStatus != "paused" && input.ExecutionStatus != "completed" {
 			return e.BadRequestError("Invalid project status.", nil)
+		}
+		if input.ExecutionStatus == "long_term" {
+			input.LongTerm = true
 		}
 		if input.LongTerm && input.EstimatedDurationDays != 0 {
 			return e.BadRequestError("Long-term projects cannot have an estimated duration.", nil)

@@ -91,9 +91,9 @@
   $: displayBadges = (data?.badges || []).map((badge, index) => (index < demoBadgeLevels.length ? { ...badge, level: demoBadgeLevels[index] } : badge));
 
   const rewardLabels = { money: '资金', product: '实物', title: '头衔', credit: '署名', learning: '学习', none: '无', other: '其他' };
-  const statusLabels = { not_started: '未开始', ongoing: '已启动', paused: '已暂停', terminated: '已终止', completed: '已完成' };
+  const statusLabels = { not_started: '未开始', ongoing: '已启动', long_term: '长期项目', paused: '暂停中', terminated: '已终止', completed: '已完成' };
   const recognizedLabels = { 1: '有点东西', 2: '他不对劲', 3: '他真会啊', 4: '他太强了！', 5: '他是超人！' };
-  const projectStatusFilters = ['not_started', 'ongoing', 'completed', 'paused', 'terminated'];
+  const projectStatusFilters = ['not_started', 'ongoing', 'long_term', 'paused', 'completed', 'terminated'];
   let projectTab = 'initiated';
   let projectStatusFilter = '';
   function projectItems(key) {

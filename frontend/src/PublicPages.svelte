@@ -79,7 +79,7 @@
   $: shownEngineers = home?.popularEngineers?.length ? home.popularEngineers : demoEngineers;
   $: featuredSkills = (data?.skills || []).filter((skill) => skill.featured);
   $: shownSkills = featuredSkills.length ? featuredSkills : (data?.skills || []);
-  const statusLabels = { not_started: '未开始', ongoing: '已启动', paused: '暂停', terminated: '已中止', completed: '已完成' };
+  const statusLabels = { not_started: '未开始', ongoing: '已启动', long_term: '长期项目', paused: '暂停中', terminated: '已中止', completed: '已完成' };
   const currentStatusLabels = { busy: '忙碌', free: '空闲' };
   const relationLabels = { admire: '关注', watch: '监视', investigate: '调查' };
   const recognizedLabels = { 1: '有点东西', 2: '他不对劲', 3: '他真会啊', 4: '他太强了！', 5: '他是超人！' };

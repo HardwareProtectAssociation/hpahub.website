@@ -56,7 +56,7 @@
   let difficultyNotice = '';
   let savingDifficulty = '';
   const difficultyLevels = ['D', 'C', 'B', 'A', 'S'];
-  const projectStatusLabels = { not_started: '未开始', ongoing: '已启动', paused: '暂停', terminated: '已中止', completed: '已完成' };
+  const projectStatusLabels = { not_started: '未开始', ongoing: '已启动', long_term: '长期项目', paused: '暂停中', terminated: '已中止', completed: '已完成' };
   let voteDifficulties = {};
   let voteStances = {};
   let voteComments = {};

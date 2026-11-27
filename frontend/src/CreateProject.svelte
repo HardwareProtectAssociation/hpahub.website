@@ -4,7 +4,7 @@
   let title = '', summary = '', description = '', difficulty = '', nature = '';
   let collaboration = 'collaborative', joinMode = 'open', sponsorship = false;
   let startDate = '', duration = '', scheduleNote = '', error = '', creating = false;
-  let executionStatus = 'not_started', longTerm = false, allowOthersManagement = false, confidentialityRequested = false, confidentialityTerms = '';
+  let executionStatus = 'not_started', allowOthersManagement = false, confidentialityRequested = false, confidentialityTerms = '';
 
   async function createProject() {
     if (!title.trim() || creating) return;
@@ -14,7 +14,7 @@
       const response = await fetch('/api/hpahub/me/projects', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: title.trim(), summary: summary.trim(), description: description.trim(), proposedDifficulty: difficulty, projectNature: nature, collaborationMode: collaboration, joinMode, acceptsSponsorship: sponsorship, allowOthersManagement, confidentialityRequested, confidentialityTerms: confidentialityRequested ? confidentialityTerms.trim() : '', plannedStartDate: startDate, estimatedDurationDays: !longTerm && duration ? Number(duration) : 0, longTerm, executionStatus, scheduleNote: scheduleNote.trim() }),
+        body: JSON.stringify({ title: title.trim(), summary: summary.trim(), description: description.trim(), proposedDifficulty: difficulty, projectNature: nature, collaborationMode: collaboration, joinMode, acceptsSponsorship: sponsorship, allowOthersManagement, confidentialityRequested, confidentialityTerms: confidentialityRequested ? confidentialityTerms.trim() : '', plannedStartDate: executionStatus === 'completed' ? '' : startDate, estimatedDurationDays: !['completed', 'long_term'].includes(executionStatus) && duration ? Number(duration) : 0, longTerm: executionStatus === 'long_term', executionStatus, scheduleNote: scheduleNote.trim() }),
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.message || '创建失败，请重试。');
@@ -34,13 +34,13 @@
     <label>{$t('项目详情')}<textarea bind:value={description} maxlength="10000" rows="7"></textarea></label>
 
     <div class="fields">
-      <label>{$t('项目状态')}<select bind:value={executionStatus}><option value="not_started">{$t('未开始')}</option><option value="ongoing">{$t('已启动')}</option><option value="completed">{$t('已完成')}</option></select></label>
+      <label>{$t('项目状态')}<select bind:value={executionStatus}><option value="not_started">{$t('未开始')}</option><option value="ongoing">{$t('已启动')}</option><option value="long_term">{$t('长期项目')}</option><option value="paused">{$t('暂停中')}</option><option value="completed">{$t('已完成')}</option></select></label>
       <label>{$t('发起人自评难度')}<select bind:value={difficulty}><option value="">{$t('暂不设置')}</option>{#each ['D', 'C', 'B', 'A', 'S'] as level}<option value={level}>{level}</option>{/each}</select></label>
       <label>{$t('项目性质')}<select bind:value={nature} required><option value="" disabled>{$t('请选择')}</option><option value="commercial">{$t('商业盈利')}</option><option value="learning">{$t('学习交流')}</option><option value="showcase">{$t('技术展示')}</option><option value="research">{$t('科学研究')}</option></select></label>
       <label>{$t('协作方式')}<select bind:value={collaboration}><option value="collaborative">{$t('协作项目')}</option><option value="independent">{$t('独立项目')}</option></select></label>
       {#if collaboration === 'collaborative'}<label>{$t('加入方式')}<select bind:value={joinMode}><option value="open">{$t('自由加入')}</option><option value="approval">{$t('申请加入')}</option></select></label>{/if}
-      <label>{$t('计划开始日期')}<input type="date" bind:value={startDate} /></label>
-      <div class="duration"><label>{$t('预计周期（天）')}<input type="number" min="1" max="36500" step="1" bind:value={duration} disabled={longTerm} /></label><label class="checkbox"><input type="checkbox" bind:checked={longTerm} />{$t('长期项目')}</label></div>
+      {#if executionStatus !== 'completed'}<label>{$t('计划开始日期')}<input type="date" bind:value={startDate} /></label>{/if}
+      {#if !['completed', 'long_term'].includes(executionStatus)}<label>{$t('预计周期（天）')}<input type="number" min="1" max="36500" step="1" bind:value={duration} /></label>{/if}
     </div>
     <label>{$t('时间安排')}<textarea bind:value={scheduleNote} maxlength="2000" rows="3"></textarea></label>
     <fieldset class="arrangements"><legend>{$t('项目安排')}</legend>
@@ -62,7 +62,6 @@
   input:focus, select:focus, textarea:focus { border-color: var(--accent); outline: 2px solid var(--accent-glow); }
   textarea { resize: vertical; }
   .fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 20px; }
-  .duration { display: grid; gap: 10px; align-content: start; }
   .arrangements { display: flex; flex-wrap: wrap; gap: 14px 24px; margin: 0; padding: 14px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); }
   .arrangements legend { padding: 0 5px; color: var(--ink-secondary); font-size: 14px; }
   .checkbox { display: flex; align-items: center; gap: 10px; }

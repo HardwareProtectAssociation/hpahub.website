@@ -18,7 +18,7 @@
 
   const roleLabels = { admin: '管理员', member: '成员' };
   const statusLabels = { active: '正常', suspended: '已暂停' };
-  const projectStatusLabels = { not_started: '未开始', ongoing: '已启动', paused: '暂停', terminated: '已中止', completed: '已完成' };
+  const projectStatusLabels = { not_started: '未开始', ongoing: '已启动', long_term: '长期项目', paused: '暂停中', terminated: '已中止', completed: '已完成' };
   const reviewLabels = { pending: '待审核', approved: '已通过', rejected: '已拒绝' };
   const sourceLabels = { invitation: '邀请注册', seed: '种子账号' };
 

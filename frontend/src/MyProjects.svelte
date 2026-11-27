@@ -10,8 +10,8 @@
   let statusFilter = '';
   let loading = true;
   let error = '';
-  const statusLabels = { not_started: '未开始', ongoing: '已启动', paused: '已暂停', terminated: '已终止', completed: '已完成' };
-  const statusFilters = ['not_started', 'ongoing', 'completed', 'paused', 'terminated'];
+  const statusLabels = { not_started: '未开始', ongoing: '已启动', long_term: '长期项目', paused: '暂停中', terminated: '已终止', completed: '已完成' };
+  const statusFilters = ['not_started', 'ongoing', 'long_term', 'paused', 'completed', 'terminated'];
   const reviewLabels = { pending: '待审核', approved: '已通过', rejected: '已拒绝' };
 
   async function load() {

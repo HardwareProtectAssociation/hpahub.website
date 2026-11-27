@@ -445,6 +445,7 @@ export default {
   '保密协议': ['保密協議', '秘密保持契約', 'Confidentiality agreement'],
   '我同意保密协议': ['我同意保密協議', '秘密保持契約に同意します', 'I agree to the confidentiality agreement'],
   '项目状态': ['專案狀態', 'プロジェクトの状態', 'Project status'],
+  '暂停中': ['暫停中', '一時停止中', 'Paused'],
   '已启动': ['已啟動', '開始済み', 'Started'],
   '项目管理': ['專案管理', 'プロジェクト管理', 'Project management'],
   '项目管理权': ['專案管理權', '管理権限', 'Management permissions'],

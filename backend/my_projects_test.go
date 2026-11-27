@@ -176,6 +176,25 @@ func TestCreateProjectDetails(t *testing.T) {
 	if detailResponse.Code != http.StatusOK || !detail.LongTerm || !detail.AcceptsSponsorship || !detail.AllowOthersManagement || !detail.ConfidentialityRequested || detail.ProjectNature != "learning" || detail.Status != "completed" {
 		t.Fatalf("unexpected detail: %d %s", detailResponse.Code, detailResponse.Body.String())
 	}
+	for _, status := range []string{"paused", "long_term"} {
+		response := call(`{"title":"状态测试","executionStatus":"` + status + `"}`)
+		if response.Code != http.StatusOK {
+			t.Fatalf("create %s: %d %s", status, response.Code, response.Body.String())
+		}
+		var created struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(response.Body.Bytes(), &created); err != nil {
+			t.Fatal(err)
+		}
+		saved, err := app.FindRecordById("projects", created.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if saved.GetString("execution_status") != status || saved.GetBool("is_long_term") != (status == "long_term") {
+			t.Fatalf("status not saved: %s", status)
+		}
+	}
 	for _, body := range []string{`{"title":"x","executionStatus":"invalid"}`, `{"title":"x","confidentialityRequested":true}`, `{"title":"x","projectNature":"invalid"}`, `{"title":"x","longTerm":true,"estimatedDurationDays":30}`, `{"title":"x","estimatedDurationDays":36501}`, `{"title":"x","plannedStartDate":"2027-02-30"}`, `{"title":"x","joinMode":"unknown"}`} {
 		if response := call(body); response.Code != http.StatusBadRequest {
 			t.Fatalf("invalid input = %d: %s", response.Code, response.Body.String())
