@@ -220,7 +220,7 @@
       <h1>{$t('硬件保护协会')}</h1>
       <p class="hero-en">Hardware Protection Association</p>
       <p class="hero-motto">{$t('创造，保护，调查')}</p>
-      <p class="hero-disclaimer"><span class="disclaimer-mark" aria-hidden="true">※</span>{$t('本网站所有内容纯属娱乐，世界上不存在硬件保护协会或任何相关组织。')}<span class="disclaimer-sign"><RedactedText text="公众资讯应对办公室" hidden={true} />【{$t('数据删除')}】</span></p>
+      <p class="hero-disclaimer"><span class="disclaimer-mark" aria-hidden="true">※</span>{$t('本网站所有内容纯属娱乐，世界上不存在硬件保护协会或任何相关组织。')}<span class="disclaimer-sign"><RedactedText text="公众资讯应对办公室" hidden={true} /><span class="disclaimer-tag">【{$t('数据删除')}】</span></span></p>
       <p class="hero-actions"><a href="/brief">{$t('协会简介')}</a><a href="/rules">{$t('协会会规')}</a></p>
     </section>
     <section class="home-shelf">
@@ -622,9 +622,17 @@
     font-weight: 700;
   }
   .disclaimer-sign {
-    margin-left: 6px;
+    margin-left: 4px;
     color: var(--ink-subtle);
     white-space: nowrap;
+  }
+  .disclaimer-tag {
+    margin-left: -2px;
+    padding: 0 1px;
+    color: var(--accent-deep);
+    font-size: 11.5px;
+    letter-spacing: -0.01em;
+    vertical-align: baseline;
   }
   .hero-actions {
     position: relative;
