@@ -2,11 +2,6 @@ package main
 
 import (
  "bytes"
- "crypto/aes"
- "crypto/cipher"
- "crypto/hmac"
- "crypto/sha256"
- "encoding/hex"
  "encoding/json"
  "fmt"
  "io"
@@ -78,22 +73,7 @@ func profileSectionHidden(r *core.Record, section string) bool {
  for _, value := range r.GetStringSlice("hidden_profile_sections") { if value == section { return true } }; return false
 }
 var profileItemKey = regexp.MustCompile(`^(card|skill|identity|career|project):[a-z0-9]{1,32}$`)
-var redactionKey = sha256.Sum256([]byte("hpa-redaction-key-2026-0x5f"))
-
-// maskedText encrypts hidden text before it leaves the server, so the public
-// API never carries the plaintext. The fixed key is server-side only.
-func maskedText(value string) string {
- if value == "" { return "0x00" }
- plain := []byte(value)
- mac := hmac.New(sha256.New, redactionKey[:])
- _, _ = mac.Write(plain)
- nonce := mac.Sum(nil)[:aes.BlockSize]
- block, err := aes.NewCipher(redactionKey[:])
- if err != nil { return "0x00" }
- ciphertext := make([]byte, len(plain))
- cipher.NewCTR(block, nonce).XORKeyStream(ciphertext, plain)
- return "0x" + hex.EncodeToString(nonce) + hex.EncodeToString(ciphertext)
-}
+func maskedText(value string) string { return strings.Repeat("█", utf8.RuneCountInString(value)) }
 func visibleProfileSections(r *core.Record) []string {
  result := []string{}; for _, name := range r.GetStringSlice("hidden_profile_sections") { if profileSections[name] { result = append(result,name) } }; return result
 }

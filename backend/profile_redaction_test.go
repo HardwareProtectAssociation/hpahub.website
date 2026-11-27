@@ -130,7 +130,7 @@ func TestPublicProfileIndividualRedaction(t *testing.T) {
 			t.Fatalf("public profile leaked %q: %s", secret, res.Body.String())
 		}
 	}
-	for _, visible := range []string{"公开卡片", "公开项目乙", otherProject.Id, "0x"} {
+	for _, visible := range []string{"公开卡片", "公开项目乙", otherProject.Id, "█"} {
 		if !strings.Contains(res.Body.String(), visible) {
 			t.Fatalf("missing %q: %s", visible, res.Body.String())
 		}
