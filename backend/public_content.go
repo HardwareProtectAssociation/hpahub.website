@@ -120,7 +120,7 @@ func publicMemberProjects(e *core.RequestEvent, member *core.Record) ([]publicPr
  for _, project := range projects {
   switch project.GetString("execution_status") {
   case "completed": completed = append(completed, projectSummary(e, project, owners))
-  case "ongoing": ongoing = append(ongoing, projectSummary(e, project, owners))
+  case "ongoing", "not_started": ongoing = append(ongoing, projectSummary(e, project, owners))
   }
  }
  sort.SliceStable(completed, func(i, j int) bool { return completed[i].Updated > completed[j].Updated })

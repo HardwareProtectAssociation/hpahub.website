@@ -47,26 +47,30 @@ type publicProjectMember struct {
 
 type publicProjectDetail struct {
 	publicProject
-	Description           string                `json:"description"`
-	ProjectNature         string                `json:"projectNature"`
-	PlannedStartDate      string                `json:"plannedStartDate"`
-	EstimatedDurationDays int                   `json:"estimatedDurationDays"`
-	LongTerm              bool                  `json:"longTerm"`
-	CurrentStage          string                `json:"currentStage"`
-	Stages                []publicProjectStage  `json:"stages"`
-	Members               []publicProjectMember `json:"members"`
-	CanApply              bool                  `json:"canApply"`
-	ApplicationPending    bool                  `json:"applicationPending"`
-	CanRequestImprovement bool                  `json:"canRequestImprovement"`
-	ImprovementPending    bool                  `json:"improvementPending"`
-	CanFollow             bool                  `json:"canFollow"`
-	Following             bool                  `json:"following"`
-	JoinMode              string                `json:"joinMode"`
-	ProposedDifficulty    string                `json:"proposedDifficulty"`
-	OwnerConfirmed        bool                  `json:"ownerConfirmed"`
-	ApproveCount          int                   `json:"approveCount"`
-	OpposeCount           int                   `json:"opposeCount"`
-	IsOwner               bool                  `json:"isOwner"`
+	Description              string                `json:"description"`
+	ProjectNature            string                `json:"projectNature"`
+	AcceptsSponsorship       bool                  `json:"acceptsSponsorship"`
+	AllowOthersManagement    bool                  `json:"allowOthersManagement"`
+	ConfidentialityRequested bool                  `json:"confidentialityRequested"`
+	ConfidentialityTerms     string                `json:"confidentialityTerms"`
+	PlannedStartDate         string                `json:"plannedStartDate"`
+	EstimatedDurationDays    int                   `json:"estimatedDurationDays"`
+	LongTerm                 bool                  `json:"longTerm"`
+	CurrentStage             string                `json:"currentStage"`
+	Stages                   []publicProjectStage  `json:"stages"`
+	Members                  []publicProjectMember `json:"members"`
+	CanApply                 bool                  `json:"canApply"`
+	ApplicationPending       bool                  `json:"applicationPending"`
+	CanRequestImprovement    bool                  `json:"canRequestImprovement"`
+	ImprovementPending       bool                  `json:"improvementPending"`
+	CanFollow                bool                  `json:"canFollow"`
+	Following                bool                  `json:"following"`
+	JoinMode                 string                `json:"joinMode"`
+	ProposedDifficulty       string                `json:"proposedDifficulty"`
+	OwnerConfirmed           bool                  `json:"ownerConfirmed"`
+	ApproveCount             int                   `json:"approveCount"`
+	OpposeCount              int                   `json:"opposeCount"`
+	IsOwner                  bool                  `json:"isOwner"`
 }
 
 type managedProject struct {
@@ -89,6 +93,7 @@ type managedProject struct {
 // bindPublicProjectRoutes exposes only approved, non-deleted projects. Draft,
 // pending and rejected projects stay private.
 func bindPublicProjectRoutes(e *core.ServeEvent) {
+	bindProjectManagementRoutes(e)
 	e.Router.GET("/api/hpahub/projects", func(e *core.RequestEvent) error {
 		noCache(e)
 		rows, err := e.App.FindRecordsByFilter("projects", `review_status = "approved"`, "-published_at,-updated", 100, 0)
@@ -113,17 +118,21 @@ func bindPublicProjectRoutes(e *core.ServeEvent) {
 		}
 		owners := map[string]*core.Record{}
 		detail := publicProjectDetail{
-			publicProject:         projectSummary(e, project, owners),
-			Description:           projectDescriptionText(project),
-			ProjectNature:         project.GetString("project_nature"),
-			PlannedStartDate:      project.GetString("planned_start_date"),
-			EstimatedDurationDays: project.GetInt("estimated_duration_days"),
-			LongTerm:              project.GetBool("is_long_term"),
-			Stages:                []publicProjectStage{},
-			Members:               []publicProjectMember{},
-			ProposedDifficulty:    project.GetString("owner_proposed_difficulty"),
-			OwnerConfirmed:        project.GetBool("owner_difficulty_confirmed"),
-			JoinMode:              project.GetString("join_mode"),
+			publicProject:            projectSummary(e, project, owners),
+			Description:              projectDescriptionText(project),
+			ProjectNature:            project.GetString("project_nature"),
+			AcceptsSponsorship:       project.GetBool("accepts_sponsorship"),
+			AllowOthersManagement:    project.GetBool("allow_others_management"),
+			ConfidentialityRequested: project.GetBool("confidentiality_requested"),
+			ConfidentialityTerms:     project.GetString("confidentiality_terms"),
+			PlannedStartDate:         project.GetString("planned_start_date"),
+			EstimatedDurationDays:    project.GetInt("estimated_duration_days"),
+			LongTerm:                 project.GetBool("is_long_term"),
+			Stages:                   []publicProjectStage{},
+			Members:                  []publicProjectMember{},
+			ProposedDifficulty:       project.GetString("owner_proposed_difficulty"),
+			OwnerConfirmed:           project.GetBool("owner_difficulty_confirmed"),
+			JoinMode:                 project.GetString("join_mode"),
 		}
 		// Compute vote counts
 		votes, _ := e.App.FindRecordsByFilter("project_difficulty_votes",
@@ -237,10 +246,11 @@ func bindPublicProjectRoutes(e *core.ServeEvent) {
 		}
 
 		var input struct {
-			Message    string `json:"message"`
-			Profession string `json:"profession"`
-			Time       string `json:"time"`
-			Ability    string `json:"ability"`
+			Message       string `json:"message"`
+			Profession    string `json:"profession"`
+			Time          string `json:"time"`
+			Ability       string `json:"ability"`
+			AcceptedTerms string `json:"acceptedTerms"`
 		}
 		if err := e.BindBody(&input); err != nil || len([]rune(strings.TrimSpace(input.Message))) > 500 {
 			return e.BadRequestError("Invalid application.", nil)
@@ -249,6 +259,9 @@ func bindPublicProjectRoutes(e *core.ServeEvent) {
 			return e.BadRequestError("Invalid application.", nil)
 		}
 		err = e.App.RunInTransaction(func(tx core.App) error {
+			if err := saveConfidentialityAgreement(tx, project, viewer, input.AcceptedTerms); err != nil {
+				return e.BadRequestError("Confidentiality agreement must be accepted.", err)
+			}
 			if _, err := tx.FindFirstRecordByFilter("project_members", `project_id = {:project} && user_id = {:user} && status = "active"`, dbx.Params{"project": project.Id, "user": viewer.Id}); err == nil {
 				return e.BadRequestError("You are already a project member.", nil)
 			} else if !errors.Is(err, sql.ErrNoRows) {
@@ -338,23 +351,33 @@ func bindPublicProjectRoutes(e *core.ServeEvent) {
 			return e.BadRequestError("You already have a pending request.", nil)
 		}
 		var input struct {
-			Message string `json:"message"`
+			Message       string `json:"message"`
+			AcceptedTerms string `json:"acceptedTerms"`
 		}
 		if err := e.BindBody(&input); err != nil || len([]rune(strings.TrimSpace(input.Message))) > 500 {
 			return e.BadRequestError("Invalid improvement request.", nil)
 		}
-		collection, err := e.App.FindCollectionByNameOrId("project_join_requests")
+		err = e.App.RunInTransaction(func(tx core.App) error {
+			if err := saveConfidentialityAgreement(tx, project, viewer, input.AcceptedTerms); err != nil {
+				return e.BadRequestError("Confidentiality agreement must be accepted.", err)
+			}
+			collection, err := tx.FindCollectionByNameOrId("project_join_requests")
+			if err != nil {
+				return e.InternalServerError("Unable to submit improvement request.", err)
+			}
+			request := core.NewRecord(collection)
+			request.Set("project_id", project.Id)
+			request.Set("user_id", viewer.Id)
+			request.Set("source", "improvement")
+			request.Set("message", strings.TrimSpace(input.Message))
+			request.Set("status", "pending")
+			if err := tx.Save(request); err != nil {
+				return e.InternalServerError("Unable to submit improvement request.", err)
+			}
+			return nil
+		})
 		if err != nil {
-			return e.InternalServerError("Unable to submit improvement request.", err)
-		}
-		request := core.NewRecord(collection)
-		request.Set("project_id", project.Id)
-		request.Set("user_id", viewer.Id)
-		request.Set("source", "improvement")
-		request.Set("message", strings.TrimSpace(input.Message))
-		request.Set("status", "pending")
-		if err := e.App.Save(request); err != nil {
-			return e.InternalServerError("Unable to submit improvement request.", err)
+			return err
 		}
 		return e.JSON(200, map[string]any{"ok": true})
 	})

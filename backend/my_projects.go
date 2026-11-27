@@ -38,20 +38,24 @@ func bindMyProjectRoutes(e *core.ServeEvent) {
 			return e.ForbiddenError("No member profile is linked to this account.", nil)
 		}
 		var input struct {
-			Title                 string `json:"title"`
-			Summary               string `json:"summary"`
-			Description           string `json:"description"`
-			CollaborationMode     string `json:"collaborationMode"`
-			JoinMode              string `json:"joinMode"`
-			AcceptsSponsorship    bool   `json:"acceptsSponsorship"`
-			EstimatedDurationDays int    `json:"estimatedDurationDays"`
-			LongTerm              bool   `json:"longTerm"`
-			Completed             bool   `json:"completed"`
-			PlannedStartDate      string `json:"plannedStartDate"`
-			ScheduleNote          string `json:"scheduleNote"`
-			ProposedDifficulty    string `json:"proposedDifficulty"`
-			AdventureStyle        string `json:"adventureStyle"`
-			ProjectNature         string `json:"projectNature"`
+			Title                    string `json:"title"`
+			Summary                  string `json:"summary"`
+			Description              string `json:"description"`
+			CollaborationMode        string `json:"collaborationMode"`
+			JoinMode                 string `json:"joinMode"`
+			AcceptsSponsorship       bool   `json:"acceptsSponsorship"`
+			AllowOthersManagement    bool   `json:"allowOthersManagement"`
+			ConfidentialityRequested bool   `json:"confidentialityRequested"`
+			ConfidentialityTerms     string `json:"confidentialityTerms"`
+			EstimatedDurationDays    int    `json:"estimatedDurationDays"`
+			LongTerm                 bool   `json:"longTerm"`
+			Completed                bool   `json:"completed"`
+			ExecutionStatus          string `json:"executionStatus"`
+			PlannedStartDate         string `json:"plannedStartDate"`
+			ScheduleNote             string `json:"scheduleNote"`
+			ProposedDifficulty       string `json:"proposedDifficulty"`
+			AdventureStyle           string `json:"adventureStyle"`
+			ProjectNature            string `json:"projectNature"`
 		}
 		if err := e.BindBody(&input); err != nil {
 			return e.BadRequestError("Invalid project.", err)
@@ -60,8 +64,22 @@ func bindMyProjectRoutes(e *core.ServeEvent) {
 		input.Summary = strings.TrimSpace(input.Summary)
 		input.Description = strings.TrimSpace(input.Description)
 		input.ScheduleNote = strings.TrimSpace(input.ScheduleNote)
+		input.ConfidentialityTerms = strings.TrimSpace(input.ConfidentialityTerms)
+		if (input.ConfidentialityRequested && input.ConfidentialityTerms == "") || utf8.RuneCountInString(input.ConfidentialityTerms) > 10000 {
+			return e.BadRequestError("Invalid confidentiality agreement.", nil)
+		}
 		if utf8.RuneCountInString(input.Description) > 10000 || utf8.RuneCountInString(input.ScheduleNote) > 2000 || input.EstimatedDurationDays < 0 || input.EstimatedDurationDays > 36500 {
 			return e.BadRequestError("Invalid project details.", nil)
+		}
+		if input.ExecutionStatus == "" {
+			if input.Completed {
+				input.ExecutionStatus = "completed"
+			} else {
+				input.ExecutionStatus = "ongoing"
+			}
+		}
+		if input.ExecutionStatus != "not_started" && input.ExecutionStatus != "ongoing" && input.ExecutionStatus != "completed" {
+			return e.BadRequestError("Invalid project status.", nil)
 		}
 		if input.LongTerm && input.EstimatedDurationDays != 0 {
 			return e.BadRequestError("Long-term projects cannot have an estimated duration.", nil)
@@ -105,14 +123,16 @@ func bindMyProjectRoutes(e *core.ServeEvent) {
 		project.Set("title", input.Title)
 		project.Set("summary", input.Summary)
 		project.Set("review_status", "approved")
-		project.Set("execution_status", "ongoing")
-		if input.Completed {
-			project.Set("execution_status", "completed")
-		}
+		project.Set("execution_status", input.ExecutionStatus)
 		project.Set("is_long_term", input.LongTerm)
 		project.Set("collaboration_mode", input.CollaborationMode)
 		project.Set("join_mode", input.JoinMode)
 		project.Set("accepts_sponsorship", input.AcceptsSponsorship)
+		project.Set("allow_others_management", input.AllowOthersManagement)
+		project.Set("confidentiality_requested", input.ConfidentialityRequested)
+		if input.ConfidentialityRequested {
+			project.Set("confidentiality_terms", input.ConfidentialityTerms)
+		}
 		project.Set("description", map[string]string{"text": input.Description})
 		project.Set("schedule_note", input.ScheduleNote)
 		if input.PlannedStartDate != "" {

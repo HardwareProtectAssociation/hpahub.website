@@ -115,7 +115,7 @@ func TestCreateProjectDetails(t *testing.T) {
 		mux.ServeHTTP(response, req)
 		return response
 	}
-	response := call(`{"title":" 新项目 ","summary":"简介","description":"项目详情","proposedDifficulty":"A","adventureStyle":"boss","projectNature":"research","collaborationMode":"independent","joinMode":"approval","acceptsSponsorship":true,"estimatedDurationDays":30,"plannedStartDate":"2027-01-01","scheduleNote":"计划"}`)
+	response := call(`{"title":" 新项目 ","executionStatus":"not_started","summary":"简介","description":"项目详情","proposedDifficulty":"A","adventureStyle":"boss","projectNature":"research","collaborationMode":"independent","joinMode":"approval","acceptsSponsorship":true,"allowOthersManagement":true,"confidentialityRequested":true,"confidentialityTerms":"测试协议","estimatedDurationDays":30,"plannedStartDate":"2027-01-01","scheduleNote":"计划"}`)
 	if response.Code != http.StatusOK {
 		t.Fatalf("create = %d: %s", response.Code, response.Body.String())
 	}
@@ -129,7 +129,7 @@ func TestCreateProjectDetails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if project.GetString("project_nature") != "research" || project.GetString("title") != "新项目" || projectDescriptionText(project) != "项目详情" || project.GetString("collaboration_mode") != "independent" || project.GetString("join_mode") != "approval" || !project.GetBool("accepts_sponsorship") || project.GetInt("estimated_duration_days") != 30 || project.GetString("planned_start_date") == "" || project.GetString("schedule_note") != "计划" {
+	if project.GetString("execution_status") != "not_started" || project.GetString("confidentiality_terms") != "测试协议" || project.GetString("project_nature") != "research" || project.GetString("title") != "新项目" || projectDescriptionText(project) != "项目详情" || project.GetString("collaboration_mode") != "independent" || project.GetString("join_mode") != "approval" || !project.GetBool("accepts_sponsorship") || !project.GetBool("allow_others_management") || !project.GetBool("confidentiality_requested") || project.GetInt("estimated_duration_days") != 30 || project.GetString("planned_start_date") == "" || project.GetString("schedule_note") != "计划" {
 		t.Fatalf("project details not saved: %v", project)
 	}
 	other := publicProjectTestUser(t, app, "other-create@example.com", "其他人")
@@ -145,7 +145,7 @@ func TestCreateProjectDetails(t *testing.T) {
 	if blocked.Code != http.StatusBadRequest {
 		t.Fatalf("independent project application = %d: %s", blocked.Code, blocked.Body.String())
 	}
-	response = call(`{"title":"长期完成项目","completed":true,"longTerm":true,"projectNature":"learning"}`)
+	response = call(`{"title":"长期完成项目","executionStatus":"completed","longTerm":true,"projectNature":"learning","acceptsSponsorship":true,"allowOthersManagement":true,"confidentialityRequested":true,"confidentialityTerms":"测试协议"}`)
 	if response.Code != http.StatusOK {
 		t.Fatalf("completed long-term project = %d: %s", response.Code, response.Body.String())
 	}
@@ -163,17 +163,20 @@ func TestCreateProjectDetails(t *testing.T) {
 	detailResponse := httptest.NewRecorder()
 	mux.ServeHTTP(detailResponse, detailRequest)
 	var detail struct {
-		LongTerm      bool   `json:"longTerm"`
-		ProjectNature string `json:"projectNature"`
-		Status        string `json:"status"`
+		AcceptsSponsorship       bool   `json:"acceptsSponsorship"`
+		AllowOthersManagement    bool   `json:"allowOthersManagement"`
+		ConfidentialityRequested bool   `json:"confidentialityRequested"`
+		LongTerm                 bool   `json:"longTerm"`
+		ProjectNature            string `json:"projectNature"`
+		Status                   string `json:"status"`
 	}
 	if err := json.Unmarshal(detailResponse.Body.Bytes(), &detail); err != nil {
 		t.Fatal(err)
 	}
-	if detailResponse.Code != http.StatusOK || !detail.LongTerm || detail.ProjectNature != "learning" || detail.Status != "completed" {
+	if detailResponse.Code != http.StatusOK || !detail.LongTerm || !detail.AcceptsSponsorship || !detail.AllowOthersManagement || !detail.ConfidentialityRequested || detail.ProjectNature != "learning" || detail.Status != "completed" {
 		t.Fatalf("unexpected detail: %d %s", detailResponse.Code, detailResponse.Body.String())
 	}
-	for _, body := range []string{`{"title":"x","projectNature":"invalid"}`, `{"title":"x","longTerm":true,"estimatedDurationDays":30}`, `{"title":"x","estimatedDurationDays":36501}`, `{"title":"x","plannedStartDate":"2027-02-30"}`, `{"title":"x","joinMode":"unknown"}`} {
+	for _, body := range []string{`{"title":"x","executionStatus":"invalid"}`, `{"title":"x","confidentialityRequested":true}`, `{"title":"x","projectNature":"invalid"}`, `{"title":"x","longTerm":true,"estimatedDurationDays":30}`, `{"title":"x","estimatedDurationDays":36501}`, `{"title":"x","plannedStartDate":"2027-02-30"}`, `{"title":"x","joinMode":"unknown"}`} {
 		if response := call(body); response.Code != http.StatusBadRequest {
 			t.Fatalf("invalid input = %d: %s", response.Code, response.Body.String())
 		}

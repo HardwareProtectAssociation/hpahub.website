@@ -16,6 +16,8 @@
   let applyError = '';
   let applyNotice = '';
   let applying = false;
+  let acceptTerms = false;
+  let management = null, managementError = '', managementBusy = false;
   let followBusy = false;
   let followError = '';
   let improvementMessage = '';
@@ -48,6 +50,7 @@
       });
       if (!response.ok) { error = response.status === 404 ? '内容不存在或未公开。' : '加载失败（{status}）'; errorParams = { status: response.status }; return; }
       data = await response.json();
+      if (section === 'showcase' && id && token) await loadManagement();
       if (section === 'community' && id) {
         const candidates = [
           ['completed', data.projectsCompleted?.length || 0],
@@ -76,7 +79,7 @@
   $: shownEngineers = home?.popularEngineers?.length ? home.popularEngineers : demoEngineers;
   $: featuredSkills = (data?.skills || []).filter((skill) => skill.featured);
   $: shownSkills = featuredSkills.length ? featuredSkills : (data?.skills || []);
-  const statusLabels = { ongoing: '进行中', paused: '暂停', terminated: '已中止', completed: '已完成' };
+  const statusLabels = { not_started: '未开始', ongoing: '已启动', paused: '暂停', terminated: '已中止', completed: '已完成' };
   const currentStatusLabels = { busy: '忙碌', free: '空闲' };
   const relationLabels = { admire: '关注', watch: '监视', investigate: '调查' };
   const recognizedLabels = { 1: '有点东西', 2: '他不对劲', 3: '他真会啊', 4: '他太强了！', 5: '他是超人！' };
@@ -116,6 +119,22 @@
     }
   }
 
+  async function loadManagement() {
+    try {
+      const response = await fetch(`/api/hpahub/projects/${encodeURIComponent(id)}/management`, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
+      if (response.ok) management = await response.json();
+    } catch { managementError = '加载管理信息失败'; }
+  }
+  async function updateManagement(path, body) {
+    managementBusy = true; managementError = '';
+    try {
+      const response = await fetch(`/api/hpahub/projects/${encodeURIComponent(id)}/${path}`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (!response.ok) { const result = await response.json().catch(() => ({})); throw new Error(result.message || '操作失败'); }
+      await loadManagement();
+    } catch (err) { managementError = err.message || '操作失败'; }
+    finally { managementBusy = false; }
+  }
+
   async function applyToProject() {
     if (!token || !data?.canApply) return;
     applying = true;
@@ -130,6 +149,7 @@
           profession: applyProfession,
           time: applyTime,
           ability: applyAbility,
+          acceptedTerms: acceptTerms ? data.confidentialityTerms : '',
         }),
       });
       const result = await response.json().catch(() => ({}));
@@ -171,7 +191,7 @@
       const response = await fetch(`/api/hpahub/projects/${encodeURIComponent(data.id)}/improvement`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: improvementMessage }),
+        body: JSON.stringify({ message: improvementMessage, acceptedTerms: acceptTerms ? data.confidentialityTerms : '' }),
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.message || '改进申请失败，请重试。');
@@ -396,6 +416,7 @@
         <p>{data.summary}</p>
         <p class="project-owner">{$t('负责人')}：<RedactedText text={data.ownerName || '—'} hidden={!!data.ownerRedacted} />{#if data.updated} · {$t('更新于')} {formatDate(data.updated)}{/if}</p>
         {#if data.description && data.description !== data.summary}<p class="project-description">{data.description}</p>{/if}
+        {#if data.acceptsSponsorship || data.allowOthersManagement || data.confidentialityRequested}<p class="project-owner">{$t('项目安排')}：{[data.acceptsSponsorship && $t('接受赞助'), data.allowOthersManagement && $t('允许他人管理'), data.confidentialityRequested && $t('需要保密')].filter(Boolean).join(' · ')}</p>{/if}
         {#if data.projectNature}<p class="project-owner">{$t('项目性质')}：{$t(({ commercial: '商业盈利', learning: '学习交流', showcase: '技术展示', research: '科学研究' })[data.projectNature])}</p>{/if}
         {#if data.longTerm}<p class="project-owner">{$t('预计周期')}：{$t('长期项目')}</p>{:else if data.estimatedDurationDays}<p class="project-owner">{$t('预计周期')}：{data.estimatedDurationDays} {$t('天')}</p>{/if}
         {#if data.proposedDifficulty}<p class="project-owner">{$t('发起人自评')}：<span class={`rank rank-text rank-${difficultyRank(data.proposedDifficulty)}`}>{data.proposedDifficulty}</span></p>{:else}<p class="project-owner">{$t('发起人自评')}：{$t('待定')}</p>{/if}
@@ -423,16 +444,24 @@
             <label>{$t('能力上限')}<textarea bind:value={applyAbility} maxlength="200" rows="2" placeholder={$t('简单描述你的技能水平和能承担的工作范围')}></textarea></label>
           {/if}
           <label>{$t('补充说明')}<textarea bind:value={applyMessage} maxlength="500" rows="3" placeholder={$t('例如：我可以负责结构设计与打样。')}></textarea></label>
+          {#if data.confidentialityRequested}
+            <h3>{$t('保密协议')}</h3><p class="agreement">{data.confidentialityTerms}</p>
+            <label class="agreement-check"><input type="checkbox" bind:checked={acceptTerms} />{$t('我同意保密协议')}</label>
+          {/if}
           {#if applyError}<p class="message error" role="alert">{$t(applyError)}</p>{/if}
-          <button type="button" class="primary" on:click={applyToProject} disabled={applying}>{applying ? $t('正在提交…') : $t(data.joinMode === 'open' ? '直接加入' : '提交申请')}</button>
+          <button type="button" class="primary" on:click={applyToProject} disabled={applying || (data.confidentialityRequested && !acceptTerms)}>{applying ? $t('正在提交…') : $t(data.joinMode === 'open' ? '直接加入' : '提交申请')}</button>
         </section>
       {:else if data.canRequestImprovement}
         <section class="project-apply" aria-labelledby="project-improvement-title">
           <h2 id="project-improvement-title">{$t('申请改进')}</h2>
           <p>{$t('这个项目已经完成，你可以提出改进方向或补充方案。')}</p>
           <textarea bind:value={improvementMessage} maxlength="500" rows="3" placeholder={$t('例如：我想改进外壳结构，降低装配难度。')}></textarea>
+          {#if data.confidentialityRequested}
+            <h3>{$t('保密协议')}</h3><p class="agreement">{data.confidentialityTerms}</p>
+            <label class="agreement-check"><input type="checkbox" bind:checked={acceptTerms} />{$t('我同意保密协议')}</label>
+          {/if}
           {#if improvementError}<p class="message error" role="alert">{$t(improvementError)}</p>{/if}
-          <button type="button" class="primary" on:click={requestImprovement} disabled={improving}>{improving ? $t('正在提交…') : $t('提交改进申请')}</button>
+          <button type="button" class="primary" on:click={requestImprovement} disabled={improving || (data.confidentialityRequested && !acceptTerms)}>{improving ? $t('正在提交…') : $t('提交改进申请')}</button>
         </section>
       {:else if data.improvementPending}
         <p class="message success" role="status">{$t(improvementNotice || '改进申请已提交，等待管理员审批。')}</p>
@@ -440,6 +469,22 @@
         <p class="message success" role="status">{$t(applyNotice || '申请已提交，等待管理员审批。')}</p>
       {:else if !token}
         <p class="project-apply-hint"><a href="/sign-in">{$t('登录')}</a>{$t('后可申请加入或改进。')}</p>
+      {/if}
+      {#if management}
+        <section class="project-section">
+          <h2>{$t('项目管理')}</h2>
+          {#if managementError}<p class="message error" role="alert">{$t(managementError)}</p>{/if}
+          {#if management.requests.length}<h3>{$t('加入申请')}</h3>
+            {#each management.requests as request}
+              <div class="management-row"><span>{request.name} · {$t(request.source === 'improvement' ? '申请改进' : '申请加入')} {request.message}</span><button type="button" disabled={managementBusy} on:click={() => updateManagement('applications/' + encodeURIComponent(request.id), { status: 'accepted' })}>{$t('通过')}</button><button type="button" disabled={managementBusy} on:click={() => updateManagement('applications/' + encodeURIComponent(request.id), { status: 'rejected' })}>{$t('拒绝')}</button></div>
+            {/each}
+          {/if}
+          {#if management.canAssign}<h3>{$t('项目管理权')}</h3>
+            {#each management.members as member}
+              <div class="management-row"><span>{member.name}</span><button type="button" disabled={managementBusy || member.id === management.viewerId} on:click={() => updateManagement('managers/' + encodeURIComponent(member.id), { manager: !member.manager })}>{$t(member.manager ? '撤销管理权' : '授予管理权')}</button></div>
+            {/each}
+          {/if}
+        </section>
       {/if}
       {#if data.stages?.length}
         <section class="project-section">
@@ -667,6 +712,9 @@
   .project-apply label { display: grid; gap: 5px; margin-bottom: 10px; color: var(--ink-secondary); font-size: 13px; font-weight: 500; }
   .project-apply input { width: 100%; padding: 9px 10px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--ink-primary); font: inherit; }
   .project-apply input:focus, .project-apply textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); outline: none; }
+  .project-apply .agreement { white-space: pre-wrap; }
+  .project-apply .agreement-check { display: flex; align-items: center; gap: 8px; }
+  .project-apply .agreement-check input { width: auto; }
   .project-apply .message { margin: 8px 0; }
   .project-apply-hint { color: var(--ink-muted); font-size: 13px; }
   .follow-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: -8px 0 18px; }
@@ -692,6 +740,7 @@
   .project-stages li.current { border-color: var(--accent-bright); }
   .project-stages p { margin: 4px 0; color: var(--ink-muted); font-size: 13px; }
   .project-stage-state { color: var(--ink-subtle); font-size: 12px; }
+  .management-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 10px 0; }
   .project-members { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
   .project-members li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
   .project-members span { color: var(--ink-muted); font-size: 13px; }
