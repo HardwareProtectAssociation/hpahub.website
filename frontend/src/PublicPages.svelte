@@ -535,8 +535,9 @@
               <h2>{project.title}</h2>
               <p>{project.summary}</p>
               <div class="project-people">
-                <span class="people-block"><span class="people-label">{$t('发起人')}</span>{#if project.creatorRedacted}<span class="people-avatar hidden" title={$t('资料隐藏')} aria-label={$t('资料隐藏')}></span>{:else if project.creatorAvatarUrl}<img class="people-avatar" src={project.creatorAvatarUrl} alt={project.creatorName || ''} title={project.creatorName || ''} loading="lazy" />{:else}<span class="people-avatar" title={project.creatorName || ''}></span>{/if}</span>
-                {#if project.managers?.length}<span class="people-block"><span class="people-label">{$t('管理员')}</span>{#each project.managers as manager}<span class="people-avatar-slot">{#if manager.redacted}<span class="people-avatar hidden" title={$t('资料隐藏')} aria-label={$t('资料隐藏')}></span>{:else if manager.avatarUrl}<img class="people-avatar" src={manager.avatarUrl} alt={manager.name || ''} title={manager.name || ''} loading="lazy" />{:else}<span class="people-avatar" title={manager.name || ''}></span>{/if}</span>{/each}</span>{/if}
+                <span class="people-block"><span class="people-label">{$t('发起人')}</span>{#if project.creatorRedacted}<span class="people-avatar hidden" title={$t('资料隐藏')} aria-label={$t('资料隐藏')}></span>{:else if project.creatorAvatarUrl}<img class="people-avatar" src={project.creatorAvatarUrl} alt={project.creatorName || ''} title={project.creatorName || ''} loading="lazy" />{:else if project.creatorName}<span class="people-avatar" title={project.creatorName}></span>{:else}<span class="people-vacant">{$t('待加入')}</span>{/if}</span>
+                <span class="people-block"><span class="people-label">{$t('首席工程师')}</span>{#if project.ownerRedacted}<span class="people-avatar hidden" title={$t('资料隐藏')} aria-label={$t('资料隐藏')}></span>{:else if project.ownerAvatarUrl}<img class="people-avatar" src={project.ownerAvatarUrl} alt={project.ownerName || ''} title={project.ownerName || ''} loading="lazy" />{:else if project.ownerName}<span class="people-avatar" title={project.ownerName}></span>{:else}<span class="people-vacant">{$t('待加入')}</span>{/if}</span>
+                <span class="people-block"><span class="people-label">{$t('赞助者')}</span><span class="people-vacant">{$t('待加入')}</span></span>
               </div>
               <p class="project-owner">{$t('发布时间')}：{project.publishedAt ? formatDate(project.publishedAt) : '—'} · {$t('参与人数')}：{project.participantCount || 0}</p>
               <p class="project-owner">{$t('关注度')}：{project.followCount || 0}</p>
@@ -747,6 +748,7 @@
   .people-label { color: var(--ink-muted); font-size: 12px; }
   .people-avatar { display: inline-block; width: 26px; height: 26px; border-radius: 50%; object-fit: cover; background: var(--surface-tint); border: 1px solid var(--border-subtle); }
   .people-avatar.hidden { background: var(--ink-primary); }
+  .people-vacant { display: inline-flex; align-items: center; padding: 2px 10px; border: 1px dashed var(--border-default); border-radius: 999px; color: var(--ink-subtle); font-size: 12px; }
   .people-avatar-slot { display: inline-flex; }
   .owner-avatar { width: 22px; height: 22px; margin-right: 6px; border-radius: 50%; object-fit: cover; vertical-align: middle; background: var(--surface-tint); border: 1px solid var(--border-subtle); }
   .project-card-link { display: block; color: inherit; text-decoration: none; }
