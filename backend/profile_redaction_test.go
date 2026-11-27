@@ -130,7 +130,7 @@ func TestPublicProfileIndividualRedaction(t *testing.T) {
 			t.Fatalf("public profile leaked %q: %s", secret, res.Body.String())
 		}
 	}
-	for _, visible := range []string{"公开卡片", "公开项目乙", otherProject.Id, "█"} {
+	for _, visible := range []string{"公开卡片", "公开项目乙", otherProject.Id, "0x"} {
 		if !strings.Contains(res.Body.String(), visible) {
 			t.Fatalf("missing %q: %s", visible, res.Body.String())
 		}
@@ -147,14 +147,14 @@ func TestPublicProfileIndividualRedaction(t *testing.T) {
 	if err := json.Unmarshal(res.Body.Bytes(), &data); err != nil {
 		t.Fatal(err)
 	}
-	if data.Bio != strings.Repeat("█", len([]rune("我的保密简介"))) {
-		t.Fatalf("wrong mask length: %q", data.Bio)
+	if data.Bio != maskedText("我的保密简介") {
+		t.Fatalf("wrong mask: %q", data.Bio)
 	}
 	found := false
 	for _, item := range data.Cards {
 		if item.Redacted {
 			found = true
-			if item.Title != strings.Repeat("█", len([]rune("保密卡片"))) || item.Text != strings.Repeat("█", len([]rune("保密卡片正文"))) || item.ImageCount != 1 {
+			if item.Title != maskedText("保密卡片") || item.Text != maskedText("保密卡片正文") || item.ImageCount != 1 {
 				t.Fatalf("incorrect card mask: %+v", item)
 			}
 		}
