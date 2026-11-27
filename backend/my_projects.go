@@ -79,6 +79,7 @@ func bindMyProjectRoutes(e *core.ServeEvent) {
 			ProjectNature            string   `json:"projectNature"`
 			ProjectNeeds             []string `json:"projectNeeds"`
 			ProviderOffers           []string `json:"providerOffers"`
+			StatusReason             string   `json:"statusReason"`
 		}
 		if err := e.BindBody(&input); err != nil {
 			return e.BadRequestError("Invalid project.", err)
@@ -101,11 +102,19 @@ func bindMyProjectRoutes(e *core.ServeEvent) {
 				input.ExecutionStatus = "ongoing"
 			}
 		}
-		if input.ExecutionStatus != "not_started" && input.ExecutionStatus != "ongoing" && input.ExecutionStatus != "long_term" && input.ExecutionStatus != "paused" && input.ExecutionStatus != "completed" {
+		if input.ExecutionStatus != "not_started" && input.ExecutionStatus != "ongoing" && input.ExecutionStatus != "long_term" && input.ExecutionStatus != "paused" && input.ExecutionStatus != "completed" && input.ExecutionStatus != "terminated" {
 			return e.BadRequestError("Invalid project status.", nil)
 		}
 		if input.ExecutionStatus == "long_term" {
 			input.LongTerm = true
+		}
+		input.StatusReason = strings.TrimSpace(input.StatusReason)
+		if input.ExecutionStatus == "paused" || input.ExecutionStatus == "terminated" {
+			if input.StatusReason == "" || utf8.RuneCountInString(input.StatusReason) > 2000 {
+				return e.BadRequestError("Invalid project status reason.", nil)
+			}
+		} else {
+			input.StatusReason = ""
 		}
 		if input.LongTerm && input.EstimatedDurationDays != 0 {
 			return e.BadRequestError("Long-term projects cannot have an estimated duration.", nil)
@@ -158,6 +167,7 @@ func bindMyProjectRoutes(e *core.ServeEvent) {
 		project.Set("summary", input.Summary)
 		project.Set("review_status", "approved")
 		project.Set("execution_status", input.ExecutionStatus)
+		project.Set("status_reason", input.StatusReason)
 		project.Set("is_long_term", input.LongTerm)
 		project.Set("collaboration_mode", input.CollaborationMode)
 		project.Set("join_mode", input.JoinMode)
@@ -265,6 +275,7 @@ func bindMyProjectRoutes(e *core.ServeEvent) {
 			"description":     projectDescriptionText(project),
 			"projectNature":   project.GetString("project_nature"),
 			"executionStatus": project.GetString("execution_status"),
+			"statusReason":    project.GetString("status_reason"),
 			"projectNeeds":    project.GetStringSlice("project_needs"),
 			"providerOffers":  project.GetStringSlice("provider_offers"),
 			"version":         project.GetInt("version"),
@@ -334,6 +345,7 @@ func bindMyProjectRoutes(e *core.ServeEvent) {
 			ExecutionStatus string   `json:"executionStatus"`
 			ProjectNeeds    []string `json:"projectNeeds"`
 			ProviderOffers  []string `json:"providerOffers"`
+			StatusReason    string   `json:"statusReason"`
 		}
 		if err := e.BindBody(&input); err != nil {
 			return e.BadRequestError("Invalid project.", err)
@@ -347,8 +359,16 @@ func bindMyProjectRoutes(e *core.ServeEvent) {
 		if input.ProjectNature != "" && input.ProjectNature != "commercial" && input.ProjectNature != "learning" && input.ProjectNature != "showcase" && input.ProjectNature != "research" {
 			return e.BadRequestError("Invalid project purpose.", nil)
 		}
-		if input.ExecutionStatus != "not_started" && input.ExecutionStatus != "ongoing" && input.ExecutionStatus != "long_term" && input.ExecutionStatus != "paused" && input.ExecutionStatus != "completed" {
+		if input.ExecutionStatus != "not_started" && input.ExecutionStatus != "ongoing" && input.ExecutionStatus != "long_term" && input.ExecutionStatus != "paused" && input.ExecutionStatus != "completed" && input.ExecutionStatus != "terminated" {
 			return e.BadRequestError("Invalid project status.", nil)
+		}
+		input.StatusReason = strings.TrimSpace(input.StatusReason)
+		if input.ExecutionStatus == "paused" || input.ExecutionStatus == "terminated" {
+			if input.StatusReason == "" || utf8.RuneCountInString(input.StatusReason) > 2000 {
+				return e.BadRequestError("Invalid project status reason.", nil)
+			}
+		} else {
+			input.StatusReason = ""
 		}
 		needs, ok := cleanProjectSelection(input.ProjectNeeds, validProjectNeeds)
 		if !ok {
@@ -368,6 +388,7 @@ func bindMyProjectRoutes(e *core.ServeEvent) {
 			project.Set("description", map[string]string{"text": input.Description})
 			project.Set("project_nature", input.ProjectNature)
 			project.Set("execution_status", input.ExecutionStatus)
+			project.Set("status_reason", input.StatusReason)
 			project.Set("project_needs", needs)
 			project.Set("provider_offers", offers)
 			project.Set("version", nextVersion)
@@ -390,6 +411,7 @@ func bindMyProjectRoutes(e *core.ServeEvent) {
 				"executionStatus": input.ExecutionStatus,
 				"projectNeeds":    needs,
 				"providerOffers":  offers,
+				"statusReason":    input.StatusReason,
 			})
 			return tx.Save(snapshot)
 		})

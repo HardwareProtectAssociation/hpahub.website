@@ -148,6 +148,19 @@ func TestCreateProjectDetails(t *testing.T) {
 	if response = call(`{"title":"无效提供","projectNature":"research","providerOffers":["unknown"]}`); response.Code != http.StatusBadRequest {
 		t.Fatalf("invalid provider offers = %d: %s", response.Code, response.Body.String())
 	}
+	if response = call(`{"title":"暂停无原因","executionStatus":"paused","projectNature":"research"}`); response.Code != http.StatusBadRequest {
+		t.Fatalf("paused without reason = %d: %s", response.Code, response.Body.String())
+	}
+	if response = call(`{"title":"暂停项目","executionStatus":"paused","statusReason":"等待场地确认","projectNature":"research"}`); response.Code != http.StatusOK {
+		t.Fatalf("paused with reason = %d: %s", response.Code, response.Body.String())
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	pausedProject, err := app.FindRecordById("projects", result.ID)
+	if err != nil || pausedProject.GetString("status_reason") != "等待场地确认" {
+		t.Fatalf("paused reason not saved: %v", err)
+	}
 	var coverData bytes.Buffer
 	if err := png.Encode(&coverData, image.NewRGBA(image.Rect(0, 0, 4, 4))); err != nil {
 		t.Fatal(err)
@@ -254,6 +267,26 @@ func TestCreateProjectDetails(t *testing.T) {
 	if versionDetail.Version != 2 || versionDetail.Snapshot.Title != "更新后的项目" {
 		t.Fatalf("unexpected version detail: %+v", versionDetail)
 	}
+	pausedEdit := httptest.NewRequest("PATCH", "/api/hpahub/me/projects/"+project.Id, strings.NewReader(`{"title":"更新后的项目","summary":"新简介","description":"新详情","projectNature":"learning","executionStatus":"paused","projectNeeds":[],"providerOffers":[]}`))
+	pausedEdit.Header.Set("Authorization", "Bearer "+token)
+	pausedEdit.Header.Set("Content-Type", "application/json")
+	pausedEditResponse := httptest.NewRecorder()
+	mux.ServeHTTP(pausedEditResponse, pausedEdit)
+	if pausedEditResponse.Code != http.StatusBadRequest {
+		t.Fatalf("edit paused without reason = %d: %s", pausedEditResponse.Code, pausedEditResponse.Body.String())
+	}
+	terminatedEdit := httptest.NewRequest("PATCH", "/api/hpahub/me/projects/"+project.Id, strings.NewReader(`{"title":"更新后的项目","summary":"新简介","description":"新详情","projectNature":"learning","executionStatus":"terminated","statusReason":"合作方退出","projectNeeds":[],"providerOffers":[]}`))
+	terminatedEdit.Header.Set("Authorization", "Bearer "+token)
+	terminatedEdit.Header.Set("Content-Type", "application/json")
+	terminatedResponse := httptest.NewRecorder()
+	mux.ServeHTTP(terminatedResponse, terminatedEdit)
+	if terminatedResponse.Code != http.StatusOK {
+		t.Fatalf("edit terminated with reason = %d: %s", terminatedResponse.Code, terminatedResponse.Body.String())
+	}
+	terminated, err := app.FindRecordById("projects", project.Id)
+	if err != nil || terminated.GetString("execution_status") != "terminated" || terminated.GetString("status_reason") != "合作方退出" {
+		t.Fatalf("terminated reason not saved: %v", err)
+	}
 	other := publicProjectTestUser(t, app, "other-create@example.com", "其他人")
 	otherToken, err := other.NewAuthToken()
 	if err != nil {
@@ -299,7 +332,11 @@ func TestCreateProjectDetails(t *testing.T) {
 		t.Fatalf("unexpected detail: %d %s", detailResponse.Code, detailResponse.Body.String())
 	}
 	for _, status := range []string{"paused", "long_term"} {
-		response := call(`{"title":"状态测试","executionStatus":"` + status + `"}`)
+		body := `{"title":"状态测试","executionStatus":"` + status + `"}`
+		if status == "paused" {
+			body = `{"title":"状态测试","executionStatus":"paused","statusReason":"暂停原因"}`
+		}
+		response := call(body)
 		if response.Code != http.StatusOK {
 			t.Fatalf("create %s: %d %s", status, response.Code, response.Body.String())
 		}

@@ -65,6 +65,7 @@
         description: detail.description || '',
         projectNature: detail.projectNature || '',
         executionStatus: detail.executionStatus || 'ongoing',
+        statusReason: detail.statusReason || '',
         projectNeeds: detail.projectNeeds || [],
         providerOffers: detail.providerOffers || [],
         coverUrl: detail.coverUrl || '',
@@ -270,6 +271,7 @@
           <label>{$t('项目状态')}<select bind:value={editForm.executionStatus}>{#each Object.entries(statusLabels) as [value, label]}<option {value}>{$t(label)}</option>{/each}</select></label>
           <label>{$t('项目性质')}<select bind:value={editForm.projectNature}><option value="">{$t('未填写')}</option>{#each Object.entries(natureLabels) as [value, label]}<option {value}>{$t(label)}</option>{/each}</select></label>
         </div>
+        {#if ['paused', 'terminated'].includes(editForm.executionStatus)}<label>{$t('暂停或中止原因')}<textarea bind:value={editForm.statusReason} maxlength="2000" rows="3" required></textarea></label>{/if}
         <fieldset class="manage-options"><legend>{$t('项目需要')}</legend>{#each needOptions as [value, label]}<label><input type="checkbox" bind:group={editForm.projectNeeds} value={value} />{$t(label)}</label>{/each}</fieldset>
         <fieldset class="manage-options"><legend>{$t('发起人可提供')}</legend>{#each offerOptions as [value, label]}<label><input type="checkbox" bind:group={editForm.providerOffers} value={value} />{$t(label)}</label>{/each}</fieldset>
         <div class="manage-actions"><button class="primary" type="submit" disabled={manageBusy}>{manageBusy ? $t('正在保存…') : $t('保存修改')}</button><button type="button" class="secondary" on:click={closeManage}>{$t('取消')}</button></div>
@@ -290,6 +292,7 @@
               <div><dt>{$t('项目简介')}</dt><dd>{versionDetail.snapshot.summary || '—'}</dd></div>
               <div><dt>{$t('项目详情')}</dt><dd>{versionDetail.snapshot.description || '—'}</dd></div>
               <div><dt>{$t('项目状态')}</dt><dd>{$t(statusLabels[versionDetail.snapshot.executionStatus] || '—')}</dd></div>
+              {#if versionDetail.snapshot.statusReason}<div><dt>{$t('状态原因')}</dt><dd>{versionDetail.snapshot.statusReason}</dd></div>{/if}
               <div><dt>{$t('项目性质')}</dt><dd>{$t(natureLabels[versionDetail.snapshot.projectNature] || '—')}</dd></div>
               <div><dt>{$t('项目需要')}</dt><dd>{(versionDetail.snapshot.projectNeeds || []).map((value) => $t(needLabelMap[value] || value)).join(' · ') || '—'}</dd></div>
               <div><dt>{$t('发起人可提供')}</dt><dd>{(versionDetail.snapshot.providerOffers || []).map((value) => $t(offerLabelMap[value] || value)).join(' · ') || '—'}</dd></div>

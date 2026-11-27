@@ -6,7 +6,7 @@
   let collaboration = 'collaborative', joinMode = 'open', sponsorship = false;
   let startDate = '', duration = '', scheduleNote = '', error = '', creating = false;
   let executionStatus = 'not_started', allowOthersManagement = false, confidentialityRequested = false, confidentialityTerms = '';
-  let cover = null, coverPreview = '', createdId = '';
+  let statusReason = '';  let cover = null, coverPreview = '', createdId = '';
   let projectNeeds = [];
   let providerOffers = [];
   const needOptions = [['funding', '资金支持'], ['technical', '技术支持'], ['equipment', '设备支持'], ['venue', '场地支持'], ['manpower', '人手支持'], ['promotion', '宣传支持'], ['emotional', '情绪支持']];
@@ -20,7 +20,7 @@
       const response = await fetch('/api/hpahub/me/projects', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: title.trim(), summary: summary.trim(), description: description.trim(), proposedDifficulty: difficulty, projectNature: nature, projectNeeds, providerOffers, collaborationMode: collaboration, joinMode, acceptsSponsorship: sponsorship, allowOthersManagement, confidentialityRequested, confidentialityTerms: confidentialityRequested ? confidentialityTerms.trim() : '', plannedStartDate: executionStatus === 'completed' ? '' : startDate, estimatedDurationDays: !['completed', 'long_term'].includes(executionStatus) && duration ? Number(duration) : 0, longTerm: executionStatus === 'long_term', executionStatus, scheduleNote: scheduleNote.trim() }),
+        body: JSON.stringify({ title: title.trim(), summary: summary.trim(), description: description.trim(), proposedDifficulty: difficulty, projectNature: nature, projectNeeds, providerOffers, collaborationMode: collaboration, joinMode, acceptsSponsorship: sponsorship, allowOthersManagement, confidentialityRequested, confidentialityTerms: confidentialityRequested ? confidentialityTerms.trim() : '', plannedStartDate: executionStatus === 'completed' ? '' : startDate, estimatedDurationDays: !['completed', 'long_term'].includes(executionStatus) && duration ? Number(duration) : 0, longTerm: executionStatus === 'long_term', executionStatus, statusReason: statusReason.trim(), scheduleNote: scheduleNote.trim() }),
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.message || '创建失败，请重试。');
@@ -79,7 +79,7 @@
     {#if coverPreview}<img class="cover-preview" src={coverPreview} alt={$t('封面预览')} />{/if}
 
     <div class="fields">
-      <label>{$t('项目状态')}<select bind:value={executionStatus}><option value="not_started">{$t('未开始')}</option><option value="ongoing">{$t('已启动')}</option><option value="long_term">{$t('长期项目')}</option><option value="paused">{$t('暂停中')}</option><option value="completed">{$t('已完成')}</option></select></label>
+      <label>{$t('项目状态')}<select bind:value={executionStatus}><option value="not_started">{$t('未开始')}</option><option value="ongoing">{$t('已启动')}</option><option value="long_term">{$t('长期项目')}</option><option value="paused">{$t('暂停中')}</option><option value="completed">{$t('已完成')}</option><option value="terminated">{$t('已中止')}</option></select></label>
       <label>{$t('发起人自评难度')}<select bind:value={difficulty}><option value="">{$t('暂不设置')}</option>{#each ['D', 'C', 'B', 'A', 'S'] as level}<option value={level}>{level}</option>{/each}</select></label>
       <label>{$t('项目性质')}<select bind:value={nature} required><option value="" disabled>{$t('请选择')}</option><option value="commercial">{$t('商业盈利')}</option><option value="learning">{$t('学习交流')}</option><option value="showcase">{$t('技术展示')}</option><option value="research">{$t('科学研究')}</option></select></label>
       <label>{$t('协作方式')}<select bind:value={collaboration}><option value="collaborative">{$t('协作项目')}</option><option value="independent">{$t('独立项目')}</option></select></label>
@@ -87,6 +87,7 @@
       {#if executionStatus !== 'completed'}<label>{$t('计划开始日期')}<input type="date" bind:value={startDate} /></label>{/if}
       {#if !['completed', 'long_term'].includes(executionStatus)}<label>{$t('预计周期（天）')}<input type="number" min="1" max="36500" step="1" bind:value={duration} /></label>{/if}
     </div>
+    {#if ['paused', 'terminated'].includes(executionStatus)}<label>{$t('暂停或中止原因')}<textarea bind:value={statusReason} maxlength="2000" rows="3" required></textarea></label>{/if}
     <label>{$t('时间安排')}<textarea bind:value={scheduleNote} maxlength="2000" rows="3"></textarea></label>
     <fieldset class="arrangements"><legend>{$t('项目安排')}</legend>
       <div class="arrangement-row"><span>{$t('接受赞助')}</span><span class="choices" role="group" aria-label={$t('接受赞助')}><label><input type="radio" bind:group={sponsorship} value={true} />{$t('是')}</label><label><input type="radio" bind:group={sponsorship} value={false} />{$t('否')}</label></span></div>

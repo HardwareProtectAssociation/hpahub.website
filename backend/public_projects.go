@@ -60,6 +60,7 @@ type publicProjectDetail struct {
 	CollaborationMode        string                `json:"collaborationMode"`
 	ScheduleNote             string                `json:"scheduleNote"`
 	ProjectNature            string                `json:"projectNature"`
+	StatusReason             string                `json:"statusReason,omitempty"`
 	ProjectNeeds             []string              `json:"projectNeeds"`
 	ProviderOffers           []string              `json:"providerOffers"`
 	AcceptsSponsorship       bool                  `json:"acceptsSponsorship"`
@@ -160,6 +161,7 @@ func bindPublicProjectRoutes(e *core.ServeEvent) {
 			CollaborationMode:        project.GetString("collaboration_mode"),
 			ScheduleNote:             project.GetString("schedule_note"),
 			ProjectNature:            project.GetString("project_nature"),
+			StatusReason:             project.GetString("status_reason"),
 			ProjectNeeds:             project.GetStringSlice("project_needs"),
 			ProviderOffers:           project.GetStringSlice("provider_offers"),
 			AcceptsSponsorship:       project.GetBool("accepts_sponsorship"),
