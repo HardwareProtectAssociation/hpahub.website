@@ -38,24 +38,25 @@ func bindMyProjectRoutes(e *core.ServeEvent) {
 			return e.ForbiddenError("No member profile is linked to this account.", nil)
 		}
 		var input struct {
-			Title                    string `json:"title"`
-			Summary                  string `json:"summary"`
-			Description              string `json:"description"`
-			CollaborationMode        string `json:"collaborationMode"`
-			JoinMode                 string `json:"joinMode"`
-			AcceptsSponsorship       bool   `json:"acceptsSponsorship"`
-			AllowOthersManagement    bool   `json:"allowOthersManagement"`
-			ConfidentialityRequested bool   `json:"confidentialityRequested"`
-			ConfidentialityTerms     string `json:"confidentialityTerms"`
-			EstimatedDurationDays    int    `json:"estimatedDurationDays"`
-			LongTerm                 bool   `json:"longTerm"`
-			Completed                bool   `json:"completed"`
-			ExecutionStatus          string `json:"executionStatus"`
-			PlannedStartDate         string `json:"plannedStartDate"`
-			ScheduleNote             string `json:"scheduleNote"`
-			ProposedDifficulty       string `json:"proposedDifficulty"`
-			AdventureStyle           string `json:"adventureStyle"`
-			ProjectNature            string `json:"projectNature"`
+			Title                    string   `json:"title"`
+			Summary                  string   `json:"summary"`
+			Description              string   `json:"description"`
+			CollaborationMode        string   `json:"collaborationMode"`
+			JoinMode                 string   `json:"joinMode"`
+			AcceptsSponsorship       bool     `json:"acceptsSponsorship"`
+			AllowOthersManagement    bool     `json:"allowOthersManagement"`
+			ConfidentialityRequested bool     `json:"confidentialityRequested"`
+			ConfidentialityTerms     string   `json:"confidentialityTerms"`
+			EstimatedDurationDays    int      `json:"estimatedDurationDays"`
+			LongTerm                 bool     `json:"longTerm"`
+			Completed                bool     `json:"completed"`
+			ExecutionStatus          string   `json:"executionStatus"`
+			PlannedStartDate         string   `json:"plannedStartDate"`
+			ScheduleNote             string   `json:"scheduleNote"`
+			ProposedDifficulty       string   `json:"proposedDifficulty"`
+			AdventureStyle           string   `json:"adventureStyle"`
+			ProjectNature            string   `json:"projectNature"`
+			ProjectNeeds             []string `json:"projectNeeds"`
 		}
 		if err := e.BindBody(&input); err != nil {
 			return e.BadRequestError("Invalid project.", err)
@@ -110,6 +111,18 @@ func bindMyProjectRoutes(e *core.ServeEvent) {
 		if input.ProjectNature != "" && input.ProjectNature != "commercial" && input.ProjectNature != "learning" && input.ProjectNature != "showcase" && input.ProjectNature != "research" {
 			return e.BadRequestError("Invalid project purpose.", nil)
 		}
+		validNeeds := map[string]bool{"funding": true, "technical": true, "equipment": true, "manpower": true, "promotion": true, "emotional": true}
+		projectNeeds := make([]string, 0, len(input.ProjectNeeds))
+		seenNeeds := map[string]bool{}
+		for _, need := range input.ProjectNeeds {
+			if !validNeeds[need] {
+				return e.BadRequestError("Invalid project needs.", nil)
+			}
+			if !seenNeeds[need] {
+				seenNeeds[need] = true
+				projectNeeds = append(projectNeeds, need)
+			}
+		}
 		if input.AdventureStyle == "" {
 			input.AdventureStyle = "project"
 		}
@@ -146,6 +159,7 @@ func bindMyProjectRoutes(e *core.ServeEvent) {
 		}
 		project.Set("adventure_style", input.AdventureStyle)
 		project.Set("project_nature", input.ProjectNature)
+		project.Set("project_needs", projectNeeds)
 		project.Set("version", 1)
 		project.Set("published_at", time.Now())
 		if input.ProposedDifficulty != "" {

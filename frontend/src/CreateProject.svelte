@@ -5,6 +5,8 @@
   let collaboration = 'collaborative', joinMode = 'open', sponsorship = false;
   let startDate = '', duration = '', scheduleNote = '', error = '', creating = false;
   let executionStatus = 'not_started', allowOthersManagement = false, confidentialityRequested = false, confidentialityTerms = '';
+  let projectNeeds = [];
+  const needOptions = [['funding', '资金支持'], ['technical', '技术支持'], ['equipment', '设备支持'], ['manpower', '人手支持'], ['promotion', '宣传支持'], ['emotional', '情绪支持']];
 
   async function createProject() {
     if (!title.trim() || creating) return;
@@ -14,7 +16,7 @@
       const response = await fetch('/api/hpahub/me/projects', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: title.trim(), summary: summary.trim(), description: description.trim(), proposedDifficulty: difficulty, projectNature: nature, collaborationMode: collaboration, joinMode, acceptsSponsorship: sponsorship, allowOthersManagement, confidentialityRequested, confidentialityTerms: confidentialityRequested ? confidentialityTerms.trim() : '', plannedStartDate: executionStatus === 'completed' ? '' : startDate, estimatedDurationDays: !['completed', 'long_term'].includes(executionStatus) && duration ? Number(duration) : 0, longTerm: executionStatus === 'long_term', executionStatus, scheduleNote: scheduleNote.trim() }),
+        body: JSON.stringify({ title: title.trim(), summary: summary.trim(), description: description.trim(), proposedDifficulty: difficulty, projectNature: nature, projectNeeds, collaborationMode: collaboration, joinMode, acceptsSponsorship: sponsorship, allowOthersManagement, confidentialityRequested, confidentialityTerms: confidentialityRequested ? confidentialityTerms.trim() : '', plannedStartDate: executionStatus === 'completed' ? '' : startDate, estimatedDurationDays: !['completed', 'long_term'].includes(executionStatus) && duration ? Number(duration) : 0, longTerm: executionStatus === 'long_term', executionStatus, scheduleNote: scheduleNote.trim() }),
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.message || '创建失败，请重试。');
@@ -48,6 +50,11 @@
       <div class="arrangement-row"><span>{$t('允许他人管理')}</span><span class="choices" role="group" aria-label={$t('允许他人管理')}><label><input type="radio" bind:group={allowOthersManagement} value={true} />{$t('是')}</label><label><input type="radio" bind:group={allowOthersManagement} value={false} />{$t('否')}</label></span></div>
       <div class="arrangement-row"><span>{$t('需要保密')}</span><span class="choices" role="group" aria-label={$t('需要保密')}><label><input type="radio" bind:group={confidentialityRequested} value={true} />{$t('是')}</label><label><input type="radio" bind:group={confidentialityRequested} value={false} />{$t('否')}</label></span></div>
     </fieldset>
+    <fieldset class="needs"><legend>{$t('项目需要')}</legend>
+      {#each needOptions as [value, label]}
+        <label><input type="checkbox" bind:group={projectNeeds} value={value} />{$t(label)}</label>
+      {/each}
+    </fieldset>
     {#if confidentialityRequested}<label>{$t('保密协议')}<textarea bind:value={confidentialityTerms} maxlength="10000" rows="6" required></textarea></label>{/if}
     {#if error}<p class="message error" role="alert">{$t(error)}</p>{/if}
     <div class="actions"><button class="primary" type="submit" disabled={creating}>{$t(creating ? '正在创建…' : '创建项目')}</button><a class="secondary" href="/my-projects">{$t('取消')}</a></div>
@@ -70,6 +77,11 @@
   .choices label { display: inline-flex; flex-direction: row; align-items: center; gap: 6px; padding: 4px 12px; border: 1px solid var(--border-default); border-radius: 999px; color: var(--ink-secondary); font-size: 13px; cursor: pointer; transition: border-color var(--t-fast) var(--ease-out), background-color var(--t-fast) var(--ease-out), color var(--t-fast) var(--ease-out); }
   .choices label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-deep); }
   .choices input { accent-color: var(--accent); margin: 0; }
+  .needs { display: flex; flex-wrap: wrap; gap: 10px; margin: 0; padding: 14px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); }
+  .needs legend { padding: 0 5px; color: var(--ink-secondary); font-size: 14px; }
+  .needs label { display: inline-flex; align-items: center; gap: 7px; padding: 5px 12px; border: 1px solid var(--border-default); border-radius: 999px; color: var(--ink-secondary); font-size: 13px; cursor: pointer; transition: border-color var(--t-fast) var(--ease-out), background-color var(--t-fast) var(--ease-out), color var(--t-fast) var(--ease-out); }
+  .needs label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-deep); }
+  .needs input { accent-color: var(--accent); margin: 0; }
   .actions { display: flex; align-items: center; gap: 12px; }
   .actions .secondary { width: auto; min-height: 44px; padding: 0 18px; justify-content: center; }
   @media (max-width: 600px) { form { padding: 18px; } }
