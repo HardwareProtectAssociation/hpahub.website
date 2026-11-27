@@ -532,8 +532,10 @@
               <div class="project-meta"><span class:done={project.status === 'completed'} class="project-status">{statusLabel(project.status)}</span>{#if project.difficulty}<span class={`rank rank-pill difficulty-badge rank-${difficultyRank(project.difficulty)}`}>{$t('难度')} {project.difficulty}</span>{:else}<span class="rank-pending">{$t('难度')} {$t('待定')}</span>{/if}</div>
               <h2>{project.title}</h2>
               <p>{project.summary}</p>
-              <p class="project-owner">{$t('发起人')}：<RedactedText text={project.creatorName || '—'} hidden={!!project.creatorRedacted} /></p>
-              <p class="project-owner">{$t('管理员')}：{project.managers?.length || 0}{#if project.managers?.length} · {#each project.managers as manager, index}{#if index}、{/if}<RedactedText text={manager.name || '—'} hidden={!!manager.redacted} />{/each}{/if}</p>
+              <div class="project-people">
+                <span class="people-block"><span class="people-label">{$t('发起人')}</span>{#if project.creatorRedacted}<span class="people-avatar hidden" title={$t('资料隐藏')} aria-label={$t('资料隐藏')}></span>{:else if project.creatorAvatarUrl}<img class="people-avatar" src={project.creatorAvatarUrl} alt={project.creatorName || ''} title={project.creatorName || ''} loading="lazy" />{:else}<span class="people-avatar" title={project.creatorName || ''}></span>{/if}</span>
+                {#if project.managers?.length}<span class="people-block"><span class="people-label">{$t('管理员')}</span>{#each project.managers as manager}<span class="people-avatar-slot">{#if manager.redacted}<span class="people-avatar hidden" title={$t('资料隐藏')} aria-label={$t('资料隐藏')}></span>{:else if manager.avatarUrl}<img class="people-avatar" src={manager.avatarUrl} alt={manager.name || ''} title={manager.name || ''} loading="lazy" />{:else}<span class="people-avatar" title={manager.name || ''}></span>{/if}</span>{/each}</span>{/if}
+              </div>
               <p class="project-owner">{$t('发布时间')}：{project.publishedAt ? formatDate(project.publishedAt) : '—'}</p>
               <p class="project-owner">{$t('参与人数')}：{project.participantCount || 0}</p>
             </a>
@@ -738,6 +740,12 @@
   .confirmed { color: var(--accent-deep); font-size: 12px; font-weight: 600; }
   .project-stage { color: var(--ink-muted); font-size: 12px; }
   .project-owner { margin: 0 0 10px; color: var(--ink-muted); font-size: 13px; }
+  .project-people { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; margin: 0 0 10px; }
+  .people-block { display: inline-flex; align-items: center; gap: 6px; }
+  .people-label { color: var(--ink-muted); font-size: 12px; }
+  .people-avatar { display: inline-block; width: 26px; height: 26px; border-radius: 50%; object-fit: cover; background: var(--surface-tint); border: 1px solid var(--border-subtle); }
+  .people-avatar.hidden { background: var(--ink-primary); }
+  .people-avatar-slot { display: inline-flex; }
   .owner-avatar { width: 22px; height: 22px; margin-right: 6px; border-radius: 50%; object-fit: cover; vertical-align: middle; background: var(--surface-tint); border: 1px solid var(--border-subtle); }
   .project-card-link { display: block; color: inherit; text-decoration: none; }
   .project-card-link:hover h2 { color: var(--accent-deep); }

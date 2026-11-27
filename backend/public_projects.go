@@ -17,6 +17,7 @@ type publicProject struct {
 	OwnerRedacted    bool                  `json:"ownerRedacted,omitempty"`
 	CreatorName      string                `json:"creatorName,omitempty"`
 	CreatorRedacted  bool                  `json:"creatorRedacted,omitempty"`
+	CreatorAvatarURL string                `json:"creatorAvatarUrl,omitempty"`
 	Managers         []publicProjectMember `json:"managers,omitempty"`
 	ParticipantCount int                   `json:"participantCount,omitempty"`
 	ID               string                `json:"id"`
@@ -43,10 +44,11 @@ type publicProjectStage struct {
 }
 
 type publicProjectMember struct {
-	Redacted bool   `json:"redacted,omitempty"`
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	Duties   string `json:"duties"`
+	Redacted  bool   `json:"redacted,omitempty"`
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Duties    string `json:"duties"`
+	AvatarURL string `json:"avatarUrl,omitempty"`
 }
 
 type publicProjectDetail struct {
@@ -483,10 +485,14 @@ func projectHallCard(e *core.RequestEvent, project *core.Record, users map[strin
 		if hidden {
 			name = maskedText(name)
 		}
-		return publicProjectMember{Name: name, Redacted: hidden}
+		member := publicProjectMember{Name: name, Redacted: hidden}
+		if !hidden && user.GetBool("profilePublic") && !profileSectionHidden(user, "avatar") && user.GetString("avatar") != "" {
+			member.AvatarURL = contentURL("members", user.Id, "avatar")
+		}
+		return member
 	}
 	creator := display(project.GetString("creator_user_id"))
-	card.CreatorName, card.CreatorRedacted = creator.Name, creator.Redacted
+	card.CreatorName, card.CreatorRedacted, card.CreatorAvatarURL = creator.Name, creator.Redacted, creator.AvatarURL
 	ownerID := project.GetString("owner_user_id")
 	owner := display(ownerID)
 	card.Managers = []publicProjectMember{owner}
