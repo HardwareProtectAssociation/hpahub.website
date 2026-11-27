@@ -13,6 +13,7 @@ export default {
   '创造，保护，调查': ['創造，保護，調查', '創造、保護、調査', 'Create, Protect, Investigate'],
   '本网站所有内容纯属娱乐，世界上不存在硬件保护协会或任何相关组织。': ['本網站所有內容純屬娛樂，世界上不存在硬體保護協會或任何相關組織。', '本サイトの内容はすべて娯楽目的であり、ハードウェア保護協会や関連する組織は実在しません。', 'Everything on this site is purely for entertainment. The Hardware Protection Association and any related organizations do not exist.'],
   '数据删除': ['資料刪除', 'データ削除', 'Data removed'],
+  '数据解析错误': ['資料解析錯誤', 'データ解析エラー', 'Data parsing error'],
   '浏览硬件数据库': ['瀏覽硬體資料庫', 'ハードウェアデータベースを見る', 'Browse hardware database'],
   '认识成员': ['認識成員', 'メンバーを知る', 'Meet members'],
   '项目大厅': ['專案大廳', 'プロジェクトホール', 'Project hall'],
