@@ -236,16 +236,23 @@ func difficultyStatusForProject(app core.App, projectID string) (*difficultyStat
 			status.OpposeCounts[diff]++
 		}
 		voterName := ""
-		if voter, err := app.FindRecordById("users", vote.GetString("voter_user_id")); err == nil {
+		voterID := vote.GetString("voter_user_id")
+		comment := vote.GetString("comment")
+		if voter, err := app.FindRecordById("users", voterID); err == nil {
 			voterName = publicPersonName(voter)
+			if profileSectionHidden(voter, "projects") || profileSectionHidden(voter, "project:"+projectID) {
+				voterName = maskedText(voterName)
+				voterID = ""
+				comment = maskedText(comment)
+			}
 		}
 		status.Votes = append(status.Votes, difficultyVote{
 			ID:         vote.Id,
 			Voter:      voterName,
-			VoterID:    vote.GetString("voter_user_id"),
+			VoterID:    voterID,
 			Difficulty: diff,
 			Stance:     vote.GetString("stance"),
-			Comment:    vote.GetString("comment"),
+			Comment:    comment,
 			Created:    vote.GetString("created"),
 		})
 	}

@@ -1,5 +1,5 @@
 <script>
-  import { onMount, onDestroy } from 'svelte';
+  import { createEventDispatcher, onMount, onDestroy } from 'svelte';
   import { get } from 'svelte/store';
   import { t } from './i18n.js';
   import AvatarCrop from './AvatarCrop.svelte';
@@ -7,7 +7,10 @@
   export let token;
   export let role;
   export let manage = false;
-  let profile = { name: '', bio: '', profilePublic: false, avatarUrl: '' };
+  export let cardsOnly = false;
+  const dispatch = createEventDispatcher();
+  let profile = { name: '', bio: '', profilePublic: false, avatarUrl: '', currentStatus: '' };
+  let publicProfileId = '';
   let records = [];
   let current = null;
   let showEditor = false;
@@ -53,7 +56,7 @@
   let difficultyNotice = '';
   let savingDifficulty = '';
   const difficultyLevels = ['D', 'C', 'B', 'A', 'S'];
-  const projectStatusLabels = { ongoing: '进行中', paused: '暂停', terminated: '已中止', completed: '已完成' };
+  const projectStatusLabels = { not_started: '未开始', ongoing: '已启动', long_term: '长期项目', paused: '暂停中', terminated: '已中止', completed: '已完成' };
   let voteDifficulties = {};
   let voteStances = {};
   let voteComments = {};
@@ -78,11 +81,14 @@
     clearPreviews();
     const [list, nextProfile, managed] = await Promise.all([
       request(base),
-      manage ? null : request('/api/hpahub/me/profile'),
+      manage || cardsOnly ? null : request('/api/hpahub/me/center'),
       manage ? request('/api/hpahub/manage/projects') : null,
     ]);
     records = list.items;
-    if (nextProfile) profile = nextProfile;
+    if (nextProfile) {
+      profile = nextProfile.profile;
+      publicProfileId = profile.profilePublic ? profile.id : '';
+    }
     if (managed) projects = managed.items;
     await Promise.all([...(profile.avatarUrl && !manage ? [preview(profile.avatarUrl)] : []), ...records.flatMap(record => (record.imageUrls || []).map(preview))]);
   }
@@ -96,7 +102,7 @@
     published = record?.published || false;
     keepImages = [...(record?.images || [])];
     files = [];
-    imagesInput.value = '';
+    if (imagesInput) imagesInput.value = '';
     uploadPreviews.forEach(URL.revokeObjectURL); uploadPreviews = [];
     error = ''; notice = '';
   }
@@ -105,10 +111,11 @@
     busy = true; error = ''; notice = '';
     try {
       const body = new FormData();
-      body.set('name', profile.name); body.set('bio', profile.bio); body.set('profilePublic', String(profile.profilePublic));
+      body.set('name', profile.name); body.set('bio', profile.bio); body.set('profilePublic', String(profile.profilePublic)); body.set('currentStatus', profile.currentStatus || '');
       if (avatar && !removeAvatar) { body.set('avatar', avatar); body.set('avatarThumb', avatarThumb); }
       if (removeAvatar) body.set('removeAvatar', 'true');
-      await request('/api/hpahub/me/profile', { method: 'PATCH', body });
+      const result = await request('/api/hpahub/me/center/profile', { method: 'PATCH', body });
+      dispatch('profileSaved', { name: result.profile?.name });
       avatar = null; avatarThumb = null; if (avatarPreview) URL.revokeObjectURL(avatarPreview); avatarPreview = ''; removeAvatar = false; await load(); notice = '资料已保存。';
     } catch (e) { error = e.message; errorParams = e.params || {}; } finally { busy = false; }
   }
@@ -178,8 +185,8 @@
   }
 </script>
 
-<main class="dashboard public-page editor-page">
-  <h1>{manage ? $t('项目大厅管理') : $t('个人设置')}</h1>
+<div class:dashboard={!cardsOnly} class="public-page editor-page">
+  {#if !cardsOnly}<h1>{manage ? $t('项目大厅管理') : $t('修改个人名片')}</h1>{/if}
   {#if error}<p class="message error" role="alert">{$t(error, errorParams)}</p>{/if}{#if notice}<p class="message success" role="status">{$t(notice)}</p>{/if}
   {#if manage}
     <section class="difficulty-section">
@@ -225,22 +232,25 @@
       {/if}
     </section>
   {/if}
-  {#if !manage}
-    <section><h2>{$t('成员资料')}</h2><form class="editor-form" on:submit|preventDefault={saveProfile}>
+  {#if !manage && !cardsOnly}
+    <section><h2>{$t('公开资料')}</h2><form class="editor-form" on:submit|preventDefault={saveProfile}>
       {#if avatarPreview && !removeAvatar}<img class="avatar" src={avatarPreview} alt={$t('新头像预览')} />{:else if profile.avatarUrl && previews[profile.avatarUrl] && !removeAvatar}<img class="avatar" src={previews[profile.avatarUrl]} alt={$t('当前头像')} />{/if}
-      <label>{$t('昵称')} <input bind:value={profile.name} maxlength="80" required={profile.profilePublic} /></label>
+      <label>{$t('昵称')} <input bind:value={profile.name} maxlength="80" required /></label>
       <label>{$t('简介')} <textarea bind:value={profile.bio} maxlength="600" rows="4"></textarea></label>
+      <label>{$t('当前状态')} <select bind:value={profile.currentStatus}><option value="">{$t('未设置')}</option><option value="busy">{$t('忙碌')}</option><option value="free">{$t('空闲')}</option></select></label>
       <AvatarCrop on:crop={selectAvatar} on:pending={(event) => cropPending = event.detail} />
       {#if profile.avatarUrl}<label class="check-label"><input type="checkbox" bind:checked={removeAvatar} on:change={() => { if (removeAvatar) { avatar = null; avatarThumb = null; } }} /> {$t('删除头像')}</label>{/if}
       <label class="check-label"><input type="checkbox" bind:checked={profile.profilePublic} /> {$t('公开我的资料和卡片')}</label>
       <button class="primary" disabled={busy || cropPending}>{$t('保存资料')}</button>
+      {#if publicProfileId}<a href={'/community/' + encodeURIComponent(publicProfileId)}>{$t('查看公开主页')}</a>{/if}
+      <a href="/me/skills">{$t('技能管理')}</a>
     </form></section>
   {/if}
   <section><h2>{manage ? $t('项目') : $t('我的卡片')}</h2>
     <div class="editor-toolbar"><button type="button" class="primary" on:click={() => edit()}>{manage ? $t('新建项目') : $t('新建卡片')}</button></div>
     {#if records.length}<div class="editor-list">{#each records as record}<article><h3>{record.title} {#if manage}<small>{record.published ? $t('已发布') : $t('草稿')}</small>{/if}</h3><p>{record.text}</p><div class="image-grid">{#each record.imageUrls || [] as url}{#if previews[url]}<a href={previews[url]} target="_blank" rel="noreferrer"><img src={previews[url]} alt={record.title} /></a>{/if}{/each}</div><div class="editor-actions"><button type="button" on:click={() => edit(record)}>{$t('编辑')}</button><button type="button" on:click={() => remove(record)} disabled={busy}>{$t('删除')}</button></div></article>{/each}</div>{:else}<p>{manage ? $t('暂无项目。') : $t('暂无卡片。')}</p>{/if}
   </section>
-</main>
+</div>
 
 {#if showEditor}
   <div class="editor-modal-backdrop" on:click={() => { showEditor = false; edit(); }} on:keydown={(e) => { if (e.key === 'Escape') { showEditor = false; edit(); } }} role="presentation">
@@ -263,21 +273,22 @@
 
 <style>
   .difficulty-section { margin: 26px 0; }
-  .difficulty-list { display: grid; gap: 8px; max-width: 900px; }
-  .difficulty-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 12px; border: 1px solid #dcded4; background: #fafbf7; }
-  .difficulty-info { display: grid; gap: 2px; }
-  .difficulty-info small { color: #818b7f; }
+  .difficulty-list { display: grid; gap: 10px; max-width: 900px; }
+  .difficulty-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 16px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--shadow-xs); }
+  .difficulty-info { display: grid; gap: 3px; }
+  .difficulty-info small { color: var(--ink-muted); }
   .difficulty-info small span { margin-right: 10px; }
-  .difficulty-info .confirmed { color: #4d6448; font-weight: 600; }
-  .difficulty-info .consensus { color: #285a78; font-weight: 600; }
+  .difficulty-info .confirmed { color: var(--accent-deep); font-weight: 600; }
+  .difficulty-info .consensus { color: #166a78; font-weight: 600; }
   .vote-controls { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-  .vote-controls select { min-width: 60px; padding: 5px 6px; border: 1px solid #b9c3b3; background: #fff; }
-  .vote-controls .small { padding: 4px 10px; font-size: 12px; }
-  .frozen { color: #8b9587; font-size: 12px; }
+  .vote-controls select { min-width: 64px; padding: 6px 8px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-elevated); }
+  .vote-controls .small { padding: 5px 11px; font-size: 12px; min-height: 32px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--ink-secondary); }
+  .vote-controls .small.primary { border-color: transparent; color: #fff; }
+  .frozen { color: var(--ink-subtle); font-size: 12px; }
   .editor-toolbar { margin: 12px 0; }
-  .editor-modal-backdrop { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 20px; background: #1c302266; }
-  .editor-modal { width: min(680px, 100%); max-height: calc(100dvh - 40px); overflow-y: auto; padding: 24px; border: 1px solid #dcded4; border-radius: 8px; background: #fbfcf8; box-shadow: 0 20px 50px #1c302233; }
+  .editor-modal-backdrop { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 20px; background: rgba(12, 34, 24, 0.36); backdrop-filter: blur(4px); }
+  .editor-modal { width: min(680px, 100%); max-height: calc(100dvh - 40px); overflow-y: auto; padding: 26px; border: 1px solid var(--border-default); border-radius: var(--radius-lg); background: var(--surface-elevated); box-shadow: var(--shadow-md); animation: mint-enter 180ms var(--ease-out); }
   .editor-modal-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
   .editor-modal-head h2 { margin: 0; font-size: 20px; }
-  .editor-modal-close { border: 0; background: none; color: #52695a; font-size: 26px; line-height: 1; padding: 0 4px; cursor: pointer; }
+  .editor-modal-close { border: 0; background: none; color: var(--ink-muted); font-size: 26px; line-height: 1; padding: 0 4px; cursor: pointer; }
 </style>

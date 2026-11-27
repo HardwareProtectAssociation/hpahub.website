@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { locale, t } from './i18n.js';
   import { difficultyRank, levelRank } from './tiers.js';
+  import RedactedText from './RedactedText.svelte';
   export let pathname;
   export let token = '';
   let data = null;
@@ -15,6 +16,8 @@
   let applyError = '';
   let applyNotice = '';
   let applying = false;
+  let acceptTerms = false;
+  let management = null, managementError = '', managementBusy = false;
   let followBusy = false;
   let followError = '';
   let improvementMessage = '';
@@ -26,6 +29,10 @@
   let activeTab = 'completed';
   let loading = true;
   let errorParams = {};
+  let projectOffset = 0;
+  let projectHasMore = false;
+  let projectPageLoading = false;
+  let projectPageError = '';
   const parts = pathname.split('/').filter(Boolean);
   const section = parts[0];
   const id = parts[1];
@@ -39,6 +46,11 @@
       return;
     }
     if (!['community', 'showcase'].includes(section)) { loading = false; return; }
+    if (section === 'showcase' && !id) {
+      data = { items: [] };
+      await loadMoreProjects();
+      return;
+    }
     try {
       const endpoint = section === 'community' ? 'members' : 'projects';
       const response = await fetch(`/api/hpahub/${endpoint}${id ? '/' + encodeURIComponent(id) : ''}`, {
@@ -47,6 +59,7 @@
       });
       if (!response.ok) { error = response.status === 404 ? '内容不存在或未公开。' : '加载失败（{status}）'; errorParams = { status: response.status }; return; }
       data = await response.json();
+      if (section === 'showcase' && id && token) await loadManagement();
       if (section === 'community' && id) {
         const candidates = [
           ['completed', data.projectsCompleted?.length || 0],
@@ -58,6 +71,27 @@
       }
     } catch (e) { error = e.message; } finally { loading = false; }
   });
+  async function loadMoreProjects() {
+    if (projectPageLoading || (projectOffset > 0 && !projectHasMore)) return;
+    projectPageLoading = true;
+    projectPageError = '';
+    try {
+      const response = await fetch(`/api/hpahub/projects?offset=${projectOffset}`, {
+        cache: 'no-store',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!response.ok) throw new Error(`加载失败（${response.status}）`);
+      const page = await response.json();
+      data = { ...data, items: [...(data?.items || []), ...page.items] };
+      projectOffset = page.nextOffset;
+      projectHasMore = page.hasMore;
+    } catch (e) {
+      projectPageError = e.message;
+    } finally {
+      projectPageLoading = false;
+      loading = false;
+    }
+  }
   $: items = Array.isArray(data) ? data : data?.items || [];
   // shortcut: 演示卡片在 /api/hpahub/home 无数据时展示版式，真实内容稳定后删除
   const demoProjects = [
@@ -71,17 +105,31 @@
     { id: '', name: '示例工程师 B', avatarUrl: '', identities: [{ name: '机械设计师' }], admireCount: 12 },
     { id: '', name: '示例工程师 C', avatarUrl: '', identities: [{ name: '固件工程师' }], admireCount: 6 },
   ];
-  const demoHardware = [
-    { id: '', name: 'GeForce RTX 4080 SUPER', brand: 'NVIDIA', subtitle: '16GB GDDR6X', likeCount: 32 },
-    { id: '', name: 'Ryzen 7 9800X3D', brand: 'AMD', subtitle: '8 核 16 线程', likeCount: 18 },
-    { id: '', name: 'HHKB Professional', brand: 'PFU', subtitle: '静电容键盘', likeCount: 9 },
-  ];
   $: shownProjects = home?.popularProjects?.length ? home.popularProjects : demoProjects;
   $: shownEngineers = home?.popularEngineers?.length ? home.popularEngineers : demoEngineers;
-  $: shownHardware = home?.popularHardware?.length ? home.popularHardware : demoHardware;
   $: featuredSkills = (data?.skills || []).filter((skill) => skill.featured);
   $: shownSkills = featuredSkills.length ? featuredSkills : (data?.skills || []);
-  const statusLabels = { ongoing: '进行中', paused: '暂停', terminated: '已中止', completed: '已完成' };
+  const statusLabels = { not_started: '未开始', ongoing: '已启动', long_term: '长期项目', paused: '暂停中', terminated: '已中止', completed: '已完成' };
+  const hallStatuses = ['not_started', 'ongoing', 'long_term', 'paused', 'completed', 'terminated'];
+  const natureLabels = { commercial: '商业盈利', learning: '学习交流', showcase: '技术展示', research: '科学研究' };
+  let hallQuery = '';
+  let hallSort = 'latest';
+  let hallStatus = '';
+  let hallNature = '';
+  $: hallQueryText = hallQuery.trim().toLowerCase();
+  $: hallProjects = [...items]
+    .filter((project) => {
+      if (hallStatus && project.status !== hallStatus) return false;
+      if (hallNature && project.projectNature !== hallNature) return false;
+      if (!hallQueryText) return true;
+      return [project.title, project.summary, project.creatorName, project.ownerName].some((value) => String(value || '').toLowerCase().includes(hallQueryText));
+    })
+    .sort((a, b) => {
+      if (hallSort === 'hot') return (b.followCount || 0) - (a.followCount || 0) || (b.participantCount || 0) - (a.participantCount || 0);
+      if (hallSort === 'difficulty') return difficultyRank(b.difficulty) - difficultyRank(a.difficulty) || (b.followCount || 0) - (a.followCount || 0);
+      if (hallSort === 'participants') return (b.participantCount || 0) - (a.participantCount || 0);
+      return new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0);
+    });
   const currentStatusLabels = { busy: '忙碌', free: '空闲' };
   const relationLabels = { admire: '关注', watch: '监视', investigate: '调查' };
   const recognizedLabels = { 1: '有点东西', 2: '他不对劲', 3: '他真会啊', 4: '他太强了！', 5: '他是超人！' };
@@ -121,6 +169,22 @@
     }
   }
 
+  async function loadManagement() {
+    try {
+      const response = await fetch(`/api/hpahub/projects/${encodeURIComponent(id)}/management`, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
+      if (response.ok) management = await response.json();
+    } catch { managementError = '加载管理信息失败'; }
+  }
+  async function updateManagement(path, body) {
+    managementBusy = true; managementError = '';
+    try {
+      const response = await fetch(`/api/hpahub/projects/${encodeURIComponent(id)}/${path}`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (!response.ok) { const result = await response.json().catch(() => ({})); throw new Error(result.message || '操作失败'); }
+      await loadManagement();
+    } catch (err) { managementError = err.message || '操作失败'; }
+    finally { managementBusy = false; }
+  }
+
   async function applyToProject() {
     if (!token || !data?.canApply) return;
     applying = true;
@@ -135,6 +199,7 @@
           profession: applyProfession,
           time: applyTime,
           ability: applyAbility,
+          acceptedTerms: acceptTerms ? data.confidentialityTerms : '',
         }),
       });
       const result = await response.json().catch(() => ({}));
@@ -176,7 +241,7 @@
       const response = await fetch(`/api/hpahub/projects/${encodeURIComponent(data.id)}/improvement`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: improvementMessage }),
+        body: JSON.stringify({ message: improvementMessage, acceptedTerms: acceptTerms ? data.confidentialityTerms : '' }),
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.message || '改进申请失败，请重试。');
@@ -213,18 +278,26 @@
 
 <main class="dashboard public-page">
   {#if pathname === '/'}
-    <section class="public-hero"><h1>{$t('硬件保护协会')}</h1><p>Hardware Protection Association</p><p>{$t('创造，保护，调查')}</p><p><a href="/brief">{$t('协会简介')}</a> · <a href="/rules">{$t('协会会规')}</a></p></section>
+    <section class="public-hero">
+      <div class="hero-orb" aria-hidden="true"><span></span><span></span></div>
+      <div class="hero-badge" aria-hidden="true"><i></i> HPA · TELEMETRY &amp; LAB</div>
+      <h1>{$t('硬件保护协会')}</h1>
+      <p class="hero-en">Hardware Protection Association</p>
+      <p class="hero-motto">{$t('创造，保护，调查')}</p>
+      <p class="hero-disclaimer"><span class="disclaimer-mark" aria-hidden="true">※</span>{$t('本网站所有内容纯属娱乐，世界上不存在硬件保护协会或任何相关组织。')}<span class="disclaimer-sign"><span class="disclaimer-corrupt" title={$t('数据解析错误')} aria-label={$t('数据解析错误')}>[ERR 0x5F] UTF8_DECODE_FAILED: å…¬ä¼—èµ„è®¯åº”å¯¹åŠžå…¬å®¤</span><span class="disclaimer-tag">// {$t('数据已隐藏')}</span></span></p>
+      <p class="hero-actions"><a href="/brief">{$t('协会简介')}</a><a href="/rules">{$t('协会会规')}</a></p>
+    </section>
     <section class="home-shelf">
       <div class="shelf-head"><h2>{$t('热门项目')}</h2><a href="/showcase">{$t('项目大厅')} →</a></div>
       <div class="home-grid">
         {#each shownProjects as project (project.id || project.title)}
           <a class="yt-card" href={project.id ? '/showcase/' + encodeURIComponent(project.id) : '/showcase'}>
-            <span class={`yt-thumb yt-${project.adventureStyle}`}>{#if project.difficulty}<span class={`yt-badge rank rank-pill rank-${difficultyRank(project.difficulty)}`}>{$t('难度')} {project.difficulty}</span>{:else}<span class="yt-badge rank-pending">{$t('难度')} {$t('待定')}</span>{/if}</span>
+            <span class={`yt-thumb yt-${project.adventureStyle}`}>{#if project.difficulty}<span class={`yt-badge rank rank-pill difficulty-badge rank-${difficultyRank(project.difficulty)}`}>{$t('难度')} {project.difficulty}</span>{:else}<span class="yt-badge rank-pending">{$t('难度')} {$t('待定')}</span>{/if}</span>
             <div class="yt-body">
               {#if project.ownerAvatarUrl}<img class="yt-avatar" src={project.ownerAvatarUrl} alt="" loading="lazy" />{:else}<span class="yt-avatar" aria-hidden="true"></span>{/if}
               <div>
                 <h3>{project.title}</h3>
-                <p class="yt-meta">{project.ownerName || '—'}</p>
+                <p class="yt-meta"><RedactedText text={project.ownerName || '—'} hidden={!!project.ownerRedacted} /></p>
                 <p class="yt-meta">{$t('关注')} {project.followCount}{#if project.updated} · {formatDate(project.updated)}{/if}</p>
               </div>
             </div>
@@ -239,24 +312,7 @@
           <a class="engineer-card" href={engineer.id ? '/community/' + encodeURIComponent(engineer.id) : '/community'}>
             {#if engineer.avatarUrl}<img class="engineer-avatar" src={engineer.avatarUrl} alt="" loading="lazy" />{:else}<span class="engineer-avatar" aria-hidden="true"></span>{/if}
             <h3>{engineer.name}</h3>
-            <p class="yt-meta">{#if engineer.identities.length}{engineer.identities.map((identity) => identity.name).join(' · ')} · {/if}{$t('关注')} {engineer.admireCount}</p>
-          </a>
-        {/each}
-      </div>
-    </section>
-    <section class="home-shelf">
-      <div class="shelf-head"><h2>{$t('热门硬件')}</h2><a href="/hardware">{$t('硬件数据库')} →</a></div>
-      <div class="home-grid">
-        {#each shownHardware as hardware (hardware.id || hardware.name)}
-          <a class="yt-card" href="/hardware">
-            <span class="yt-thumb yt-hardware"></span>
-            <div class="yt-body">
-              <div>
-                <h3>{hardware.name}</h3>
-                <p class="yt-meta">{[hardware.brand, hardware.subtitle].filter(Boolean).join(' · ')}</p>
-                <p class="yt-meta">♥ {hardware.likeCount}</p>
-              </div>
-            </div>
+            <p class="yt-meta">{#if engineer.identities.length}{#each engineer.identities as identity, i}{#if i} · {/if}<RedactedText text={identity.name} hidden={!!identity.redacted} />{/each} · {/if}{$t('关注')} {engineer.admireCount}</p>
           </a>
         {/each}
       </div>
@@ -269,8 +325,8 @@
   {:else if error}<p class="message error" role="alert">{$t(error, errorParams)}</p>
   {:else if section === 'community'}
     {#if id}
-      <a href="/community">{$t('返回成员列表')}</a><header class="profile-heading">{#if data.avatarUrl}<img class="avatar" src={data.avatarUrl} alt="" />{:else}<span class="avatar avatar-default" aria-hidden="true"></span>{/if}<div><h1>{data.name}</h1><p>{data.bio}</p>{#if data.currentStatus}<span class:busy={data.currentStatus === 'busy'} class="public-current-status">{$t('当前状态')}：{$t(currentStatusLabels[data.currentStatus] || data.currentStatus)}</span>{/if}</div></header>
-      {#if data.identities?.length}<div class="member-identities">{#each data.identities as identity}<span class={`rank rank-pill rank-${identity.category === 'main' ? 4 : 3}`}>{$t(identity.category === 'main' ? '主力职业' : '辅助职业')} · {identity.name}</span>{/each}</div>{/if}
+      <a href="/community">{$t('返回成员列表')}</a><header class="profile-heading">{#if data.avatarRedacted}<span class="avatar redacted-avatar" title={$t('资料隐藏')} aria-label={$t('资料隐藏')}></span>{:else if data.avatarUrl}<img class="avatar" src={data.avatarUrl} alt="" />{:else}<span class="avatar avatar-default" aria-hidden="true"></span>{/if}<div><h1>{data.name}</h1><p><RedactedText text={data.bio} hidden={!!data.bioRedacted} /></p>{#if data.currentStatus}<span class:busy={data.currentStatus === 'busy'} class="public-current-status">{$t('当前状态')}：<RedactedText text={$t(currentStatusLabels[data.currentStatus] || data.currentStatus)} hidden={!!data.statusRedacted} /></span>{/if}</div></header>
+      {#if data.identities?.length}<div class="member-identities">{#each data.identities as identity}{#if identity.redacted}<RedactedText text={identity.name} hidden={true} />{:else}<span class={`rank rank-pill rank-${identity.category === 'main' ? 4 : 3}`}>{$t(identity.category === 'main' ? '主力职业' : '辅助职业')} · {identity.name}</span>{/if}{/each}</div>{/if}
       {#if data.relations}
         <div class="relation-panel">
           <div class="relation-counts">
@@ -290,7 +346,7 @@
           {#if !token}<p class="relation-hint">{$t('登录后可设置互动关系。')}</p>{/if}
         </div>
       {/if}
-      {#if data.cards?.length}<div class="public-grid">{#each data.cards as card}<article class="public-card"><h2>{card.title}</h2><p>{card.text}</p><div class="image-grid">{#each card.imageUrls || [] as url}<a href={url} target="_blank" rel="noreferrer"><img src={url} alt={card.title} loading="lazy" /></a>{/each}</div></article>{/each}</div>{:else}<p>{$t('暂无公开卡片。')}</p>{/if}
+      {#if data.cards?.length}<div class="public-grid">{#each data.cards as card}<article class="public-card"><h2><RedactedText text={card.title} hidden={!!card.redacted} /></h2><p><RedactedText text={card.text} hidden={!!card.redacted} /></p><div class="image-grid">{#if card.redacted}{#each Array(card.imageCount || 0) as _}<span class="redacted-image" title={$t('资料隐藏')} aria-label={$t('资料隐藏')}></span>{/each}{/if}{#each card.imageUrls || [] as url}<a href={url} target="_blank" rel="noreferrer"><img src={url} alt={card.title} loading="lazy" /></a>{/each}</div></article>{/each}</div>{:else}<p>{$t('暂无公开卡片。')}</p>{/if}
       <nav class="profile-tabs" aria-label={$t('公开资料')}>
         <button type="button" class:active={activeTab === 'completed'} on:click={() => activeTab = 'completed'}>{$t('完成项目')}<span>{data.projectsCompleted?.length || 0}</span></button>
         <button type="button" class:active={activeTab === 'ongoing'} on:click={() => activeTab = 'ongoing'}>{$t('进行中项目')}<span>{data.projectsOngoing?.length || 0}</span></button>
@@ -302,10 +358,11 @@
           <div class="public-grid">
             {#each data.projectsCompleted as project}
               <article class="public-card project-card">
-                <div class="project-meta"><span class="project-status done">{$t('已完成')}</span>{#if project.difficulty}<span class={`rank rank-pill rank-${difficultyRank(project.difficulty)}`}>{$t('难度')} {project.difficulty}</span>{:else}<span class="rank-pending">{$t('难度')} {$t('待定')}</span>{/if}</div>
+                {#if project.redacted}<h2><RedactedText text={project.title} hidden={true} /></h2><p><RedactedText text={project.summary} hidden={true} /></p>{:else}
+                <div class="project-meta"><span class="project-status done">{$t('已完成')}</span>{#if project.difficulty}<span class={`rank rank-pill difficulty-badge rank-${difficultyRank(project.difficulty)}`}>{$t('难度')} {project.difficulty}</span>{:else}<span class="rank-pending">{$t('难度')} {$t('待定')}</span>{/if}</div>
                 <h2><a href={'/showcase/' + encodeURIComponent(project.id)}>{project.title}</a></h2>
                 <p>{project.summary}</p>
-                <p class="project-owner">{#if project.ownerAvatarUrl}<img class="owner-avatar" src={project.ownerAvatarUrl} alt="" loading="lazy" />{:else}<span class="owner-avatar" aria-hidden="true"></span>{/if}{$t('负责人')}：{project.ownerName || '—'}{#if project.updated} · {$t('更新于')} {formatDate(project.updated)}{/if}</p>
+                <p class="project-owner">{#if project.ownerAvatarUrl}<img class="owner-avatar" src={project.ownerAvatarUrl} alt="" loading="lazy" />{:else}<span class="owner-avatar" aria-hidden="true"></span>{/if}{$t('负责人')}：<RedactedText text={project.ownerName || '—'} hidden={!!project.ownerRedacted} />{#if project.updated} · {$t('更新于')} {formatDate(project.updated)}{/if}</p>{/if}
               </article>
             {/each}
           </div>
@@ -317,10 +374,11 @@
           <div class="public-grid">
             {#each data.projectsOngoing as project}
               <article class="public-card project-card">
-                <div class="project-meta"><span class="project-status">{$t('进行中')}</span>{#if project.difficulty}<span class={`rank rank-pill rank-${difficultyRank(project.difficulty)}`}>{$t('难度')} {project.difficulty}</span>{:else}<span class="rank-pending">{$t('难度')} {$t('待定')}</span>{/if}</div>
+                {#if project.redacted}<h2><RedactedText text={project.title} hidden={true} /></h2><p><RedactedText text={project.summary} hidden={true} /></p>{:else}
+                <div class="project-meta"><span class="project-status">{$t('进行中')}</span>{#if project.difficulty}<span class={`rank rank-pill difficulty-badge rank-${difficultyRank(project.difficulty)}`}>{$t('难度')} {project.difficulty}</span>{:else}<span class="rank-pending">{$t('难度')} {$t('待定')}</span>{/if}</div>
                 <h2><a href={'/showcase/' + encodeURIComponent(project.id)}>{project.title}</a></h2>
                 <p>{project.summary}</p>
-                <p class="project-owner">{#if project.ownerAvatarUrl}<img class="owner-avatar" src={project.ownerAvatarUrl} alt="" loading="lazy" />{:else}<span class="owner-avatar" aria-hidden="true"></span>{/if}{$t('负责人')}：{project.ownerName || '—'}{#if project.updated} · {$t('更新于')} {formatDate(project.updated)}{/if}</p>
+                <p class="project-owner">{#if project.ownerAvatarUrl}<img class="owner-avatar" src={project.ownerAvatarUrl} alt="" loading="lazy" />{:else}<span class="owner-avatar" aria-hidden="true"></span>{/if}{$t('负责人')}：<RedactedText text={project.ownerName || '—'} hidden={!!project.ownerRedacted} />{#if project.updated} · {$t('更新于')} {formatDate(project.updated)}{/if}</p>{/if}
               </article>
             {/each}
           </div>
@@ -332,6 +390,7 @@
           <div class="career-grid">
             {#each data.career as badge}
               <article class="career-card">
+                {#if badge.redacted}<h3><RedactedText text={badge.careerName} hidden={true} /></h3><RedactedText text={badge.levelTitle} hidden={true} />{:else}
                 <div class="career-head"><h3>{badge.careerName}</h3><span class={`rank rank-text rank-${levelRank(badge.level)}`}>{badge.levelTitle || `Lv.${badge.level}`}</span></div>
                 <p>{badge.totalXp} XP · {$t('最高等级')} Lv.{badge.maxLevel}</p>
                 <div class="progress" role="img" aria-label={`${badge.totalXp} / ${badge.nextLevelXp} XP`}><span style={`width:${careerProgress(badge)}%`}></span></div>
@@ -340,6 +399,7 @@
                   <div class="milestones" aria-label={$t('徽章占位')}>
                     <span class={`rank rank-disc rank-${levelRank(badge.level)}`} title={`Lv.${badge.level} ${$t('徽章占位')}`}><span class="flash-layer" aria-hidden="true"></span>{medalLevel(badge.level)}</span>
                   </div>
+                {/if}
                 {/if}
               </article>
             {/each}
@@ -351,8 +411,9 @@
         {#if skillError}<p class="message error" role="alert">{$t(skillError)}</p>{/if}
         {#if shownSkills.length}
           <ul class="public-skill-list">
-            {#each shownSkills as skill (skill.userSkillId)}
+            {#each shownSkills as skill}
               <li class="public-skill">
+                {#if skill.redacted}<strong><RedactedText text={skill.name} hidden={true} /></strong><p><RedactedText text={skill.abilityNote} hidden={true} /></p><p><RedactedText text={skill.proficiency} hidden={true} /></p><div class="image-grid">{#each Array(skill.imageCount || 0) as _}<span class="redacted-image" title={$t('资料隐藏')} aria-label={$t('资料隐藏')}></span>{/each}</div>{#each skill.links || [] as link}<p><RedactedText text={link} hidden={true} /></p>{/each}{:else}
                 <div class="public-skill-head"><strong>{skill.name}</strong>{#if skill.proficiency}<span class="meta">{$t('熟练程度')}：{$t(skill.proficiency)}</span>{/if}</div>
                 {#if skill.abilityNote}<p>{skill.abilityNote}</p>{/if}
                 {#if skill.images?.length}
@@ -371,15 +432,21 @@
                 {/if}
                 <div class="public-skill-foot">
                   {#if skill.canEndorse}
-                    <button type="button" class:liked={skill.likedByMe} class="like-button" on:click={() => endorseSkill(skill)} aria-pressed={skill.likedByMe} aria-label={$t(skill.likedByMe ? '取消点赞' : '点赞')}>
-                      <span aria-hidden="true">{skill.likedByMe ? '♥' : '♡'}</span> {skill.likeCount}
+                    <button type="button" class:liked={skill.likedByMe} class="like-button" on:click={() => endorseSkill(skill)} aria-pressed={skill.likedByMe} aria-label={$t(skill.likedByMe ? '取消认可' : '认可')}>
+                      <svg class="thumb" viewBox="0 0 24 24" width="14" height="14" fill={skill.likedByMe ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M7 10v12" />
+                        <path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z" />
+                      </svg>
+                      <span>{skill.likedByMe ? $t('你已认可') : $t('认可')}</span>
+                      <span class="like-sep" aria-hidden="true">·</span>
+                      <span class="like-number">{skill.likeCount}</span>
                     </button>
                   {:else}
-                    <span class="like-count"><span aria-hidden="true">♥</span> {skill.likeCount}</span>
+                    <span class="like-count"><svg class="thumb" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 10v12" /><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z" /></svg> {skill.likeCount}</span>
                   {/if}
                   {#if skill.likeTier > 0}<span class={`recognized rank rank-pill rank-${skill.likeTier}`}><span class="flash-layer" aria-hidden="true"></span>{$t(recognizedLabels[skill.likeTier])}</span>{/if}
                   {#if !token}<span class="meta">{$t('登录后可点赞')}</span>{/if}
-                </div>
+                </div>{/if}
               </li>
             {/each}
           </ul>
@@ -394,18 +461,34 @@
     {#if id}
       <a href="/showcase">{$t('返回项目列表')}</a>
       <header class="project-detail-head">
-        <div class="project-meta"><span class:done={data.status === 'completed'} class="project-status">{statusLabel(data.status)}</span>{#if data.difficulty}<span class={`rank rank-pill rank-${difficultyRank(data.difficulty)}`}>{$t('难度')} {data.difficulty}</span>{:else}<span class="rank-pending">{$t('难度')} {$t('待定')}</span>{/if}{#if data.currentStage}<span class="project-stage">{$t('当前阶段')}：{data.currentStage}</span>{/if}</div>
+        <div class="project-meta"><span class:done={data.status === 'completed'} class="project-status">{statusLabel(data.status)}</span>{#if data.difficulty}<span class={`rank rank-pill difficulty-badge rank-${difficultyRank(data.difficulty)}`}>{$t('难度')} {data.difficulty}</span>{:else}<span class="rank-pending">{$t('难度')} {$t('待定')}</span>{/if}{#if data.currentStage}<span class="project-stage">{$t('当前阶段')}：{data.currentStage}</span>{/if}</div>
         <h1>{data.title}</h1>
         <p>{data.summary}</p>
-        <p class="project-owner">{$t('负责人')}：{data.ownerName || '—'}{#if data.updated} · {$t('更新于')} {formatDate(data.updated)}{/if}</p>
+        {#if data.coverUrl}<img class="project-detail-cover" src={data.coverUrl} alt={data.title} />{/if}
+        <p class="project-owner">{$t('负责人')}：<RedactedText text={data.ownerName || '—'} hidden={!!data.ownerRedacted} />{#if data.updated} · {$t('更新于')} {formatDate(data.updated)}{/if}</p>
+        <p class="project-owner">{$t('发起人')}：<RedactedText text={data.creatorName || '—'} hidden={!!data.creatorRedacted} /></p>
+        <p class="project-owner">{$t('管理员')}：{data.managers?.length || 0}{#if data.managers?.length} · {#each data.managers as manager, index}{#if index}、{/if}<RedactedText text={manager.name || '—'} hidden={!!manager.redacted} />{/each}{/if}</p>
+        <p class="project-owner">{$t('发布时间')}：{data.publishedAt ? formatDate(data.publishedAt) : '—'} · {$t('参与人数')}：{data.participantCount || 0} · {$t('关注度')}：{data.followCount || 0}</p>
         {#if data.description && data.description !== data.summary}<p class="project-description">{data.description}</p>{/if}
-        {#if data.estimatedDurationDays}<p class="project-owner">{$t('预计周期')}：{data.estimatedDurationDays} {$t('天')}</p>{/if}
+        <p class="project-owner">{$t('是否接受赞助')}：{$t(data.acceptsSponsorship ? '是' : '否')} · {$t('允许他人管理')}：{$t(data.allowOthersManagement ? '是' : '否')} · {$t('是否需要保密')}：{$t(data.confidentialityRequested ? '是' : '否')}</p>
+        {#if data.projectNeeds?.length}<p class="project-owner">{$t('项目需要')}：{data.projectNeeds.map((need) => $t(({ funding: '资金支持', technical: '技术支持', equipment: '设备支持', venue: '场地支持', manpower: '人手支持', promotion: '宣传支持', emotional: '情绪支持' })[need] || need)).join(' · ')}</p>{/if}
+        {#if data.providerOffers?.length}<p class="project-owner">{$t('发起人可提供')}：{data.providerOffers.map((offer) => $t(({ technical: '技术', funding: '资金', equipment: '设备', venue: '场地', manpower: '人手', promotion: '宣传' })[offer] || offer)).join(' · ')}</p>{/if}
+        {#if data.collaborationMode}<p class="project-owner">{$t('协作方式')}：{$t(data.collaborationMode === 'independent' ? '独立项目' : '协作项目')}</p>{/if}
+        {#if data.collaborationMode === 'collaborative'}<p class="project-owner">{$t('加入方式')}：{$t(data.joinMode === 'open' ? '自由加入' : '申请加入')}</p>{/if}
+        {#if data.plannedStartDate}<p class="project-owner">{$t('计划开始日期')}：{formatDate(data.plannedStartDate)}</p>{/if}
+        {#if data.scheduleNote}<p class="project-description">{$t('时间安排')}：{data.scheduleNote}</p>{/if}
+        {#if data.statusReason}<p class="project-owner">{$t('状态原因')}：{data.statusReason}</p>{/if}
+        {#if data.projectNature}<p class="project-owner">{$t('项目性质')}：{$t(({ commercial: '商业盈利', learning: '学习交流', showcase: '技术展示', research: '科学研究' })[data.projectNature])}</p>{/if}
+        {#if data.longTerm}<p class="project-owner">{$t('预计周期')}：{$t('长期项目')}</p>{:else if data.estimatedDurationDays}<p class="project-owner">{$t('预计周期')}：{data.estimatedDurationDays} {$t('天')}</p>{/if}
         {#if data.proposedDifficulty}<p class="project-owner">{$t('发起人自评')}：<span class={`rank rank-text rank-${difficultyRank(data.proposedDifficulty)}`}>{data.proposedDifficulty}</span></p>{:else}<p class="project-owner">{$t('发起人自评')}：{$t('待定')}</p>{/if}
         {#if data.difficulty}<p class="project-owner">{$t('共识')}：<span class={`rank rank-text rank-${difficultyRank(data.difficulty)}`}>{data.difficulty}</span></p>{:else}<p class="project-owner">{$t('共识')}：{$t('待定')}</p>{/if}
         {#if data.ownerConfirmed}<span class="confirmed">✓ {$t('发起人已确认')}</span>{/if}
         {#if data.approveCount}<span>{$t('同意')}：{data.approveCount}</span>{/if}
         {#if data.opposeCount}<span>{$t('反对')}：{data.opposeCount}</span>{/if}
       </header>
+      {#if data.confidentialityRequested && data.confidentialityTerms}
+        <section class="project-section"><h2>{$t('保密协议')}</h2><p class="project-description">{data.confidentialityTerms}</p></section>
+      {/if}
       {#if data.canFollow}
         <div class="follow-row">
           <button type="button" class:following={data.following} class="follow-button" on:click={toggleFollow} disabled={followBusy}>
@@ -425,16 +508,22 @@
             <label>{$t('能力上限')}<textarea bind:value={applyAbility} maxlength="200" rows="2" placeholder={$t('简单描述你的技能水平和能承担的工作范围')}></textarea></label>
           {/if}
           <label>{$t('补充说明')}<textarea bind:value={applyMessage} maxlength="500" rows="3" placeholder={$t('例如：我可以负责结构设计与打样。')}></textarea></label>
+          {#if data.confidentialityRequested}
+            <label class="agreement-check"><input type="checkbox" bind:checked={acceptTerms} />{$t('我同意保密协议')}</label>
+          {/if}
           {#if applyError}<p class="message error" role="alert">{$t(applyError)}</p>{/if}
-          <button type="button" class="primary" on:click={applyToProject} disabled={applying}>{applying ? $t('正在提交…') : $t(data.joinMode === 'open' ? '直接加入' : '提交申请')}</button>
+          <button type="button" class="primary" on:click={applyToProject} disabled={applying || (data.confidentialityRequested && !acceptTerms)}>{applying ? $t('正在提交…') : $t(data.joinMode === 'open' ? '直接加入' : '提交申请')}</button>
         </section>
       {:else if data.canRequestImprovement}
         <section class="project-apply" aria-labelledby="project-improvement-title">
           <h2 id="project-improvement-title">{$t('申请改进')}</h2>
           <p>{$t('这个项目已经完成，你可以提出改进方向或补充方案。')}</p>
           <textarea bind:value={improvementMessage} maxlength="500" rows="3" placeholder={$t('例如：我想改进外壳结构，降低装配难度。')}></textarea>
+          {#if data.confidentialityRequested}
+            <label class="agreement-check"><input type="checkbox" bind:checked={acceptTerms} />{$t('我同意保密协议')}</label>
+          {/if}
           {#if improvementError}<p class="message error" role="alert">{$t(improvementError)}</p>{/if}
-          <button type="button" class="primary" on:click={requestImprovement} disabled={improving}>{improving ? $t('正在提交…') : $t('提交改进申请')}</button>
+          <button type="button" class="primary" on:click={requestImprovement} disabled={improving || (data.confidentialityRequested && !acceptTerms)}>{improving ? $t('正在提交…') : $t('提交改进申请')}</button>
         </section>
       {:else if data.improvementPending}
         <p class="message success" role="status">{$t(improvementNotice || '改进申请已提交，等待管理员审批。')}</p>
@@ -442,6 +531,22 @@
         <p class="message success" role="status">{$t(applyNotice || '申请已提交，等待管理员审批。')}</p>
       {:else if !token}
         <p class="project-apply-hint"><a href="/sign-in">{$t('登录')}</a>{$t('后可申请加入或改进。')}</p>
+      {/if}
+      {#if management}
+        <section class="project-section">
+          <h2>{$t('项目管理')}</h2>
+          {#if managementError}<p class="message error" role="alert">{$t(managementError)}</p>{/if}
+          {#if management.requests.length}<h3>{$t('加入申请')}</h3>
+            {#each management.requests as request}
+              <div class="management-row"><span>{request.name} · {$t(request.source === 'improvement' ? '申请改进' : '申请加入')} {request.message}</span><button type="button" disabled={managementBusy} on:click={() => updateManagement('applications/' + encodeURIComponent(request.id), { status: 'accepted' })}>{$t('通过')}</button><button type="button" disabled={managementBusy} on:click={() => updateManagement('applications/' + encodeURIComponent(request.id), { status: 'rejected' })}>{$t('拒绝')}</button></div>
+            {/each}
+          {/if}
+          {#if management.canAssign}<h3>{$t('项目管理权')}</h3>
+            {#each management.members as member}
+              <div class="management-row"><span>{member.name}</span><button type="button" disabled={managementBusy || member.id === management.viewerId} on:click={() => updateManagement('managers/' + encodeURIComponent(member.id), { manager: !member.manager })}>{$t(member.manager ? '撤销管理权' : '授予管理权')}</button></div>
+            {/each}
+          {/if}
+        </section>
       {/if}
       {#if data.stages?.length}
         <section class="project-section">
@@ -462,7 +567,7 @@
         {#if data.members?.length}
           <ul class="project-members">
             {#each data.members as member}
-              <li><strong>{member.name || '—'}</strong>{#if member.duties}<span>{member.duties}</span>{/if}</li>
+              <li><strong><RedactedText text={member.name || '—'} hidden={!!member.redacted} /></strong>{#if member.duties}<span><RedactedText text={member.duties} hidden={!!member.redacted} /></span>{/if}</li>
             {/each}
           </ul>
         {:else}
@@ -472,123 +577,448 @@
     {:else}
       <h1>{$t('项目大厅')}</h1>
       <p>{$t('浏览公开的共创项目。')}</p>
-      {#if items.length}
+      <div class="hall-toolbar">
+        <input type="search" bind:value={hallQuery} placeholder={$t('搜索项目名称、简介或负责人')} aria-label={$t('搜索项目')} />
+        <label class="hall-sort">{$t('排序')}<select bind:value={hallSort}><option value="latest">{$t('最新发布')}</option><option value="hot">{$t('热度')}</option><option value="difficulty">{$t('难度')}</option><option value="participants">{$t('参与人数')}</option></select></label>
+      </div>
+      <div class="hall-filters">
+        <div class="filter-row" role="group" aria-label={$t('项目状态')}><button type="button" class:active={!hallStatus} on:click={() => hallStatus = ''}>{$t('全部')}</button>{#each hallStatuses as status}<button type="button" class:active={hallStatus === status} on:click={() => hallStatus = hallStatus === status ? '' : status}>{$t(statusLabels[status])}</button>{/each}</div>
+        <div class="filter-row" role="group" aria-label={$t('项目性质')}><button type="button" class:active={!hallNature} on:click={() => hallNature = ''}>{$t('全部')}</button>{#each Object.entries(natureLabels) as [value, label]}<button type="button" class:active={hallNature === value} on:click={() => hallNature = hallNature === value ? '' : value}>{$t(label)}</button>{/each}</div>
+      </div>
+      <p class="hall-count">{$t('已加载 {count} 个项目', { count: items.length })}</p>
+      {#if hallProjects.length}
         <div class="public-grid">
-          {#each items as project}
-            <article class="public-card project-card">
-              <div class="project-meta"><span class:done={project.status === 'completed'} class="project-status">{statusLabel(project.status)}</span>{#if project.difficulty}<span class={`rank rank-pill rank-${difficultyRank(project.difficulty)}`}>{$t('难度')} {project.difficulty}</span>{:else}<span class="rank-pending">{$t('难度')} {$t('待定')}</span>{/if}</div>
-              <h2><a href={'/showcase/' + encodeURIComponent(project.id)}>{project.title}</a></h2>
+          {#each hallProjects as project}
+            <a class="public-card project-card project-card-link" href={'/showcase/' + encodeURIComponent(project.id)}>
+              {#if project.difficulty}<span class={`difficulty-star star-${difficultyRank(project.difficulty)}`} title={`${$t('难度')} ${project.difficulty}`} aria-label={`${$t('难度')} ${project.difficulty}`}>{project.difficulty}</span>{:else}<span class="difficulty-star star-0" title={$t('难度')} aria-label={$t('难度')}>?</span>{/if}
+              {#if project.coverUrl}<img class="project-card-cover" src={project.coverUrl} alt={project.title} loading="lazy" />{/if}
+              <div class="project-meta"><span class:done={project.status === 'completed'} class="project-status">{statusLabel(project.status)}</span></div>
+              <h2>{project.title}</h2>
               <p>{project.summary}</p>
-              <p class="project-owner">{#if project.ownerAvatarUrl}<img class="owner-avatar" src={project.ownerAvatarUrl} alt="" loading="lazy" />{:else}<span class="owner-avatar" aria-hidden="true"></span>{/if}{$t('负责人')}：{project.ownerName || '—'}{#if project.updated} · {$t('更新于')} {formatDate(project.updated)}{/if}</p>
-            </article>
+              <div class="project-people">
+                <span class="people-block"><span class="people-label">{$t('发起人')}</span>{#if project.creatorRedacted}<span class="people-avatar hidden" title={$t('资料隐藏')} aria-label={$t('资料隐藏')}></span>{:else if project.creatorAvatarUrl}<img class="people-avatar" src={project.creatorAvatarUrl} alt={project.creatorName || ''} title={project.creatorName || ''} loading="lazy" />{:else if project.creatorName}<span class="people-avatar" title={project.creatorName}></span>{:else}<span class="people-vacant">{$t('待加入')}</span>{/if}</span>
+                <span class="people-block"><span class="people-label">{$t('首席工程师')}</span>{#if project.ownerRedacted}<span class="people-avatar hidden" title={$t('资料隐藏')} aria-label={$t('资料隐藏')}></span>{:else if project.ownerAvatarUrl}<img class="people-avatar" src={project.ownerAvatarUrl} alt={project.ownerName || ''} title={project.ownerName || ''} loading="lazy" />{:else if project.ownerName}<span class="people-avatar" title={project.ownerName}></span>{:else}<span class="people-vacant">{$t('待加入')}</span>{/if}</span>
+                <span class="people-block"><span class="people-label">{$t('赞助者')}</span><span class="people-vacant">{$t('待加入')}</span></span>
+              </div>
+              <p class="project-owner">{$t('发布时间')}：{project.publishedAt ? formatDate(project.publishedAt) : '—'} · {$t('参与人数')}：{project.participantCount || 0}</p>
+              <p class="project-owner">{$t('关注度')}：{project.followCount || 0}</p>
+            </a>
           {/each}
         </div>
-      {:else}<p>{$t('暂无公开项目。')}</p>{/if}
+      {:else}<p>{$t(items.length ? '没有符合筛选条件的项目。' : '暂无公开项目。')}</p>{/if}
+      {#if projectPageError}<p role="alert">{projectPageError}</p>{/if}
+      {#if projectHasMore || projectPageLoading || projectPageError}
+        <button class="secondary load-more" type="button" on:click={loadMoreProjects} disabled={projectPageLoading}>
+          {$t(projectPageLoading ? '加载中…' : '加载更多项目')}
+        </button>
+      {/if}
     {/if}
   {:else}<h1>{$t('页面不存在')}</h1><a href="/">{$t('返回首页')}</a>{/if}
 </main>
 
 <style>
+  .redacted-avatar { display:inline-block; background:#000; }
+  .redacted-image { display:inline-block; width:80px; height:80px; background:#000; border-radius:var(--radius-sm); }
+  .public-hero {
+    position: relative;
+    overflow: hidden;
+    padding: 48px 44px;
+    margin: 8px 0 42px;
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-lg);
+    background:
+      linear-gradient(to right, rgba(15, 138, 95, 0.055) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(15, 138, 95, 0.055) 1px, transparent 1px),
+      linear-gradient(135deg, rgba(255, 255, 255, 0.94) 0%, rgba(226, 245, 234, 0.86) 100%);
+    background-size: 26px 26px, 26px 26px, auto;
+    box-shadow: var(--shadow-md);
+  }
+  .hero-orb {
+    position: absolute;
+    right: -46px;
+    top: -46px;
+    width: 280px;
+    height: 280px;
+    border-radius: 50%;
+    border: 1px dashed rgba(15, 138, 95, 0.28);
+    display: grid;
+    place-items: center;
+    pointer-events: none;
+    animation: mint-spin 56s linear infinite;
+  }
+  .hero-orb span {
+    position: absolute;
+    width: 72%;
+    height: 72%;
+    border-radius: 50%;
+    border: 1px solid rgba(15, 138, 95, 0.22);
+  }
+  .hero-orb span:nth-child(2) {
+    width: 40%;
+    height: 40%;
+    background: radial-gradient(circle, rgba(24, 181, 125, 0.26), rgba(15, 138, 95, 0.04) 70%);
+    border-style: dashed;
+  }
+  .hero-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 12px;
+    margin-bottom: 16px;
+    border-radius: 999px;
+    border: 1px solid var(--border-strong);
+    background: rgba(255, 255, 255, 0.78);
+    color: var(--accent-deep);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+  }
+  .hero-badge i {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent-bright);
+    animation: mint-pulse 2.4s ease-in-out infinite;
+  }
+  .public-hero h1 {
+    position: relative;
+    font-size: clamp(34px, 5.2vw, 56px);
+    line-height: 1.12;
+    letter-spacing: -0.035em;
+    margin: 0 0 12px;
+    background: linear-gradient(125deg, var(--ink-primary) 20%, var(--accent-deep) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .hero-en {
+    position: relative;
+    margin: 0 0 8px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .hero-motto {
+    position: relative;
+    margin: 0;
+    max-width: 52ch;
+    color: var(--ink-secondary);
+    font-size: 16px;
+    line-height: 1.75;
+  }
+  .hero-disclaimer {
+    position: relative;
+    display: block;
+    max-width: 66ch;
+    margin: 18px 0 0;
+    padding: 9px 13px;
+    border: 1px dashed var(--border-default);
+    border-radius: var(--radius-sm);
+    background: var(--surface-soft);
+    color: var(--ink-muted);
+    font-size: 12px;
+    line-height: 1.75;
+  }
+  .disclaimer-mark {
+    margin-right: 7px;
+    color: var(--accent);
+    font-weight: 700;
+  }
+  .disclaimer-sign {
+    margin-left: 4px;
+    color: var(--ink-subtle);
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .disclaimer-tag {
+    margin-left: 2px;
+    padding: 0;
+    color: var(--accent-deep);
+    font-family: var(--font-mono), monospace;
+    font-size: 11.5px;
+    letter-spacing: -0.01em;
+    vertical-align: baseline;
+    white-space: nowrap;
+  }
+  .disclaimer-corrupt {
+    color: var(--danger);
+    font-family: var(--font-mono), monospace;
+    letter-spacing: 0.02em;
+  }
+  .hero-actions {
+    position: relative;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin: 24px 0 0;
+  }
+  .hero-actions a {
+    display: inline-flex;
+    align-items: center;
+    padding: 10px 20px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-default);
+    background: var(--surface-elevated);
+    color: var(--accent-deep);
+    text-decoration: none;
+    font-size: 13.5px;
+    font-weight: 600;
+    box-shadow: var(--shadow-xs);
+    transition: transform var(--t-fast) var(--ease-out), background-color var(--t-fast) var(--ease-out), border-color var(--t-fast) var(--ease-out), box-shadow var(--t-fast) var(--ease-out);
+  }
+  .hero-actions a:first-child {
+    border-color: transparent;
+    background: linear-gradient(135deg, var(--accent), var(--accent-deep));
+    color: #fff;
+    box-shadow: var(--shadow-glow);
+  }
+  .hero-actions a:hover {
+    transform: translateY(-2px);
+  }
+  .hero-actions a:first-child:hover {
+    background: linear-gradient(135deg, var(--accent-bright), var(--accent));
+  }
+  .hero-actions a:not(:first-child):hover {
+    background: var(--surface-tint);
+    border-color: var(--border-strong);
+  }
   .project-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
-  .project-status { display: inline-block; padding: 3px 9px; border: 1px solid #c8d4c0; border-radius: 999px; color: #3f5d3a; font-size: 12px; }
-  .project-status.done { background: #e3eddd; }
-  .project-apply { max-width: 620px; margin: 18px 0; padding: 16px; border: 1px solid #dcded4; background: #fafbf7; }
+  .project-status { display: inline-block; padding: 3px 10px; border: 1px solid var(--border-default); border-radius: 999px; background: var(--surface-soft); color: var(--ink-secondary); font-size: 12px; font-weight: 500; }
+  .project-status.done { background: var(--surface-tint); border-color: var(--border-strong); color: var(--accent-deep); }
+  .project-apply { max-width: 640px; margin: 18px 0; padding: 20px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--shadow-sm); }
   .project-apply h2 { margin: 0 0 6px; font-size: 16px; }
-  .project-apply p { margin: 0 0 8px; color: #6f7b6d; font-size: 13px; }
-  .project-apply textarea { width: 100%; padding: 9px; border: 1px solid #b9c3b3; background: #fff; color: #252b26; font: inherit; resize: vertical; }
-  .project-apply label { display: grid; gap: 4px; margin-bottom: 8px; color: #52695a; font-size: 13px; }
-  .project-apply input { width: 100%; padding: 8px; border: 1px solid #b9c3b3; background: #fff; color: #252b26; font: inherit; }
+  .project-apply p { margin: 0 0 10px; color: var(--ink-muted); font-size: 13px; }
+  .project-apply textarea { width: 100%; padding: 10px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--ink-primary); font: inherit; resize: vertical; }
+  .project-apply label { display: grid; gap: 5px; margin-bottom: 10px; color: var(--ink-secondary); font-size: 13px; font-weight: 500; }
+  .project-apply input { width: 100%; padding: 9px 10px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--ink-primary); font: inherit; }
+  .project-apply input:focus, .project-apply textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); outline: none; }
+  .project-apply .agreement { white-space: pre-wrap; }
+  .project-apply .agreement-check { display: flex; align-items: center; gap: 8px; }
+  .project-apply .agreement-check input { width: auto; }
   .project-apply .message { margin: 8px 0; }
-  .project-apply-hint { color: #6f7b6d; font-size: 13px; }
+  .project-apply-hint { color: var(--ink-muted); font-size: 13px; }
   .follow-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: -8px 0 18px; }
-  .follow-button { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border: 1px solid #b9c3b3; border-radius: 999px; background: #fff; color: #34553a; font-size: 13px; }
+  .follow-button { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border: 1px solid var(--border-default); border-radius: 999px; background: var(--surface-elevated); color: var(--accent-deep); font-size: 13px; font-weight: 600; transition: background-color var(--t-fast) var(--ease-out), border-color var(--t-fast) var(--ease-out), transform var(--t-fast) var(--ease-out); }
+  .follow-button:hover:not(:disabled) { background: var(--surface-tint); border-color: var(--border-strong); transform: translateY(-1px); }
   .follow-button.following { border-color: #e3bcc4; background: #fff4f6; color: #a84358; }
-  .follow-error { color: #9b402c; font-size: 12px; }
-  .confirmed { color: #4d6448; font-size: 12px; font-weight: 600; }
-  .project-stage { color: #818b7f; font-size: 12px; }
-  .project-owner { margin: 0 0 10px; color: #818b7f; font-size: 13px; }
-  .owner-avatar { width: 22px; height: 22px; margin-right: 6px; border-radius: 50%; object-fit: cover; vertical-align: middle; background: #dce8d2; }
-  .project-card p { margin: 0 0 10px; }
+  .follow-error { color: var(--danger); font-size: 12px; }
+  .confirmed { color: var(--accent-deep); font-size: 12px; font-weight: 600; }
+  .project-stage { color: var(--ink-muted); font-size: 12px; }
+  .project-owner { margin: 0 0 10px; color: var(--ink-muted); font-size: 13px; }
+  .project-people { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; margin: 0 0 10px; }
+  .people-block { display: inline-flex; align-items: center; gap: 6px; }
+  .people-label { color: var(--ink-muted); font-size: 12px; }
+  .people-avatar { display: inline-block; width: 26px; height: 26px; border-radius: 50%; object-fit: cover; background: var(--surface-tint); border: 1px solid var(--border-subtle); }
+  .people-avatar.hidden { background: var(--ink-primary); }
+  .people-vacant { display: inline-flex; align-items: center; padding: 2px 10px; border: 1px dashed var(--border-default); border-radius: 999px; color: var(--ink-subtle); font-size: 12px; }
+  .people-avatar-slot { display: inline-flex; }
+  .owner-avatar { width: 22px; height: 22px; margin-right: 6px; border-radius: 50%; object-fit: cover; vertical-align: middle; background: var(--surface-tint); border: 1px solid var(--border-subtle); }
+  .project-card-link { display: block; color: inherit; text-decoration: none; }
+  .hall-toolbar { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0 12px; }
+  .hall-toolbar input { flex: 1 1 260px; min-width: 0; padding: 9px 12px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--ink-primary); font: inherit; }
+  .hall-sort { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-secondary); font-size: 13px; }
+  .hall-sort select { padding: 9px 12px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--ink-primary); font: inherit; }
+  .hall-filters { display: grid; gap: 8px; margin-bottom: 8px; }
+  .filter-row { display: flex; flex-wrap: wrap; gap: 6px; }
+  .filter-row button { padding: 4px 12px; border: 1px solid var(--border-default); border-radius: 999px; background: transparent; color: var(--ink-secondary); font-size: 12px; cursor: pointer; transition: background-color var(--t-fast) var(--ease-out), border-color var(--t-fast) var(--ease-out), color var(--t-fast) var(--ease-out); }
+  .filter-row button:hover { background: var(--surface-tint); }
+  .filter-row button.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-deep); }
+  .hall-count { color: var(--ink-subtle); font-size: 12px; margin: 0 0 16px; }
+  .project-card-cover { display: block; width: 100%; height: 150px; object-fit: cover; border-radius: var(--radius-sm); margin-bottom: 12px; background: var(--surface-tint); }
+  .project-detail-cover { display: block; width: 100%; max-height: 420px; object-fit: cover; border-radius: var(--radius-md); border: 1px solid var(--border-subtle); margin: 16px 0 8px; }
+  .project-card-link:hover h2 { color: var(--accent-deep); }
+  .project-card h2 a { text-decoration: none; color: var(--ink-primary); transition: color var(--t-fast) var(--ease-out); }
+  .project-card:hover h2 a { color: var(--accent-deep); }
+  .project-card p { margin: 0 0 10px; color: var(--ink-muted); }
   .project-card p.project-owner { margin-bottom: 0; }
-  .project-description { margin-top: 16px; max-width: 70ch; white-space: pre-wrap; }
+  .project-description { margin-top: 16px; max-width: 70ch; white-space: pre-wrap; color: var(--ink-secondary); }
   .project-detail-head { margin: 24px 0 32px; }
-  .project-detail-head h1 { margin: 8px 0 12px; }
+  .project-detail-head h1 { margin: 8px 0 12px; letter-spacing: -0.025em; }
   .project-section { margin: 32px 0; }
   .project-section h2 { margin-bottom: 12px; }
   .project-stages { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
-  .project-stages li { padding: 4px 0 4px 14px; border-left: 2px solid #dcded4; }
-  .project-stages li.current { border-color: #6f9661; }
-  .project-stages p { margin: 4px 0; color: #6f7b6d; font-size: 13px; }
-  .project-stage-state { color: #818b7f; font-size: 12px; }
+  .project-stages li { padding: 8px 0 8px 16px; border-left: 2px solid var(--border-default); }
+  .project-stages li.current { border-color: var(--accent-bright); }
+  .project-stages p { margin: 4px 0; color: var(--ink-muted); font-size: 13px; }
+  .project-stage-state { color: var(--ink-subtle); font-size: 12px; }
+  .management-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 10px 0; }
   .project-members { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
   .project-members li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
-  .project-members span { color: #818b7f; font-size: 13px; }
-  .member-skills { margin: 32px 0; }
-  .member-skills h2 { margin-bottom: 14px; }
+  .project-members span { color: var(--ink-muted); font-size: 13px; }
   .public-skill-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 16px; margin: 0; padding: 0; list-style: none; }
-  .public-skill { padding: 16px; border: 1px solid #dcded4; background: #fafbf7; }
+  .public-skill { padding: 18px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--shadow-xs); transition: transform var(--t-med) var(--ease-out), border-color var(--t-med) var(--ease-out), box-shadow var(--t-med) var(--ease-out); }
+  .public-skill:hover { transform: translateY(-2px); border-color: var(--border-strong); box-shadow: var(--shadow-sm); }
   .public-skill-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
   .public-skill-images { display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 8px; margin-top: 10px; }
-  .public-skill-images img { display: block; width: 100%; height: 80px; object-fit: cover; border: 1px solid #dcded4; }
+  .public-skill-images img { display: block; width: 100%; height: 80px; object-fit: cover; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); }
   .public-skill-links { margin: 8px 0 0; padding-left: 16px; font-size: 12px; }
   .public-skill-links li { margin: 2px 0; overflow-wrap: anywhere; }
-  .public-skill-links a { color: #345d3d; }
-  .public-skill p { margin: 6px 0; color: #6f7b6d; font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
-  .public-skill-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
-  .meta { color: #818b7f; font-size: 12px; }
+  .public-skill-links a { color: var(--accent-deep); }
+  .public-skill p { margin: 6px 0; color: var(--ink-muted); font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .public-skill-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+  .meta { color: var(--ink-subtle); font-size: 12px; }
   .member-identities { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 20px; }
-  .public-current-status { display: inline-block; margin-top: 8px; padding: 2px 9px; border-radius: 999px; background: #eef3e8; color: #4d6448; font-size: 12px; }
-  .public-current-status.busy { background: #fff3df; color: #7a4b12; }
-  .relation-panel { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; margin: 0 0 20px; padding: 12px 14px; border: 1px solid #dce3d6; background: #fafbf7; }
-  .relation-counts { display: flex; flex-wrap: wrap; gap: 12px; color: #6f7b6d; font-size: 12px; }
-  .relation-counts strong { color: #274732; }
+  .public-current-status { display: inline-block; margin-top: 8px; padding: 3px 10px; border-radius: 999px; background: var(--surface-tint); border: 1px solid var(--border-subtle); color: var(--accent-deep); font-size: 12px; font-weight: 500; }
+  .public-current-status.busy { background: var(--warn-bg); border-color: #ecd1a2; color: var(--warn-ink); }
+  .relation-panel { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; margin: 0 0 22px; padding: 14px 16px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--shadow-xs); }
+  .relation-counts { display: flex; flex-wrap: wrap; gap: 14px; color: var(--ink-muted); font-size: 12.5px; }
+  .relation-counts strong { color: var(--accent-deep); font-family: var(--font-mono); }
   .relation-actions { display: flex; flex-wrap: wrap; gap: 6px; }
-  .relation-actions button { padding: 4px 10px; border: 1px solid #d6ddd2; border-radius: 999px; background: #fff; color: #52695a; font-size: 12px; }
-  .relation-actions button.active { border-color: #7c9b6c; background: #eef3e8; color: #274732; }
-  .relation-current, .relation-hint, .relation-error { flex-basis: 100%; margin: 0; color: #6f7b6d; font-size: 12px; }
-  .relation-error { color: #9b402c; }
-  .chip { display: inline-block; padding: 4px 10px; border: 1px solid #c8d4c0; border-radius: 999px; background: #eef3e8; color: #3f5d3a; font-size: 12px; }
-  .profile-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 18px 0 22px; padding-bottom: 8px; border-bottom: 1px solid #dcded4; }
-  .profile-tabs button { border: 1px solid transparent; background: none; padding: 7px 12px; color: #52695a; font-size: 13px; }
-  .profile-tabs button:hover { background: #eef3e8; }
-  .profile-tabs button.active { background: #274732; color: #fff; }
-  .profile-tabs button span { margin-left: 5px; opacity: 0.72; }
-  .profile-tab-panel { margin-top: 10px; }
-  .career-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
-  .career-card { padding: 14px; border: 1px solid #dcded4; background: #fafbf7; }
+  .relation-actions button { padding: 5px 12px; border: 1px solid var(--border-default); border-radius: 999px; background: var(--surface-elevated); color: var(--ink-secondary); font-size: 12px; font-weight: 500; transition: background-color var(--t-fast) var(--ease-out), border-color var(--t-fast) var(--ease-out); }
+  .relation-actions button:hover:not(:disabled) { background: var(--surface-tint); border-color: var(--border-strong); }
+  .relation-actions button.active { border-color: var(--accent); background: var(--surface-tint); color: var(--accent-deep); font-weight: 600; }
+  .relation-current, .relation-hint, .relation-error { flex-basis: 100%; margin: 0; color: var(--ink-muted); font-size: 12px; }
+  .relation-error { color: var(--danger); }
+  .profile-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 18px 0 22px; padding-bottom: 10px; border-bottom: 1px solid var(--border-subtle); }
+  .profile-tabs button { border: 1px solid transparent; border-radius: var(--radius-sm); background: none; padding: 8px 14px; color: var(--ink-secondary); font-size: 13px; font-weight: 500; transition: background-color var(--t-fast) var(--ease-out), color var(--t-fast) var(--ease-out); }
+  .profile-tabs button:hover { background: var(--surface-tint); color: var(--accent-deep); }
+  .profile-tabs button.active { background: linear-gradient(135deg, var(--accent), var(--accent-deep)); color: #fff; box-shadow: var(--shadow-glow); }
+  .profile-tabs button span { margin-left: 6px; opacity: 0.78; font-family: var(--font-mono); font-size: 11.5px; }
+  .career-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
+  .career-card { padding: 16px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--shadow-xs); }
   .career-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
   .career-head h3 { margin: 0; font-size: 15px; }
   .career-head span { font-size: 12px; }
-  .career-card p { margin: 6px 0; color: #6f7b6d; font-size: 13px; }
-  .career-card small { color: #818b7f; font-size: 12px; }
-  .career-card .progress { height: 6px; margin: 8px 0 4px; background: #e6ebe1; }
-  .career-card .progress span { display: block; height: 100%; background: #6f9661; }
+  .career-card p { margin: 6px 0; color: var(--ink-muted); font-size: 13px; font-family: var(--font-mono); }
+  .career-card small { color: var(--ink-subtle); font-size: 12px; }
+  .career-card .progress { height: 7px; margin: 10px 0 6px; border-radius: 999px; overflow: hidden; background: var(--surface-tint); }
+  .career-card .progress span { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--accent), var(--accent-bright)); }
   .milestones { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
-  .tab-empty { padding: 20px 0; color: #818b7f; }
-  .home-shelf { margin: 34px 0; }
-  .shelf-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
-  .shelf-head h2 { margin: 0; font-size: 20px; }
-  .shelf-head a { color: #52695a; font-size: 13px; text-decoration: none; }
-  .shelf-head a:hover { text-decoration: underline; }
-  .home-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 18px; }
-  .yt-card { display: block; color: inherit; text-decoration: none; }
-  /* shortcut: 缩略图为冒险风格占位图，项目封面（media_assets）上传链路落地后替换 */
-  .yt-thumb { position: relative; display: block; aspect-ratio: 16 / 9; border-radius: 10px; background: linear-gradient(135deg, #dbe7d8, #a9c29e); }
-  .yt-thumb.yt-dungeon { background: linear-gradient(135deg, #d9e2f2, #9db6dd); }
-  .yt-thumb.yt-boss { background: linear-gradient(135deg, #f2d9d9, #dd9d9d); }
-  .yt-thumb.yt-hardware { background: linear-gradient(135deg, #dfe3ea, #aab4c2); }
+  .tab-empty { padding: 20px 0; color: var(--ink-subtle); }
+  .home-shelf { margin: 38px 0; }
+  .shelf-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+  .shelf-head h2 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.02em; }
+  .shelf-head a { color: var(--accent-deep); font-size: 13px; font-weight: 600; text-decoration: none; padding: 4px 8px; border-radius: var(--radius-sm); transition: background-color var(--t-fast) var(--ease-out), transform var(--t-fast) var(--ease-out); }
+  .shelf-head a:hover { background: var(--surface-tint); transform: translateX(2px); }
+  .home-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(236px, 1fr)); gap: 18px; }
+  .yt-card {
+    display: block;
+    padding: 12px;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    color: inherit;
+    text-decoration: none;
+    box-shadow: var(--shadow-xs);
+    transition: transform var(--t-med) var(--ease-out), border-color var(--t-med) var(--ease-out), box-shadow var(--t-med) var(--ease-out);
+  }
+  .yt-card:hover {
+    transform: translateY(-3px);
+    border-color: var(--border-strong);
+    box-shadow: var(--shadow-sm);
+  }
+  /* shortcut: 缩略图为科技风占位图，项目封面（media_assets）上传链路落地后替换 */
+  .yt-thumb {
+    position: relative;
+    display: block;
+    aspect-ratio: 16 / 9;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(15, 138, 95, 0.14);
+    background:
+      linear-gradient(to right, rgba(15, 138, 95, 0.08) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(15, 138, 95, 0.08) 1px, transparent 1px),
+      linear-gradient(135deg, #dff3e8 0%, #b5e1c9 100%);
+    background-size: 18px 18px, 18px 18px, auto;
+    overflow: hidden;
+  }
+  .yt-thumb.yt-dungeon {
+    border-color: rgba(45, 118, 152, 0.16);
+    background:
+      linear-gradient(to right, rgba(45, 118, 152, 0.08) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(45, 118, 152, 0.08) 1px, transparent 1px),
+      linear-gradient(135deg, #ddf0f4 0%, #add7e3 100%);
+    background-size: 18px 18px, 18px 18px, auto;
+  }
+  .yt-thumb.yt-boss {
+    border-color: rgba(176, 82, 82, 0.16);
+    background:
+      linear-gradient(to right, rgba(176, 82, 82, 0.07) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(176, 82, 82, 0.07) 1px, transparent 1px),
+      linear-gradient(135deg, #f5e2e4 0%, #e5b7bd 100%);
+    background-size: 18px 18px, 18px 18px, auto;
+  }
   .yt-badge { position: absolute; top: 8px; right: 8px; }
-  .yt-body { display: flex; gap: 10px; margin-top: 10px; }
-  .yt-avatar { flex: none; width: 34px; height: 34px; border-radius: 50%; object-fit: cover; background: #dce8d2; }
-  .yt-card h3 { margin: 0; font-size: 15px; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  .yt-meta { margin: 3px 0 0; color: #818b7f; font-size: 12px; overflow-wrap: anywhere; }
-  .engineer-grid { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
-  .engineer-card { display: flex; flex-direction: column; align-items: center; padding: 20px 12px; border: 1px solid #dcded4; border-radius: 10px; background: #fafbf7; color: inherit; text-decoration: none; text-align: center; }
-  .engineer-avatar { width: 72px; height: 72px; border-radius: 50%; object-fit: cover; background: #dce8d2; }
-  .engineer-card h3 { margin: 10px 0 0; font-size: 15px; }
-  .like-button { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border: 1px solid #d6ddd2; border-radius: 999px; background: #fff; color: #52695a; font-size: 12px; cursor: pointer; }
-  .like-button.liked { color: #a84358; border-color: #e3bcc4; background: #fff4f6; }
-  .like-count { color: #a84358; font-size: 12px; }
+  .yt-body { display: flex; gap: 10px; margin-top: 12px; }
+  .yt-avatar { flex: none; width: 34px; height: 34px; border-radius: 50%; object-fit: cover; background: var(--surface-tint); border: 1px solid var(--border-subtle); }
+  .yt-card h3 { margin: 0; font-size: 15px; line-height: 1.35; color: var(--ink-primary); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .yt-meta { margin: 4px 0 0; color: var(--ink-muted); font-size: 12px; overflow-wrap: anywhere; }
+  .engineer-grid { grid-template-columns: repeat(auto-fill, minmax(186px, 1fr)); }
+  .engineer-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 22px 14px;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    color: inherit;
+    text-decoration: none;
+    text-align: center;
+    box-shadow: var(--shadow-xs);
+    transition: transform var(--t-med) var(--ease-out), border-color var(--t-med) var(--ease-out), box-shadow var(--t-med) var(--ease-out);
+  }
+  .engineer-card:hover {
+    transform: translateY(-3px);
+    border-color: var(--border-strong);
+    box-shadow: var(--shadow-sm);
+  }
+  .engineer-avatar { width: 72px; height: 72px; border-radius: 50%; object-fit: cover; background: linear-gradient(135deg, #d7eee1, #b3dec6); border: 2px solid var(--surface-elevated); box-shadow: 0 0 0 2px var(--border-default); }
+  .engineer-card h3 { margin: 12px 0 0; font-size: 15px; color: var(--ink-primary); }
+  .like-button { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border: 1px solid var(--border-default); border-radius: 999px; background: transparent; color: var(--ink-secondary); font-size: 12px; cursor: pointer; transition: background-color var(--t-fast) var(--ease-out), border-color var(--t-fast) var(--ease-out), color var(--t-fast) var(--ease-out); }
+  .like-button:hover { background: var(--surface-tint); border-color: var(--border-strong); }
+  .like-button.liked { color: var(--accent-deep); border-color: var(--accent); background: var(--accent-soft); }
+  .like-button .thumb,
+  .like-count .thumb { flex: none; }
+  .like-sep { opacity: 0.45; }
+  .like-number { font-variant-numeric: tabular-nums; }
+  .like-count { display: inline-flex; align-items: center; gap: 5px; color: var(--ink-muted); font-size: 12px; }
   .recognized { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border: 1px solid transparent; border-radius: 999px; font-size: 11px; font-weight: 600; letter-spacing: 0.02em; }
   .recognized::before { content: '✦'; }
+  @media (max-width: 600px) {
+    .public-hero { padding: 30px 22px; margin-bottom: 28px; }
+    .hero-orb { width: 180px; height: 180px; right: -40px; top: -40px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .hero-orb, .hero-badge i { animation: none !important; }
+  }
+
+  /* Matrix theme for the existing homepage content. */
+  .public-hero {
+    min-height: 390px;
+    padding: 72px 56px;
+    background: linear-gradient(to right, #62ff9b0b 1px, transparent 1px),
+      linear-gradient(to bottom, #62ff9b0b 1px, transparent 1px), #041008;
+    background-size: 32px 32px;
+  }
+  .hero-orb {
+    width: 280px; height: 280px; right: 10%; top: 50%;
+    margin-top: -140px; border: 1px solid #4fa56d;
+    box-shadow: none;
+  }
+  .hero-orb::before { content: ''; position: absolute; inset: -24px; border: 1px dashed #4fa56d70; border-radius: 50%; }
+  .hero-orb span { border-color: #4fa56d99; }
+  .hero-orb span:nth-child(2) { border: 1px solid #62ff9b; border-radius: 0; transform: rotate(45deg); background: #0a2515; box-shadow: none; }
+  .hero-badge { background: #071b0e; color: var(--accent-bright); }
+  .public-hero h1 { background: none; color: var(--ink-primary); }
+  .hero-en { color: var(--accent-bright); }
+  .hero-motto { color: var(--ink-secondary); }
+  .hero-actions a:first-child, .hero-actions a:first-child:hover { background: #62e893; color: #031008; }
+  .home-shelf { border-top: 1px solid var(--border-subtle); padding-top: 26px; }
+  .yt-thumb, .yt-thumb.yt-dungeon, .yt-thumb.yt-boss {
+    border-color: var(--border-default);
+    background: linear-gradient(to right, #62ff9b10 1px, transparent 1px),
+      linear-gradient(to bottom, #62ff9b10 1px, transparent 1px),
+      #0b2013;
+    background-size: 20px 20px, 20px 20px, auto;
+  }
+  .engineer-avatar { background: linear-gradient(135deg, #143c24, #07150d); }
+  @media (max-width: 600px) {
+    .public-hero { min-height: 0; padding: 38px 24px; }
+    .hero-orb { width: 150px; height: 150px; right: -50px; top: 36px; margin: 0; opacity: .45; }
+  }
 </style>

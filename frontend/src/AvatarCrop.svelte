@@ -58,8 +58,10 @@
 {/if}
 
 <style>
-  .crop { display: grid; gap: 10px; width: min(288px, 100%); margin-top: 12px; }
-  canvas { display: block; width: 100%; aspect-ratio: 1; background: #eef1eb; }
-  .crop label { display: grid; gap: 4px; }
-  .crop input { width: 100%; }
+  .crop { display: grid; gap: 10px; width: min(300px, 100%); margin-top: 12px; padding: 14px; border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--surface-elevated); box-shadow: var(--shadow-sm); }
+  canvas { display: block; width: 100%; aspect-ratio: 1; background: var(--surface-soft); border-radius: var(--radius-sm); border: 1px solid var(--border-subtle); }
+  .crop label { display: grid; gap: 4px; font-size: 12.5px; color: var(--ink-secondary); }
+  .crop input { width: 100%; accent-color: var(--accent); }
+  .crop button { padding: 7px 14px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--accent-deep); font-size: 13px; font-weight: 600; }
+  .crop button:hover:not(:disabled) { background: var(--surface-tint); border-color: var(--border-strong); }
 </style>

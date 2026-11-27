@@ -6,9 +6,11 @@
   import SkillEditor from './SkillEditor.svelte';
   import AdminDirectory from './AdminDirectory.svelte';
   import MyProjects from './MyProjects.svelte';
+  import CreateProject from './CreateProject.svelte';
   import Messages from './Messages.svelte';
   import PublicPages from './PublicPages.svelte';
   import Editors from './Editors.svelte';
+  import ProfileVisibility from './ProfileVisibility.svelte';
 
   const pathname = location.pathname.replace(/\/+$/, '') || '/';
   if (pathname === '/gpu') location.replace('/hardware');
@@ -20,7 +22,7 @@
   let menuOpen = false;
   let accountOpen = false;
   let accountMenu, accountButton;
-  let accountId = '';
+  let accountName = '';
   let accountAvatar = '';
   let mode = pathname === '/join' ? 'register' : 'login';
   let inviteCode = '';
@@ -164,7 +166,7 @@
     token = '';
     collection = '';
     role = 'guest';
-    accountOpen = false; accountId = '';
+    accountOpen = false; accountName = '';
     if (accountAvatar) URL.revokeObjectURL(accountAvatar);
     accountAvatar = '';
     sessionStorage.removeItem('authToken');
@@ -253,7 +255,8 @@
       scheduleExpiry();
       const me = await request('/api/hpahub/me');
       role = me.role;
-      accountId = me.id;
+      accountName = result.record?.display_name || result.record?.name || result.record?.email || '';
+      if (collection === '_superusers') loadSuperuserName();
       loadAccountAvatar();
       fetchUnreadMessages();
       messagePollTimer = setInterval(fetchUnreadMessages, 60000);
@@ -265,6 +268,14 @@
       checking = false;
     }
   });
+
+  async function loadSuperuserName() {
+    const currentToken = token;
+    try {
+      const center = await request('/api/hpahub/me/center');
+      if (token === currentToken) accountName = center.profile?.name || accountName;
+    } catch {}
+  }
 
   async function loadAccountAvatar() {
     try {
@@ -296,14 +307,14 @@
     <a class="brand" href="/" aria-label={$t('HPA Hub 首页')}><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span>HPA<span class="brand-light">HUB</span></span></a>
     <nav id="main-navigation" class="topbar-right" aria-label={$t('主导航')}>
       <a class="text-button" href="/" aria-current={pathname === '/' && page === 'home' ? 'page' : undefined}>{$t('首页')}</a>
-      <a class="text-button" href="/hardware">{$t('硬件数据库')}</a>
-      <a class="text-button" href="/community">{$t('成员列表')}</a>
-      <a class="text-button" href="/showcase">{$t('项目大厅')}</a>
+      <a class="text-button" href="/hardware" aria-current={pathname === '/hardware' ? 'page' : undefined}>{$t('硬件数据库')}</a>
+      <a class="text-button" href="/community" aria-current={pathname === '/community' || pathname.startsWith('/community/') ? 'page' : undefined}>{$t('成员列表')}</a>
+      <a class="text-button" href="/showcase" aria-current={pathname === '/showcase' || pathname.startsWith('/showcase/') ? 'page' : undefined}>{$t('项目大厅')}</a>
       {#if token && !checking}
-        {#if ['member', 'admin', 'octopus'].includes(role)}<a class="text-button" href="/messages">{$t('站内消息')}{#if unreadMessages > 0}<span class="nav-badge">{unreadMessages}</span>{/if}</a>{/if}
+        {#if ['member', 'admin', 'octopus'].includes(role)}<a class="text-button" href="/messages" aria-current={pathname === '/messages' ? 'page' : undefined}>{$t('站内消息')}{#if unreadMessages > 0}<span class="nav-badge">{unreadMessages}</span>{/if}</a>{/if}
         {#if isAdmin}
-          <a class="text-button" href="/manage/showcase">{$t('项目大厅管理')}</a>
-          {#if pathname === '/'}<button class="text-button" on:click={openConsole}>{$t('管理控制台')}</button>
+          <a class="text-button" href="/manage/showcase" aria-current={pathname === '/manage/showcase' ? 'page' : undefined}>{$t('项目大厅管理')}</a>
+          {#if pathname === '/'}<button class="text-button" aria-current={page === 'console' ? 'page' : undefined} on:click={openConsole}>{$t('管理控制台')}</button>
           {:else}<a class="text-button" href="/?console=1">{$t('管理控制台')}</a>{/if}
         {/if}
       {/if}
@@ -312,12 +323,12 @@
           <div class="account-menu" bind:this={accountMenu}>
             <button type="button" class="account-button" bind:this={accountButton} aria-expanded={accountOpen} aria-controls="account-menu" on:click={() => accountOpen = !accountOpen}>
               {#if accountAvatar}<img src={accountAvatar} alt="" />{:else}<span class="account-avatar-default" aria-hidden="true"></span>{/if}
-              <span class="account-id">{accountId}</span><span aria-hidden="true">⌃</span>
+              <span class="account-id">{accountName}</span><span aria-hidden="true">⌃</span>
             </button>
             {#if accountOpen}
               <div id="account-menu" class="account-popover">
                 <a href="/me">{$t('个人中心')}</a>
-                {#if ['member', 'admin'].includes(role)}<a href="/settings">{$t('个人设置')}</a>{/if}
+                {#if ['member', 'admin', 'octopus'].includes(role)}<a href="/settings">{$t('修改个人名片')}</a>{/if}
                 {#if ['member', 'admin', 'octopus'].includes(role)}<a href="/my-projects">{$t('我的项目')}</a>{/if}
                 <button type="button" on:click={logout}>{$t('退出登录')}</button>
               </div>
@@ -337,7 +348,7 @@
   {#if checking}
     <main class="dashboard"><p role="status">{$t('正在验证登录状态…')}</p></main>
   {:else if pathname === '/hardware'}
-    <Hardware {token} {role} />
+    <Hardware />
   {:else if pathname === '/me/skills'}
     {#if token}
       <SkillEditor {token} />
@@ -350,6 +361,12 @@
     {:else}
       <main class="dashboard"><h1>{$t('站内消息')}</h1><p>{$t('请先登录后查看消息。')}</p><a href="/sign-in">{$t('登录')}</a></main>
     {/if}
+  {:else if pathname === '/my-projects/new'}
+    {#if token}
+      <CreateProject {token} />
+    {:else}
+      <main class="dashboard"><h1>{$t('发起项目')}</h1><p>{$t('请先登录后查看我的项目。')}</p><a href="/sign-in">{$t('登录')}</a></main>
+    {/if}
   {:else if pathname === '/my-projects'}
     {#if token}
       <MyProjects {token} />
@@ -358,13 +375,13 @@
     {/if}
   {:else if pathname === '/me'}
     {#if token}
-      <PersonalCenter {token} />
+      <PersonalCenter {token} on:profileSaved={(event) => { accountName = event.detail.name || accountName; }} />
     {:else}
       <main class="dashboard"><h1>{$t('个人中心')}</h1><p>{$t('请先登录后查看个人中心。')}</p><a href="/sign-in">{$t('登录')}</a></main>
     {/if}
   {:else if pathname === '/settings' || pathname === '/manage/showcase'}
-    {#if token && (pathname === '/settings' ? ['member', 'admin'].includes(role) : isAdmin)}
-      <Editors {token} {role} manage={pathname === '/manage/showcase'} />
+    {#if token && (pathname === '/settings' ? ['member', 'admin', 'octopus'].includes(role) : isAdmin)}
+      {#if pathname === '/settings'}<ProfileVisibility {token} />{:else}<Editors {token} {role} manage={true} />{/if}
     {:else}
       <main class="dashboard"><h1>{$t('无权访问')}</h1><p>{$t('请使用有权限的账户登录。')}</p><a href="/sign-in">{$t('登录')}</a></main>
     {/if}

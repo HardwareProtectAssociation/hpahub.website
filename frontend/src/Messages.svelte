@@ -17,6 +17,7 @@
   let activeTab = 'inbox';
   let hasMore = false;
   let offset = 0;
+  let replyContext = null;
 
   const categoryLabels = { user: '用户消息', system: '系统通知', project_approval: '项目审核' };
 
@@ -70,6 +71,26 @@
     } catch {}
   }
 
+  function reply(msg) {
+    replyContext = msg;
+    activeTab = 'compose';
+    recipientId = msg.senderId;
+    if (!members.some((member) => member.id === msg.senderId)) {
+      members = [...members, { id: msg.senderId, name: msg.senderName || msg.senderId }];
+    }
+    subject = msg.subject ? (/^re:\s/i.test(msg.subject) ? msg.subject : `Re: ${msg.subject}`) : '';
+    content = '';
+    notice = '';
+    markRead(msg);
+  }
+
+  function cancelReply() {
+    replyContext = null;
+    recipientId = '';
+    subject = '';
+    content = '';
+  }
+
   async function send() {
     if (!recipientId || !content.trim()) return;
     sending = true;
@@ -82,6 +103,7 @@
       });
       subject = '';
       content = '';
+      replyContext = null;
       notice = '消息已发送。';
     } catch (err) {
       error = err.message || '发送失败，请重试。';
@@ -111,7 +133,13 @@
 
   {#if activeTab === 'compose'}
     <form class="compose-form" on:submit|preventDefault={send}>
-      <h2>{$t('发送消息')}</h2>
+      <h2>{replyContext ? $t('回复消息') : $t('发送消息')}</h2>
+      {#if replyContext}
+        <div class="reply-context">
+          <span>{$t('回复 {name}', { name: replyContext.senderName || replyContext.senderId })}{#if replyContext.subject}：{replyContext.subject}{/if}</span>
+          <button type="button" class="reply-cancel" on:click={cancelReply}>{$t('取消回复')}</button>
+        </div>
+      {/if}
       <label>{$t('收件人')}
         <select bind:value={recipientId} required>
           <option value="">{$t('选择成员')}</option>
@@ -143,6 +171,11 @@
             {#if msg.subject}<p class="sender">{$t('来自')}：{msg.senderName || '—'}</p>{/if}
             {#if msg.projectTitle}<p class="project-ref">{$t('相关项目')}：{msg.projectTitle}</p>{/if}
             <p class="message-content">{msg.content}</p>
+            {#if msg.category === 'user' && msg.senderId}
+              <div class="message-actions">
+                <button type="button" class="reply-button" on:click|stopPropagation={() => reply(msg)} on:keydown|stopPropagation>{$t('回复')}</button>
+              </div>
+            {/if}
             {#if !msg.read}<span class="unread-dot" aria-label={$t('未读')}></span>{/if}
           </article>
         {/each}
@@ -155,25 +188,34 @@
 <style>
   .messages-page { width: min(900px, 88%); }
   .messages-page .page-heading { margin-top: 0; }
-  .message-tabs { display: flex; gap: 6px; margin: 10px 0 22px; padding-bottom: 8px; border-bottom: 1px solid #dcded4; }
-  .message-tabs button { border: 1px solid transparent; background: none; padding: 7px 14px; color: #52695a; font-size: 13px; cursor: pointer; }
-  .message-tabs button.active { background: #274732; color: #fff; }
-  .badge { display: inline-block; margin-left: 5px; padding: 1px 7px; border-radius: 999px; background: #e36b82; color: #fff; font-size: 11px; }
-  .compose-form { display: grid; gap: 12px; padding: 20px; border: 1px solid #dcded4; background: #fafbf7; }
+  .message-tabs { display: flex; gap: 6px; margin: 10px 0 22px; padding-bottom: 10px; border-bottom: 1px solid var(--border-subtle); }
+  .message-tabs button { border: 1px solid transparent; border-radius: var(--radius-sm); background: none; padding: 8px 14px; color: var(--ink-secondary); font-size: 13px; font-weight: 500; cursor: pointer; transition: background-color var(--t-fast) var(--ease-out), color var(--t-fast) var(--ease-out); }
+  .message-tabs button:hover { background: var(--surface-tint); color: var(--accent-deep); }
+  .message-tabs button.active { background: linear-gradient(135deg, var(--accent), var(--accent-deep)); color: #fff; box-shadow: var(--shadow-glow); }
+  .badge { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: var(--badge-rose); color: #fff; font-family: var(--font-mono); font-size: 11px; }
+  .compose-form { display: grid; gap: 12px; padding: 22px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--shadow-sm); }
   .compose-form h2 { margin: 0; font-size: 18px; }
-  .compose-form label { display: grid; gap: 5px; color: #52695a; font-size: 13px; }
-  .compose-form input, .compose-form select, .compose-form textarea { width: 100%; padding: 9px; border: 1px solid #b9c3b3; background: #fff; color: #252b26; font: inherit; }
+  .compose-form label { display: grid; gap: 5px; color: var(--ink-secondary); font-size: 13px; font-weight: 500; }
+  .compose-form input, .compose-form select, .compose-form textarea { width: 100%; padding: 9px 11px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--ink-primary); font: inherit; }
+  .compose-form input:focus, .compose-form select:focus, .compose-form textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); outline: none; }
   .compose-form textarea { resize: vertical; }
-  .message-list { display: grid; gap: 10px; }
-  .message-card { position: relative; padding: 16px; border: 1px solid #dcded4; background: #fafbf7; cursor: pointer; }
-  .message-card.unread { border-left: 3px solid #e36b82; background: #fff8f0; }
+  .message-list { display: grid; gap: 12px; }
+  .message-card { position: relative; padding: 16px 18px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface); cursor: pointer; box-shadow: var(--shadow-xs); transition: transform var(--t-fast) var(--ease-out), border-color var(--t-fast) var(--ease-out), box-shadow var(--t-fast) var(--ease-out); }
+  .message-card:hover { transform: translateY(-2px); border-color: var(--border-strong); box-shadow: var(--shadow-sm); }
+  .message-card.unread { border-left: 3px solid var(--accent-bright); background: var(--surface-tint); }
   .message-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-  .message-head strong { display: block; margin-top: 2px; }
-  .category-tag { display: inline-block; padding: 1px 8px; border-radius: 999px; background: #eef3e8; color: #4d6448; font-size: 11px; }
-  .message-head time { color: #8b9587; font-size: 12px; white-space: nowrap; }
-  .sender, .project-ref { margin: 4px 0; color: #818b7f; font-size: 12px; }
-  .message-content { margin: 8px 0 0; color: #354839; font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
-  .unread-dot { position: absolute; top: 12px; right: 12px; width: 8px; height: 8px; border-radius: 50%; background: #e36b82; }
-  .empty { padding: 30px 0; color: #818b7f; }
+  .message-head strong { display: block; margin-top: 4px; color: var(--ink-primary); }
+  .category-tag { display: inline-block; padding: 2px 9px; border-radius: 999px; background: var(--surface-tint); color: var(--accent-deep); font-size: 11px; font-weight: 600; }
+  .message-head time { color: var(--ink-subtle); font-family: var(--font-mono); font-size: 11.5px; white-space: nowrap; }
+  .sender, .project-ref { margin: 4px 0; color: var(--ink-muted); font-size: 12px; }
+  .message-content { margin: 8px 0 0; color: var(--ink-secondary); font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .message-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .reply-button { padding: 3px 11px; border: 1px solid var(--border-default); border-radius: 999px; background: transparent; color: var(--ink-secondary); font-size: 12px; cursor: pointer; transition: background-color var(--t-fast) var(--ease-out), border-color var(--t-fast) var(--ease-out), color var(--t-fast) var(--ease-out); }
+  .reply-button:hover { border-color: var(--accent); color: var(--accent-deep); background: var(--accent-soft); }
+  .reply-context { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 12px; border: 1px solid var(--accent); border-radius: var(--radius-sm); background: var(--accent-soft); color: var(--accent-deep); font-size: 13px; }
+  .reply-cancel { flex: none; padding: 2px 10px; border: 1px solid var(--accent); border-radius: 999px; background: transparent; color: var(--accent-deep); font-size: 12px; cursor: pointer; }
+  .reply-cancel:hover { background: var(--surface-elevated); }
+  .unread-dot { position: absolute; top: 14px; right: 14px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent-bright); animation: mint-pulse 2.2s ease-in-out infinite; }
+  .empty { padding: 30px 0; color: var(--ink-subtle); }
   @media (max-width: 600px) { .message-head { flex-direction: column; } }
 </style>

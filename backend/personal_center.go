@@ -103,6 +103,7 @@ type centerProject struct {
 }
 
 type centerBadge struct {
+	Redacted       bool   `json:"redacted,omitempty"`
 	CareerID       string `json:"careerId"`
 	CareerName     string `json:"careerName"`
 	Category       string `json:"category"`
@@ -792,6 +793,19 @@ func bindPersonalCenterRoutes(e *core.ServeEvent) {
 		row, err := e.App.FindRecordById("user_skills", e.Request.PathValue("id"))
 		if err != nil {
 			return e.NotFoundError("Not found.", nil)
+		}
+		owner, err := e.App.FindRecordById("users", row.GetString("user_id"))
+		if err != nil {
+			return e.NotFoundError("Not found.", nil)
+		}
+		if !owner.GetBool("profilePublic") || profileSectionHidden(owner, "skills") || profileSectionHidden(owner, "skill:"+row.Id) {
+			if e.Auth == nil {
+				return e.NotFoundError("Not found.", nil)
+			}
+			viewer, member, err := personalCenterOwner(e.App, e.Auth)
+			if err != nil || !member || viewer.Id != owner.Id {
+				return e.NotFoundError("Not found.", nil)
+			}
 		}
 		return serveContentFile(e, row, "images", e.Request.PathValue("file"))
 	})
