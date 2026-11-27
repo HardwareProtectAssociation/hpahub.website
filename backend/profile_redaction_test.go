@@ -28,6 +28,7 @@ func TestPublicProfileIndividualRedaction(t *testing.T) {
 	owner.Set("profilePublic", true)
 	owner.Set("bio", "我的保密简介")
 	owner.Set("current_status", "busy")
+	owner.Set("gender", "female")
 	centerTestSave(t, app, owner)
 	other := publicProjectTestUser(t, app, "redact-member@example.com", "绝密成员")
 	other.Set("profilePublic", true)
@@ -135,6 +136,9 @@ func TestPublicProfileIndividualRedaction(t *testing.T) {
 			t.Fatalf("missing %q: %s", visible, res.Body.String())
 		}
 	}
+	if !strings.Contains(res.Body.String(), `"gender":"female"`) {
+		t.Fatalf("public gender missing: %s", res.Body.String())
+	}
 	var data struct {
 		Bio   string `json:"bio"`
 		Cards []struct {
@@ -220,5 +224,11 @@ func TestPublicProfileIndividualRedaction(t *testing.T) {
 		if !strings.Contains(restored.Body.String(), text) {
 			t.Fatalf("restore missing %q: %s", text, restored.Body.String())
 		}
+	}
+	owner.Set("gender", "private")
+	centerTestSave(t, app, owner)
+	privateGender := call("GET", "/api/hpahub/members/"+owner.Id, "", "")
+	if strings.Contains(privateGender.Body.String(), `"gender":"private"`) {
+		t.Fatalf("private gender leaked: %s", privateGender.Body.String())
 	}
 }

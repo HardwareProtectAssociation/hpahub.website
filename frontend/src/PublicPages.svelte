@@ -3,6 +3,8 @@
   import { locale, t } from './i18n.js';
   import { difficultyRank, levelRank } from './tiers.js';
   import RedactedText from './RedactedText.svelte';
+  import Select from './Select.svelte';
+  import MarkdownContent from './MarkdownContent.svelte';
   export let pathname;
   export let token = '';
   let data = null;
@@ -131,6 +133,7 @@
       return new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0);
     });
   const currentStatusLabels = { busy: '忙碌', free: '空闲' };
+  const genderLabels = { male: '男', female: '女', nonbinary: '非二元' };
   const relationLabels = { admire: '关注', watch: '监视', investigate: '调查' };
   const recognizedLabels = { 1: '有点东西', 2: '他不对劲', 3: '他真会啊', 4: '他太强了！', 5: '他是超人！' };
   const relationOptions = Object.entries(relationLabels);
@@ -325,8 +328,25 @@
   {:else if error}<p class="message error" role="alert">{$t(error, errorParams)}</p>
   {:else if section === 'community'}
     {#if id}
-      <a href="/community">{$t('返回成员列表')}</a><header class="profile-heading">{#if data.avatarRedacted}<span class="avatar redacted-avatar" title={$t('资料隐藏')} aria-label={$t('资料隐藏')}></span>{:else if data.avatarUrl}<img class="avatar" src={data.avatarUrl} alt="" />{:else}<span class="avatar avatar-default" aria-hidden="true"></span>{/if}<div><h1>{data.name}</h1><p><RedactedText text={data.bio} hidden={!!data.bioRedacted} /></p>{#if data.currentStatus}<span class:busy={data.currentStatus === 'busy'} class="public-current-status">{$t('当前状态')}：<RedactedText text={$t(currentStatusLabels[data.currentStatus] || data.currentStatus)} hidden={!!data.statusRedacted} /></span>{/if}</div></header>
-      {#if data.identities?.length}<div class="member-identities">{#each data.identities as identity}{#if identity.redacted}<RedactedText text={identity.name} hidden={true} />{:else}<span class={`rank rank-pill rank-${identity.category === 'main' ? 4 : 3}`}>{$t(identity.category === 'main' ? '主力职业' : '辅助职业')} · {identity.name}</span>{/if}{/each}</div>{/if}
+      <a href="/community">{$t('返回成员列表')}</a>
+      <header class="profile-heading member-profile-heading">
+        {#if data.avatarRedacted}<span class="avatar redacted-avatar" title={$t('资料隐藏')} aria-label={$t('资料隐藏')}></span>{:else if data.avatarUrl}<img class="avatar" src={data.avatarUrl} alt="" />{:else}<span class="avatar avatar-default" aria-hidden="true"></span>{/if}
+        <div class="member-profile-copy">
+          <h1>{data.name}</h1>
+          <p><RedactedText text={data.bio} hidden={!!data.bioRedacted} /></p>
+          {#if data.currentStatus || data.gender || data.identities?.length}
+            <div class="profile-badges" aria-label={$t('个人资料')}>
+              {#if data.currentStatus}<span class={`profile-badge status-badge status-${data.statusRedacted ? 'redacted' : data.currentStatus}`}>{$t('当前状态')} · <RedactedText text={$t(currentStatusLabels[data.currentStatus] || data.currentStatus)} hidden={!!data.statusRedacted} /></span>{/if}
+              {#if data.gender}<span class={`profile-badge gender-badge gender-${data.gender}`}>{$t('性别')} · {$t(genderLabels[data.gender] || data.gender)}</span>{/if}
+              {#each data.identities as identity}
+                <span class={`profile-badge role-badge role-${identity.category === 'main' ? 'main' : 'support'}`}>
+                  {#if identity.redacted}<RedactedText text={identity.name} hidden={true} />{:else}{$t(identity.category === 'main' ? '主力职业' : '辅助职业')} · {identity.name}{/if}
+                </span>
+              {/each}
+            </div>
+          {/if}
+        </div>
+      </header>
       {#if data.relations}
         <div class="relation-panel">
           <div class="relation-counts">
@@ -346,7 +366,7 @@
           {#if !token}<p class="relation-hint">{$t('登录后可设置互动关系。')}</p>{/if}
         </div>
       {/if}
-      {#if data.cards?.length}<div class="public-grid">{#each data.cards as card}<article class="public-card"><h2><RedactedText text={card.title} hidden={!!card.redacted} /></h2><p><RedactedText text={card.text} hidden={!!card.redacted} /></p><div class="image-grid">{#if card.redacted}{#each Array(card.imageCount || 0) as _}<span class="redacted-image" title={$t('资料隐藏')} aria-label={$t('资料隐藏')}></span>{/each}{/if}{#each card.imageUrls || [] as url}<a href={url} target="_blank" rel="noreferrer"><img src={url} alt={card.title} loading="lazy" /></a>{/each}</div></article>{/each}</div>{:else}<p>{$t('暂无公开卡片。')}</p>{/if}
+      {#if data.cards?.length}<div class="public-grid">{#each data.cards as card}<article class="public-card"><h2><RedactedText text={card.title} hidden={!!card.redacted} /></h2>{#if card.redacted}<p><RedactedText text={card.text} hidden={true} /></p>{:else}<MarkdownContent text={card.text} />{/if}<div class="image-grid">{#if card.redacted}{#each Array(card.imageCount || 0) as _}<span class="redacted-image" title={$t('资料隐藏')} aria-label={$t('资料隐藏')}></span>{/each}{/if}{#each card.imageUrls || [] as url}<a href={url} target="_blank" rel="noreferrer"><img src={url} alt={card.title} loading="lazy" /></a>{/each}</div></article>{/each}</div>{:else}<p>{$t('暂无公开卡片。')}</p>{/if}
       <nav class="profile-tabs" aria-label={$t('公开资料')}>
         <button type="button" class:active={activeTab === 'completed'} on:click={() => activeTab = 'completed'}>{$t('完成项目')}<span>{data.projectsCompleted?.length || 0}</span></button>
         <button type="button" class:active={activeTab === 'ongoing'} on:click={() => activeTab = 'ongoing'}>{$t('进行中项目')}<span>{data.projectsOngoing?.length || 0}</span></button>
@@ -579,7 +599,7 @@
       <p>{$t('浏览公开的共创项目。')}</p>
       <div class="hall-toolbar">
         <input type="search" bind:value={hallQuery} placeholder={$t('搜索项目名称、简介或负责人')} aria-label={$t('搜索项目')} />
-        <label class="hall-sort">{$t('排序')}<select bind:value={hallSort}><option value="latest">{$t('最新发布')}</option><option value="hot">{$t('热度')}</option><option value="difficulty">{$t('难度')}</option><option value="participants">{$t('参与人数')}</option></select></label>
+        <div class="hall-sort"><span>{$t('排序')}</span><Select bind:value={hallSort} ariaLabel={$t('排序')} options={[{ value: 'latest', label: $t('最新发布') }, { value: 'hot', label: $t('热度') }, { value: 'difficulty', label: $t('难度') }, { value: 'participants', label: $t('参与人数') }]} /></div>
       </div>
       <div class="hall-filters">
         <div class="filter-row" role="group" aria-label={$t('项目状态')}><button type="button" class:active={!hallStatus} on:click={() => hallStatus = ''}>{$t('全部')}</button>{#each hallStatuses as status}<button type="button" class:active={hallStatus === status} on:click={() => hallStatus = hallStatus === status ? '' : status}>{$t(statusLabels[status])}</button>{/each}</div>
@@ -626,11 +646,7 @@
     margin: 8px 0 42px;
     border: 1px solid var(--border-default);
     border-radius: var(--radius-lg);
-    background:
-      linear-gradient(to right, rgba(15, 138, 95, 0.055) 1px, transparent 1px),
-      linear-gradient(to bottom, rgba(15, 138, 95, 0.055) 1px, transparent 1px),
-      linear-gradient(135deg, rgba(255, 255, 255, 0.94) 0%, rgba(226, 245, 234, 0.86) 100%);
-    background-size: 26px 26px, 26px 26px, auto;
+    background: linear-gradient(135deg, var(--surface), var(--surface-elevated));
     box-shadow: var(--shadow-md);
   }
   .hero-orb {
@@ -688,10 +704,7 @@
     line-height: 1.12;
     letter-spacing: -0.035em;
     margin: 0 0 12px;
-    background: linear-gradient(125deg, var(--ink-primary) 20%, var(--accent-deep) 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
+    color: var(--ink-primary);
   }
   .hero-en {
     position: relative;
@@ -822,7 +835,6 @@
   .hall-toolbar { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0 12px; }
   .hall-toolbar input { flex: 1 1 260px; min-width: 0; padding: 9px 12px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--ink-primary); font: inherit; }
   .hall-sort { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-secondary); font-size: 13px; }
-  .hall-sort select { padding: 9px 12px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--ink-primary); font: inherit; }
   .hall-filters { display: grid; gap: 8px; margin-bottom: 8px; }
   .filter-row { display: flex; flex-wrap: wrap; gap: 6px; }
   .filter-row button { padding: 4px 12px; border: 1px solid var(--border-default); border-radius: 999px; background: transparent; color: var(--ink-secondary); font-size: 12px; cursor: pointer; transition: background-color var(--t-fast) var(--ease-out), border-color var(--t-fast) var(--ease-out), color var(--t-fast) var(--ease-out); }
@@ -862,9 +874,11 @@
   .public-skill p { margin: 6px 0; color: var(--ink-muted); font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
   .public-skill-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
   .meta { color: var(--ink-subtle); font-size: 12px; }
-  .member-identities { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 20px; }
-  .public-current-status { display: inline-block; margin-top: 8px; padding: 3px 10px; border-radius: 999px; background: var(--surface-tint); border: 1px solid var(--border-subtle); color: var(--accent-deep); font-size: 12px; font-weight: 500; }
-  .public-current-status.busy { background: var(--warn-bg); border-color: #ecd1a2; color: var(--warn-ink); }
+  .member-profile-heading { align-items: flex-start; gap: 20px; }
+  .member-profile-copy { flex: 1; min-width: 0; }
+  .member-profile-copy h1 { margin: 0 0 8px; }
+  .member-profile-copy > p { margin: 0; }
+  .member-profile-copy .profile-badges { margin-top: 12px; }
   .relation-panel { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; margin: 0 0 22px; padding: 14px 16px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--shadow-xs); }
   .relation-counts { display: flex; flex-wrap: wrap; gap: 14px; color: var(--ink-muted); font-size: 12.5px; }
   .relation-counts strong { color: var(--accent-deep); font-family: var(--font-mono); }

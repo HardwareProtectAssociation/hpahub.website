@@ -3,6 +3,7 @@
   import { onMount } from 'svelte';
   import { t } from './i18n.js';
   import { difficultyRank } from './tiers.js';
+  import Select from './Select.svelte';
 
   export let token;
   let data = { initiated: [], participated: [], followed: [] };
@@ -268,8 +269,8 @@
           </div>
         </div>
         <div class="manage-grid">
-          <label>{$t('项目状态')}<select bind:value={editForm.executionStatus}>{#each Object.entries(statusLabels) as [value, label]}<option {value}>{$t(label)}</option>{/each}</select></label>
-          <label>{$t('项目性质')}<select bind:value={editForm.projectNature}><option value="">{$t('未填写')}</option>{#each Object.entries(natureLabels) as [value, label]}<option {value}>{$t(label)}</option>{/each}</select></label>
+          <div class="select-field"><span>{$t('项目状态')}</span><Select bind:value={editForm.executionStatus} ariaLabel={$t('项目状态')} options={Object.entries(statusLabels).map(([value, label]) => ({ value, label: $t(label) }))} /></div>
+          <div class="select-field"><span>{$t('项目性质')}</span><Select bind:value={editForm.projectNature} ariaLabel={$t('项目性质')} options={[{ value: '', label: $t('未填写') }, ...Object.entries(natureLabels).map(([value, label]) => ({ value, label: $t(label) }))]} /></div>
         </div>
         {#if ['paused', 'terminated'].includes(editForm.executionStatus)}<label>{$t('暂停或中止原因')}<textarea bind:value={editForm.statusReason} maxlength="2000" rows="3" required></textarea></label>{/if}
         <fieldset class="manage-options"><legend>{$t('项目需要')}</legend>{#each needOptions as [value, label]}<label><input type="checkbox" bind:group={editForm.projectNeeds} value={value} />{$t(label)}</label>{/each}</fieldset>
@@ -345,7 +346,7 @@
   .manage-close { border: 0; background: none; color: var(--ink-secondary); font-size: 26px; line-height: 1; cursor: pointer; }
   .manage-modal form { display: grid; gap: 14px; }
   .manage-modal label { display: grid; gap: 6px; color: var(--ink-secondary); font-size: 13px; }
-  .manage-modal input:not([type="checkbox"]), .manage-modal select, .manage-modal textarea { width: 100%; padding: 9px 11px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--ink-primary); font: inherit; }
+  .manage-modal input:not([type="checkbox"]), .manage-modal textarea { width: 100%; padding: 9px 11px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--ink-primary); font: inherit; }
   .manage-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 14px; }
   .manage-cover { display: grid; gap: 10px; }
   .cover-preview-wrap { display: flex; align-items: center; justify-content: center; min-height: 120px; border: 1px dashed var(--border-default); border-radius: var(--radius-sm); background: var(--surface-soft); overflow: hidden; }

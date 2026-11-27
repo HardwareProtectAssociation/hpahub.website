@@ -1,6 +1,7 @@
 <script>
   import { onDestroy } from 'svelte';
   import { t } from './i18n.js';
+  import Select from './Select.svelte';
   export let token;
   let title = '', summary = '', description = '', difficulty = '', nature = '';
   let collaboration = 'collaborative', joinMode = 'open', sponsorship = false;
@@ -14,6 +15,7 @@
 
   async function createProject() {
     if (!title.trim() || creating) return;
+    if (!nature) { error = '请选择项目性质。'; return; }
     creating = true;
     error = '';
     try {
@@ -79,11 +81,11 @@
     {#if coverPreview}<img class="cover-preview" src={coverPreview} alt={$t('封面预览')} />{/if}
 
     <div class="fields">
-      <label>{$t('项目状态')}<select bind:value={executionStatus}><option value="not_started">{$t('未开始')}</option><option value="ongoing">{$t('已启动')}</option><option value="long_term">{$t('长期项目')}</option><option value="paused">{$t('暂停中')}</option><option value="completed">{$t('已完成')}</option><option value="terminated">{$t('已中止')}</option></select></label>
-      <label>{$t('发起人自评难度')}<select bind:value={difficulty}><option value="">{$t('暂不设置')}</option>{#each ['D', 'C', 'B', 'A', 'S'] as level}<option value={level}>{level}</option>{/each}</select></label>
-      <label>{$t('项目性质')}<select bind:value={nature} required><option value="" disabled>{$t('请选择')}</option><option value="commercial">{$t('商业盈利')}</option><option value="learning">{$t('学习交流')}</option><option value="showcase">{$t('技术展示')}</option><option value="research">{$t('科学研究')}</option></select></label>
-      <label>{$t('协作方式')}<select bind:value={collaboration}><option value="collaborative">{$t('协作项目')}</option><option value="independent">{$t('独立项目')}</option></select></label>
-      {#if collaboration === 'collaborative'}<label>{$t('加入方式')}<select bind:value={joinMode}><option value="open">{$t('自由加入')}</option><option value="approval">{$t('申请加入')}</option></select></label>{/if}
+      <div class="select-field"><span>{$t('项目状态')}</span><Select bind:value={executionStatus} ariaLabel={$t('项目状态')} options={[['not_started', '未开始'], ['ongoing', '已启动'], ['long_term', '长期项目'], ['paused', '暂停中'], ['completed', '已完成'], ['terminated', '已中止']].map(([value, label]) => ({ value, label: $t(label) }))} /></div>
+      <div class="select-field"><span>{$t('发起人自评难度')}</span><Select bind:value={difficulty} ariaLabel={$t('发起人自评难度')} options={[{ value: '', label: $t('暂不设置') }, ...['D', 'C', 'B', 'A', 'S'].map((value) => ({ value, label: value }))]} /></div>
+      <div class="select-field"><span>{$t('项目性质')}</span><Select bind:value={nature} ariaLabel={$t('项目性质')} options={[{ value: '', label: $t('请选择') }, ...[['commercial', '商业盈利'], ['learning', '学习交流'], ['showcase', '技术展示'], ['research', '科学研究']].map(([value, label]) => ({ value, label: $t(label) }))]} /></div>
+      <div class="select-field"><span>{$t('协作方式')}</span><Select bind:value={collaboration} ariaLabel={$t('协作方式')} options={[{ value: 'collaborative', label: $t('协作项目') }, { value: 'independent', label: $t('独立项目') }]} /></div>
+      {#if collaboration === 'collaborative'}<div class="select-field"><span>{$t('加入方式')}</span><Select bind:value={joinMode} ariaLabel={$t('加入方式')} options={[{ value: 'open', label: $t('自由加入') }, { value: 'approval', label: $t('申请加入') }]} /></div>{/if}
       {#if executionStatus !== 'completed'}<label>{$t('计划开始日期')}<input type="date" bind:value={startDate} /></label>{/if}
       {#if !['completed', 'long_term'].includes(executionStatus)}<label>{$t('预计周期（天）')}<input type="number" min="1" max="36500" step="1" bind:value={duration} /></label>{/if}
     </div>
@@ -105,8 +107,8 @@
   .cover-preview { display: block; max-width: 100%; max-height: 260px; object-fit: cover; border: 1px solid var(--border-default); border-radius: var(--radius-sm); }
   form { display: grid; gap: 20px; padding: 28px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface); }
   label { display: grid; gap: 8px; color: var(--ink-secondary); font-size: 14px; }
-  input:not([type="checkbox"]), select, textarea { width: 100%; padding: 11px 12px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--ink-primary); font: inherit; }
-  input:focus, select:focus, textarea:focus { border-color: var(--accent); outline: 2px solid var(--accent-glow); }
+  input:not([type="checkbox"]), textarea { width: 100%; padding: 11px 12px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--ink-primary); font: inherit; }
+  input:focus, textarea:focus { border-color: var(--accent); outline: 2px solid var(--accent-glow); }
   textarea { resize: vertical; }
   .fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 20px; }
   .arrangements { display: grid; gap: 10px; margin: 0; padding: 14px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); }

@@ -1,11 +1,12 @@
 <script>
-  import { createEventDispatcher, onMount, onDestroy } from 'svelte';
+  import { createEventDispatcher, onMount, onDestroy, tick } from 'svelte';
   import { get } from 'svelte/store';
   import { t } from './i18n.js';
   import AvatarCrop from './AvatarCrop.svelte';
+  import Select from './Select.svelte';
+  import MarkdownContent from './MarkdownContent.svelte';
   import { difficultyRank } from './tiers.js';
   export let token;
-  export let role;
   export let manage = false;
   export let cardsOnly = false;
   const dispatch = createEventDispatcher();
@@ -14,6 +15,7 @@
   let records = [];
   let current = null;
   let showEditor = false;
+  let editorDialog;
   let title = '';
   let text = '';
   let published = false;
@@ -89,12 +91,16 @@
       profile = nextProfile.profile;
       publicProfileId = profile.profilePublic ? profile.id : '';
     }
-    if (managed) projects = managed.items;
+    if (managed) {
+      projects = managed.items;
+      voteDifficulties = Object.fromEntries(projects.map((project) => [project.id, project.difficulty || 'D']));
+      voteStances = Object.fromEntries(projects.map((project) => [project.id, 'approve']));
+    }
     await Promise.all([...(profile.avatarUrl && !manage ? [preview(profile.avatarUrl)] : []), ...records.flatMap(record => (record.imageUrls || []).map(preview))]);
   }
   onMount(async () => { try { await load(); } catch (e) { error = e.message; errorParams = e.params || {}; } });
   onDestroy(() => { clearPreviews(); uploadPreviews.forEach(URL.revokeObjectURL); if (avatarPreview) URL.revokeObjectURL(avatarPreview); });
-  function edit(record = null) {
+  async function edit(record = null) {
     current = record;
     showEditor = true;
     title = record?.title || '';
@@ -105,6 +111,17 @@
     if (imagesInput) imagesInput.value = '';
     uploadPreviews.forEach(URL.revokeObjectURL); uploadPreviews = [];
     error = ''; notice = '';
+    showEditor = true;
+    await tick();
+    editorDialog?.showModal();
+  }
+  function closeEditor() {
+    showEditor = false;
+    current = null;
+    editorDialog?.close();
+    uploadPreviews.forEach(URL.revokeObjectURL);
+    uploadPreviews = [];
+    files = [];
   }
   async function saveProfile() {
     if (cropPending) return;
@@ -127,7 +144,7 @@
       keepImages.forEach(name => body.append('keepImages', name));
       Array.from(files).forEach(file => body.append('images', file));
       await request(base + (current ? '/' + encodeURIComponent(current.id) : ''), { method: current ? 'PATCH' : 'POST', body });
-      edit(); showEditor = false; await load(); notice = '保存成功。';
+      closeEditor(); await load(); notice = '保存成功。';
     } catch (e) { error = e.message; errorParams = e.params || {}; } finally { busy = false; }
   }
   async function saveDifficulty(project) {
@@ -180,7 +197,7 @@
   async function remove(record) {
     if (!confirm(get(t)('确定删除“{title}”吗？', { title: record.title }))) return;
     busy = true; error = ''; notice = '';
-    try { await request(base + '/' + encodeURIComponent(record.id), { method: 'DELETE' }); edit(); await load(); notice = '已删除。'; }
+    try { await request(base + '/' + encodeURIComponent(record.id), { method: 'DELETE' }); await load(); notice = '已删除。'; }
     catch (e) { error = e.message; errorParams = e.params || {}; } finally { busy = false; }
   }
 </script>
@@ -211,13 +228,8 @@
               </div>
               {#if project.status !== 'completed'}
                 <div class="vote-controls">
-                  <select bind:value={voteDifficulties[project.id]} aria-label={`${project.title} ${$t('难度')}`}>
-                    {#each difficultyLevels as level}<option value={level}>{level}</option>{/each}
-                  </select>
-                  <select bind:value={voteStances[project.id]} aria-label={`${project.title} ${$t('立场')}`}>
-                    <option value="approve">{$t('同意')}</option>
-                    <option value="oppose">{$t('反对')}</option>
-                  </select>
+                  <Select bind:value={voteDifficulties[project.id]} ariaLabel={`${project.title} ${$t('难度')}`} options={difficultyLevels.map((value) => ({ value, label: value }))} />
+                  <Select bind:value={voteStances[project.id]} ariaLabel={`${project.title} ${$t('立场')}`} options={[{ value: 'approve', label: $t('同意') }, { value: 'oppose', label: $t('反对') }]} />
                   <button type="button" class="primary small" on:click={() => saveDifficulty(project)} disabled={savingDifficulty === project.id}>{$t('投票')}</button>
                   <button type="button" class="small" on:click={() => confirmOwner(project, true)} disabled={savingDifficulty === project.id}>{$t('发起人确认')}</button>
                 </div>
@@ -237,7 +249,7 @@
       {#if avatarPreview && !removeAvatar}<img class="avatar" src={avatarPreview} alt={$t('新头像预览')} />{:else if profile.avatarUrl && previews[profile.avatarUrl] && !removeAvatar}<img class="avatar" src={previews[profile.avatarUrl]} alt={$t('当前头像')} />{/if}
       <label>{$t('昵称')} <input bind:value={profile.name} maxlength="80" required /></label>
       <label>{$t('简介')} <textarea bind:value={profile.bio} maxlength="600" rows="4"></textarea></label>
-      <label>{$t('当前状态')} <select bind:value={profile.currentStatus}><option value="">{$t('未设置')}</option><option value="busy">{$t('忙碌')}</option><option value="free">{$t('空闲')}</option></select></label>
+      <div class="select-field"><span>{$t('当前状态')}</span><Select bind:value={profile.currentStatus} ariaLabel={$t('当前状态')} options={[{ value: '', label: $t('未设置') }, { value: 'busy', label: $t('忙碌') }, { value: 'free', label: $t('空闲') }]} /></div>
       <AvatarCrop on:crop={selectAvatar} on:pending={(event) => cropPending = event.detail} />
       {#if profile.avatarUrl}<label class="check-label"><input type="checkbox" bind:checked={removeAvatar} on:change={() => { if (removeAvatar) { avatar = null; avatarThumb = null; } }} /> {$t('删除头像')}</label>{/if}
       <label class="check-label"><input type="checkbox" bind:checked={profile.profilePublic} /> {$t('公开我的资料和卡片')}</label>
@@ -248,27 +260,25 @@
   {/if}
   <section><h2>{manage ? $t('项目') : $t('我的卡片')}</h2>
     <div class="editor-toolbar"><button type="button" class="primary" on:click={() => edit()}>{manage ? $t('新建项目') : $t('新建卡片')}</button></div>
-    {#if records.length}<div class="editor-list">{#each records as record}<article><h3>{record.title} {#if manage}<small>{record.published ? $t('已发布') : $t('草稿')}</small>{/if}</h3><p>{record.text}</p><div class="image-grid">{#each record.imageUrls || [] as url}{#if previews[url]}<a href={previews[url]} target="_blank" rel="noreferrer"><img src={previews[url]} alt={record.title} /></a>{/if}{/each}</div><div class="editor-actions"><button type="button" on:click={() => edit(record)}>{$t('编辑')}</button><button type="button" on:click={() => remove(record)} disabled={busy}>{$t('删除')}</button></div></article>{/each}</div>{:else}<p>{manage ? $t('暂无项目。') : $t('暂无卡片。')}</p>{/if}
+    {#if records.length}<div class="editor-list">{#each records as record}<article><h3>{record.title} {#if manage}<small>{record.published ? $t('已发布') : $t('草稿')}</small>{/if}</h3>{#if manage}<p>{record.text}</p>{:else}<MarkdownContent text={record.text} />{/if}<div class="image-grid">{#each record.imageUrls || [] as url}{#if previews[url]}<a href={previews[url]} target="_blank" rel="noreferrer"><img src={previews[url]} alt={record.title} /></a>{/if}{/each}</div><div class="editor-actions"><button type="button" on:click={() => edit(record)}>{$t('编辑')}</button><button type="button" on:click={() => remove(record)} disabled={busy}>{$t('删除')}</button></div></article>{/each}</div>{:else}<p>{manage ? $t('暂无项目。') : $t('暂无卡片。')}</p>{/if}
   </section>
 </div>
 
 {#if showEditor}
-  <div class="editor-modal-backdrop" on:click={() => { showEditor = false; edit(); }} on:keydown={(e) => { if (e.key === 'Escape') { showEditor = false; edit(); } }} role="presentation">
-    <div class="editor-modal" role="dialog" aria-modal="true" aria-label={current ? (manage ? $t('编辑项目') : $t('编辑卡片')) : (manage ? $t('新建项目') : $t('新建卡片'))} on:click|stopPropagation on:keydown|stopPropagation>
+  <dialog class="editor-modal" bind:this={editorDialog} aria-label={current ? (manage ? $t('编辑项目') : $t('编辑卡片')) : (manage ? $t('新建项目') : $t('新建卡片'))} on:cancel|preventDefault={closeEditor}>
       <div class="editor-modal-head">
         <h2>{current ? (manage ? $t('编辑项目') : $t('编辑卡片')) : (manage ? $t('新建项目') : $t('新建卡片'))}</h2>
-        <button type="button" class="editor-modal-close" aria-label={$t('关闭')} on:click={() => { showEditor = false; edit(); }}>×</button>
+        <button type="button" class="editor-modal-close" aria-label={$t('关闭')} on:click={closeEditor}>×</button>
       </div>
       <form class="editor-form" on:submit|preventDefault={saveRecord}>
-        <label>{$t('标题')} <input bind:value={title} maxlength="80" required /></label><label>{$t('文字')} <textarea bind:value={text} maxlength="280" rows="4"></textarea></label>
+        <label>{$t('标题')} <input bind:value={title} maxlength="80" required /></label><label>{$t('文字')} <textarea bind:value={text} maxlength="280" rows="6"></textarea></label>{#if !manage}<p class="markdown-help">{$t('支持 Markdown：标题、列表、粗体、斜体、行内代码和链接。')}</p><div class="markdown-preview"><strong>{$t('预览')}</strong><MarkdownContent text={text} /></div>{/if}
         {#if current?.images?.length}<fieldset><legend>{$t('保留图片')}</legend>{#each current.images as image, index}<label class="check-label"><input type="checkbox" value={image} bind:group={keepImages} /> {#if previews[current.imageUrls[index]]}<img class="editor-thumb" src={previews[current.imageUrls[index]]} alt="" />{/if} {image}</label>{/each}</fieldset>{/if}
         <label>{$t('添加图片（最多 4 张，每张最多 2 MiB）')} <input type="file" bind:this={imagesInput} accept="image/jpeg,image/png,image/webp,image/gif" multiple on:change={selectFiles} /></label>
         {#if uploadPreviews.length}<div class="image-grid">{#each uploadPreviews as url}<img src={url} alt={$t('待上传图片预览')} />{/each}</div>{/if}
         {#if manage}<label class="check-label"><input type="checkbox" bind:checked={published} /> {$t('发布项目')}</label>{/if}
-        <div class="editor-actions"><button class="primary" disabled={busy}>{$t('保存')}</button><button type="button" on:click={() => { showEditor = false; edit(); }}>{$t('取消')}</button></div>
+        <div class="editor-actions"><button class="primary" disabled={busy}>{$t('保存')}</button><button type="button" on:click={closeEditor}>{$t('取消')}</button></div>
       </form>
-    </div>
-  </div>
+  </dialog>
 {/if}
 
 <style>
@@ -281,14 +291,15 @@
   .difficulty-info .confirmed { color: var(--accent-deep); font-weight: 600; }
   .difficulty-info .consensus { color: #166a78; font-weight: 600; }
   .vote-controls { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-  .vote-controls select { min-width: 64px; padding: 6px 8px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-elevated); }
+  .vote-controls :global(.select) { min-width: 90px; }
   .vote-controls .small { padding: 5px 11px; font-size: 12px; min-height: 32px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--ink-secondary); }
   .vote-controls .small.primary { border-color: transparent; color: #fff; }
   .frozen { color: var(--ink-subtle); font-size: 12px; }
   .editor-toolbar { margin: 12px 0; }
-  .editor-modal-backdrop { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 20px; background: rgba(12, 34, 24, 0.36); backdrop-filter: blur(4px); }
-  .editor-modal { width: min(680px, 100%); max-height: calc(100dvh - 40px); overflow-y: auto; padding: 26px; border: 1px solid var(--border-default); border-radius: var(--radius-lg); background: var(--surface-elevated); box-shadow: var(--shadow-md); animation: mint-enter 180ms var(--ease-out); }
+  .editor-modal { width: min(680px, calc(100% - 32px)); max-height: min(90dvh, 900px); overflow-y: auto; padding: 26px; border: 1px solid var(--border-default); border-radius: var(--radius-lg); background: var(--surface-elevated); color: var(--ink-primary); box-shadow: var(--shadow-md); }
+  .editor-modal::backdrop { background: #0009; }
   .editor-modal-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
   .editor-modal-head h2 { margin: 0; font-size: 20px; }
   .editor-modal-close { border: 0; background: none; color: var(--ink-muted); font-size: 26px; line-height: 1; padding: 0 4px; cursor: pointer; }
+  @media (max-width: 600px) { .editor-modal { padding: 18px; } }
 </style>
