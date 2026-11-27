@@ -109,7 +109,7 @@
           <article class="project-card">
             <div class="project-meta">
               <span class:done={project.status === 'completed'} class="project-status">{$t(statusLabels[project.status] || project.status)}</span>
-              {#if project.reviewStatus === 'approved' && project.difficulty}<span class={`rank rank-pill rank-${difficultyRank(project.difficulty)}`}>{$t('难度')} {project.difficulty}</span>{:else}<span class="rank-pending">{$t('难度')} {$t('待定')}</span>{/if}
+              {#if project.reviewStatus === 'approved' && project.difficulty}<span class={`rank rank-pill difficulty-badge rank-${difficultyRank(project.difficulty)}`}>{$t('难度')} {project.difficulty}</span>{:else}<span class="rank-pending">{$t('难度')} {$t('待定')}</span>{/if}
               {#if activeTab === 'initiated'}<span class="review">{$t(reviewLabels[project.reviewStatus] || project.reviewStatus)}</span>{/if}
             </div>
             <h2><a href={'/showcase/' + encodeURIComponent(project.id)}>{project.title}</a></h2>

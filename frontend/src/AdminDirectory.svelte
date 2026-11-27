@@ -184,7 +184,7 @@
                 <td>{project.ownerName || '—'}</td>
                 <td>{$t(projectStatusLabels[project.status] || project.status || '—')}</td>
                 <td>{$t(reviewLabels[project.reviewStatus] || project.reviewStatus || '—')}</td>
-                <td>{#if project.reviewStatus === 'approved' && project.difficulty}<span class={`rank rank-pill rank-${difficultyRank(project.difficulty)}`}>{project.difficulty}</span>{:else}<span class="rank-pending">{$t('待定')}</span>{/if}</td>
+                <td>{#if project.reviewStatus === 'approved' && project.difficulty}<span class={`rank rank-pill difficulty-badge rank-${difficultyRank(project.difficulty)}`}>{project.difficulty}</span>{:else}<span class="rank-pending">{$t('待定')}</span>{/if}</td>
                 <td>{formatDate(project.updated)}</td>
               </tr>
             {/each}

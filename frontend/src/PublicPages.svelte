@@ -226,7 +226,7 @@
       <div class="home-grid">
         {#each shownProjects as project (project.id || project.title)}
           <a class="yt-card" href={project.id ? '/showcase/' + encodeURIComponent(project.id) : '/showcase'}>
-            <span class={`yt-thumb yt-${project.adventureStyle}`}>{#if project.difficulty}<span class={`yt-badge rank rank-pill rank-${difficultyRank(project.difficulty)}`}>{$t('难度')} {project.difficulty}</span>{:else}<span class="yt-badge rank-pending">{$t('难度')} {$t('待定')}</span>{/if}</span>
+            <span class={`yt-thumb yt-${project.adventureStyle}`}>{#if project.difficulty}<span class={`yt-badge rank rank-pill difficulty-badge rank-${difficultyRank(project.difficulty)}`}>{$t('难度')} {project.difficulty}</span>{:else}<span class="yt-badge rank-pending">{$t('难度')} {$t('待定')}</span>{/if}</span>
             <div class="yt-body">
               {#if project.ownerAvatarUrl}<img class="yt-avatar" src={project.ownerAvatarUrl} alt="" loading="lazy" />{:else}<span class="yt-avatar" aria-hidden="true"></span>{/if}
               <div>
@@ -309,7 +309,7 @@
           <div class="public-grid">
             {#each data.projectsCompleted as project}
               <article class="public-card project-card">
-                <div class="project-meta"><span class="project-status done">{$t('已完成')}</span>{#if project.difficulty}<span class={`rank rank-pill rank-${difficultyRank(project.difficulty)}`}>{$t('难度')} {project.difficulty}</span>{:else}<span class="rank-pending">{$t('难度')} {$t('待定')}</span>{/if}</div>
+                <div class="project-meta"><span class="project-status done">{$t('已完成')}</span>{#if project.difficulty}<span class={`rank rank-pill difficulty-badge rank-${difficultyRank(project.difficulty)}`}>{$t('难度')} {project.difficulty}</span>{:else}<span class="rank-pending">{$t('难度')} {$t('待定')}</span>{/if}</div>
                 <h2><a href={'/showcase/' + encodeURIComponent(project.id)}>{project.title}</a></h2>
                 <p>{project.summary}</p>
                 <p class="project-owner">{#if project.ownerAvatarUrl}<img class="owner-avatar" src={project.ownerAvatarUrl} alt="" loading="lazy" />{:else}<span class="owner-avatar" aria-hidden="true"></span>{/if}{$t('负责人')}：{project.ownerName || '—'}{#if project.updated} · {$t('更新于')} {formatDate(project.updated)}{/if}</p>
@@ -324,7 +324,7 @@
           <div class="public-grid">
             {#each data.projectsOngoing as project}
               <article class="public-card project-card">
-                <div class="project-meta"><span class="project-status">{$t('进行中')}</span>{#if project.difficulty}<span class={`rank rank-pill rank-${difficultyRank(project.difficulty)}`}>{$t('难度')} {project.difficulty}</span>{:else}<span class="rank-pending">{$t('难度')} {$t('待定')}</span>{/if}</div>
+                <div class="project-meta"><span class="project-status">{$t('进行中')}</span>{#if project.difficulty}<span class={`rank rank-pill difficulty-badge rank-${difficultyRank(project.difficulty)}`}>{$t('难度')} {project.difficulty}</span>{:else}<span class="rank-pending">{$t('难度')} {$t('待定')}</span>{/if}</div>
                 <h2><a href={'/showcase/' + encodeURIComponent(project.id)}>{project.title}</a></h2>
                 <p>{project.summary}</p>
                 <p class="project-owner">{#if project.ownerAvatarUrl}<img class="owner-avatar" src={project.ownerAvatarUrl} alt="" loading="lazy" />{:else}<span class="owner-avatar" aria-hidden="true"></span>{/if}{$t('负责人')}：{project.ownerName || '—'}{#if project.updated} · {$t('更新于')} {formatDate(project.updated)}{/if}</p>
@@ -407,7 +407,7 @@
     {#if id}
       <a href="/showcase">{$t('返回项目列表')}</a>
       <header class="project-detail-head">
-        <div class="project-meta"><span class:done={data.status === 'completed'} class="project-status">{statusLabel(data.status)}</span>{#if data.difficulty}<span class={`rank rank-pill rank-${difficultyRank(data.difficulty)}`}>{$t('难度')} {data.difficulty}</span>{:else}<span class="rank-pending">{$t('难度')} {$t('待定')}</span>{/if}{#if data.currentStage}<span class="project-stage">{$t('当前阶段')}：{data.currentStage}</span>{/if}</div>
+        <div class="project-meta"><span class:done={data.status === 'completed'} class="project-status">{statusLabel(data.status)}</span>{#if data.difficulty}<span class={`rank rank-pill difficulty-badge rank-${difficultyRank(data.difficulty)}`}>{$t('难度')} {data.difficulty}</span>{:else}<span class="rank-pending">{$t('难度')} {$t('待定')}</span>{/if}{#if data.currentStage}<span class="project-stage">{$t('当前阶段')}：{data.currentStage}</span>{/if}</div>
         <h1>{data.title}</h1>
         <p>{data.summary}</p>
         <p class="project-owner">{$t('负责人')}：{data.ownerName || '—'}{#if data.updated} · {$t('更新于')} {formatDate(data.updated)}{/if}</p>
@@ -489,7 +489,7 @@
         <div class="public-grid">
           {#each items as project}
             <article class="public-card project-card">
-              <div class="project-meta"><span class:done={project.status === 'completed'} class="project-status">{statusLabel(project.status)}</span>{#if project.difficulty}<span class={`rank rank-pill rank-${difficultyRank(project.difficulty)}`}>{$t('难度')} {project.difficulty}</span>{:else}<span class="rank-pending">{$t('难度')} {$t('待定')}</span>{/if}</div>
+              <div class="project-meta"><span class:done={project.status === 'completed'} class="project-status">{statusLabel(project.status)}</span>{#if project.difficulty}<span class={`rank rank-pill difficulty-badge rank-${difficultyRank(project.difficulty)}`}>{$t('难度')} {project.difficulty}</span>{:else}<span class="rank-pending">{$t('难度')} {$t('待定')}</span>{/if}</div>
               <h2><a href={'/showcase/' + encodeURIComponent(project.id)}>{project.title}</a></h2>
               <p>{project.summary}</p>
               <p class="project-owner">{#if project.ownerAvatarUrl}<img class="owner-avatar" src={project.ownerAvatarUrl} alt="" loading="lazy" />{:else}<span class="owner-avatar" aria-hidden="true"></span>{/if}{$t('负责人')}：{project.ownerName || '—'}{#if project.updated} · {$t('更新于')} {formatDate(project.updated)}{/if}</p>
