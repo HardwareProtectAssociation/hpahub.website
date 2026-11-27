@@ -148,6 +148,25 @@ func TestPublicProfilesCardsAndShowcase(t *testing.T) {
 	want(profile, http.StatusOK)
 	noCache(profile)
 	if !strings.Contains(profile.Body.String(), "private biography") || !strings.Contains(profile.Body.String(), cardID) { t.Fatalf("missing public profile content: %s", profile.Body.String()) }
+
+	visibility := base + "/me/profile-visibility"
+	_, linkedSuperToken := identity(core.CollectionNameSuperusers, "octopus", "member")
+	want(jsonRequest("GET", visibility, "", ""), http.StatusUnauthorized)
+	want(jsonRequest("GET", visibility, superToken, ""), http.StatusForbidden)
+	want(jsonRequest("GET", visibility, linkedSuperToken, ""), http.StatusOK)
+	want(jsonRequest("PUT", visibility, memberToken, `{"profilePublic":true,"hiddenSections":["unknown"]}`), http.StatusBadRequest)
+	want(jsonRequest("PUT", visibility, memberToken, `{"profilePublic":true,"hiddenSections":["bio","avatar","status","cards","identities","projects","career","skills"]}`), http.StatusOK)
+	hidden := jsonRequest("GET", base+"/members/"+member.Id, "", "")
+	want(hidden, http.StatusOK)
+	if strings.Contains(hidden.Body.String(), "private biography") || strings.Contains(hidden.Body.String(), cardID) { t.Fatalf("hidden data leaked: %s", hidden.Body.String()) }
+	want(jsonRequest("GET", avatar, "", ""), http.StatusNotFound)
+	want(jsonRequest("GET", cardImage, "", ""), http.StatusNotFound)
+	want(jsonRequest("GET", base+"/me/profile/avatar", memberToken, ""), http.StatusOK)
+	if !strings.Contains(jsonRequest("GET", base+"/me/cards", memberToken, "").Body.String(), cardID) { t.Fatal("hidden card was lost") }
+	want(jsonRequest("PUT", visibility, memberToken, `{"profilePublic":true,"hiddenSections":[]}`), http.StatusOK)
+	restored := jsonRequest("GET", base+"/members/"+member.Id, "", "")
+	if !strings.Contains(restored.Body.String(), "private biography") || !strings.Contains(restored.Body.String(), cardID) { t.Fatalf("content not restored: %s", restored.Body.String()) }
+
 	avatarResponse := jsonRequest("GET", avatar, "", "")
 	want(avatarResponse, http.StatusOK)
 	cacheFile(avatarResponse)

@@ -54,7 +54,8 @@
           ['career', data.career?.length || 0],
           ['skills', data.skills?.length || 0],
         ];
-        activeTab = candidates.find(([, count]) => count > 0)?.[0] || 'completed';
+        const visible = candidates.filter(([key]) => !(data.hiddenSections || []).includes(key === 'completed' || key === 'ongoing' ? 'projects' : key));
+        activeTab = visible.find(([, count]) => count > 0)?.[0] || visible[0]?.[0] || '';
       }
     } catch (e) { error = e.message; } finally { loading = false; }
   });
@@ -297,12 +298,12 @@
           {#if !token}<p class="relation-hint">{$t('登录后可设置互动关系。')}</p>{/if}
         </div>
       {/if}
-      {#if data.cards?.length}<div class="public-grid">{#each data.cards as card}<article class="public-card"><h2>{card.title}</h2><p>{card.text}</p><div class="image-grid">{#each card.imageUrls || [] as url}<a href={url} target="_blank" rel="noreferrer"><img src={url} alt={card.title} loading="lazy" /></a>{/each}</div></article>{/each}</div>{:else}<p>{$t('暂无公开卡片。')}</p>{/if}
+      {#if !(data.hiddenSections || []).includes('cards')}{#if data.cards?.length}<div class="public-grid">{#each data.cards as card}<article class="public-card"><h2>{card.title}</h2><p>{card.text}</p><div class="image-grid">{#each card.imageUrls || [] as url}<a href={url} target="_blank" rel="noreferrer"><img src={url} alt={card.title} loading="lazy" /></a>{/each}</div></article>{/each}</div>{:else}<p>{$t('暂无公开卡片。')}</p>{/if}{/if}
       <nav class="profile-tabs" aria-label={$t('公开资料')}>
-        <button type="button" class:active={activeTab === 'completed'} on:click={() => activeTab = 'completed'}>{$t('完成项目')}<span>{data.projectsCompleted?.length || 0}</span></button>
-        <button type="button" class:active={activeTab === 'ongoing'} on:click={() => activeTab = 'ongoing'}>{$t('进行中项目')}<span>{data.projectsOngoing?.length || 0}</span></button>
-        <button type="button" class:active={activeTab === 'career'} on:click={() => activeTab = 'career'}>{$t('职业等级')}<span>{data.career?.length || 0}</span></button>
-        <button type="button" class:active={activeTab === 'skills'} on:click={() => activeTab = 'skills'}>{$t('技能展示')}<span>{shownSkills.length}</span></button>
+        {#if !(data.hiddenSections || []).includes('projects')}<button type="button" class:active={activeTab === 'completed'} on:click={() => activeTab = 'completed'}>{$t('完成项目')}<span>{data.projectsCompleted?.length || 0}</span></button>
+        <button type="button" class:active={activeTab === 'ongoing'} on:click={() => activeTab = 'ongoing'}>{$t('进行中项目')}<span>{data.projectsOngoing?.length || 0}</span></button>{/if}
+        {#if !(data.hiddenSections || []).includes('career')}<button type="button" class:active={activeTab === 'career'} on:click={() => activeTab = 'career'}>{$t('职业等级')}<span>{data.career?.length || 0}</span></button>{/if}
+        {#if !(data.hiddenSections || []).includes('skills')}<button type="button" class:active={activeTab === 'skills'} on:click={() => activeTab = 'skills'}>{$t('技能展示')}<span>{shownSkills.length}</span></button>{/if}
       </nav>
       {#if activeTab === 'completed'}
         {#if data.projectsCompleted?.length}

@@ -2,6 +2,7 @@
   import { createEventDispatcher, onDestroy, onMount } from 'svelte';
   import { t } from './i18n.js';
   import AvatarCrop from './AvatarCrop.svelte';
+  import Editors from './Editors.svelte';
   import { difficultyRank, levelRank } from './tiers.js';
 
   export let token;
@@ -246,7 +247,6 @@
       const body = new FormData();
       body.set('name', name);
       body.set('bio', formBio);
-      body.set('profilePublic', formPublic ? 'true' : 'false');
       body.set('gender', formGender);
       body.set('personality', formPersonality);
       body.set('age', String(formAge || 0));
@@ -543,12 +543,12 @@
             {/each}
           </div>
         </fieldset>
-        <label class="check-label"><input type="checkbox" bind:checked={formPublic} />{$t('公开我的个人资料')}</label>
         <div class="edit-actions">
           <button class="primary" type="submit" disabled={saving || cropPending}>{saving ? $t('正在保存…') : $t('保存资料')}</button>
           <button type="button" on:click={cancelEdit} disabled={saving}>{$t('取消')}</button>
         </div>
       </form>
+      <Editors {token} cardsOnly={true} />
     {/if}
 
     {#if !data.profile.member}

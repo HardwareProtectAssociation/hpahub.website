@@ -65,9 +65,15 @@ func requireContentRole(e *core.RequestEvent, admin, userOnly bool) error {
  return nil
 }
 func contentURL(parts ...string) string { for i := range parts { parts[i] = url.PathEscape(parts[i]) }; return "/api/hpahub/" + strings.Join(parts, "/") }
+var profileSections = map[string]bool{"avatar":true, "bio":true, "status":true, "cards":true, "identities":true, "projects":true, "career":true, "skills":true}
+func profileSectionHidden(r *core.Record, section string) bool {
+ for _, value := range r.GetStringSlice("hidden_profile_sections") { if value == section { return true } }; return false
+}
 func profileData(r *core.Record, public bool) map[string]any {
- avatar := ""; if r.GetString("avatar") != "" { if public { avatar = contentURL("members", r.Id, "avatar") } else { avatar = contentURL("me", "profile", "avatar") } }
- return map[string]any{"id":r.Id,"name":r.GetString("name"),"bio":r.GetString("bio"),"profilePublic":r.GetBool("profilePublic"),"avatarUrl":avatar,"currentStatus":r.GetString("current_status")}
+ avatar := ""; if r.GetString("avatar") != "" && (!public || !profileSectionHidden(r,"avatar")) { if public { avatar = contentURL("members", r.Id, "avatar") } else { avatar = contentURL("me", "profile", "avatar") } }
+ bio, status := r.GetString("bio"), r.GetString("current_status")
+ if public && profileSectionHidden(r,"bio") { bio = "" }; if public && profileSectionHidden(r,"status") { status = "" }
+ return map[string]any{"id":r.Id,"name":r.GetString("name"),"bio":bio,"profilePublic":r.GetBool("profilePublic"),"avatarUrl":avatar,"currentStatus":status}
 }
 func contentData(r *core.Record, base []string) map[string]any {
  names := r.GetStringSlice("images"); if names == nil { names = []string{} }; urls := make([]string, 0, len(names))
@@ -80,6 +86,7 @@ func visibleMember(e *core.RequestEvent, id string) (*core.Record, error) {
  r, err := e.App.FindRecordById("users", id); if err != nil || !r.GetBool("profilePublic") || (siteRole(r) != "member" && siteRole(r) != "admin") { return nil, e.NotFoundError("Not found.", nil) }; return r, nil
 }
 func publicMemberIdentities(e *core.RequestEvent, member *core.Record) ([]map[string]any, error) {
+ if profileSectionHidden(member,"identities") { return []map[string]any{}, nil }
  rows, err := e.App.FindRecordsByFilter("user_identities", "user_id = {:user} && featured = true", "", 0, 0, dbx.Params{"user": member.Id}); if err != nil { return nil, err }
  identities, err := e.App.FindRecordsByFilter("collaboration_identities", "", "category,name", 0, 0); if err != nil { return nil, err }
  byID := map[string]*core.Record{}; for _, identity := range identities { byID[identity.Id] = identity }
@@ -91,6 +98,7 @@ func publicMemberIdentities(e *core.RequestEvent, member *core.Record) ([]map[st
  return result, nil
 }
 func publicMemberProjects(e *core.RequestEvent, member *core.Record) ([]publicProject, []publicProject, error) {
+ if profileSectionHidden(member,"projects") { return []publicProject{}, []publicProject{}, nil }
  projects := map[string]*core.Record{}
  owned, err := e.App.FindRecordsByFilter("projects", `owner_user_id = {:user} && review_status = "approved" && deleted_at = ""`, "-updated", 0, 0, dbx.Params{"user": member.Id}); if err != nil { return nil, nil, err }
  for _, project := range owned { projects[project.Id] = project }
@@ -112,6 +120,7 @@ func publicMemberProjects(e *core.RequestEvent, member *core.Record) ([]publicPr
  return completed, ongoing, nil
 }
 func publicMemberCareer(e *core.RequestEvent, member *core.Record) ([]centerBadge, error) {
+ if profileSectionHidden(member,"career") { return []centerBadge{}, nil }
  identities, err := centerIdentityRecords(e.App); if err != nil { return nil, err }
  return centerBadges(e.App, member.Id, identities)
 }
@@ -123,6 +132,7 @@ func publicMemberRelations(e *core.RequestEvent, member *core.Record) (memberRel
  return memberRelationSummaryData(e.App, member.Id, viewerID)
 }
 func publicMemberSkills(e *core.RequestEvent, member *core.Record) ([]map[string]any, error) {
+ if profileSectionHidden(member,"skills") { return []map[string]any{}, nil }
  rows, err := e.App.FindRecordsByFilter("user_skills", "user_id = {:user}", "", 0, 0, dbx.Params{"user": member.Id}); if err != nil { return nil, err }
  skills, err := e.App.FindRecordsByFilter("skills", "", "name", 0, 0); if err != nil { return nil, err }
  byID := map[string]*core.Record{}; for _, skill := range skills { byID[skill.Id] = skill }
@@ -174,6 +184,24 @@ func saveContent(e *core.RequestEvent, r *core.Record, project bool) error {
 }
 func bindPublicRoutes(s *core.ServeEvent) {
  profile := "/api/hpahub/me/profile"
+ s.Router.GET("/api/hpahub/me/profile-visibility",func(e *core.RequestEvent) error {
+  noCache(e); if err:=requireContentRole(e,false,false); err!=nil{return err}
+  owner,member,err:=personalCenterOwner(e.App,e.Auth); if err!=nil {return e.InternalServerError("Unable to load profile.",err)}; if !member {return e.ForbiddenError("No member profile is linked to this account.",nil)}
+  return e.JSON(200,map[string]any{"profilePublic":owner.GetBool("profilePublic"),"hiddenSections":owner.GetStringSlice("hidden_profile_sections")})
+ })
+ s.Router.PUT("/api/hpahub/me/profile-visibility",func(e *core.RequestEvent) error {
+  noCache(e); if err:=requireContentRole(e,false,false); err!=nil{return err}
+  owner,member,err:=personalCenterOwner(e.App,e.Auth); if err!=nil {return e.InternalServerError("Unable to load profile.",err)}; if !member {return e.ForbiddenError("No member profile is linked to this account.",nil)}
+  in,err:=readContentInput(e,map[string]bool{"profilePublic":true,"hiddenSections":true}); if err!=nil{return e.BadRequestError("Invalid visibility.",err)}
+  var public bool; var hidden []string
+  a,err:=in.get("profilePublic",&public); if err!=nil || !a {return e.BadRequestError("Invalid visibility.",err)}
+  b,err:=in.get("hiddenSections",&hidden); if err!=nil || !b || hidden==nil {return e.BadRequestError("Invalid visibility.",err)}
+  seen:=map[string]bool{}; for _,section:=range hidden {if !profileSections[section] || seen[section] {return e.BadRequestError("Invalid visibility.",nil)}; seen[section]=true}
+  if public && strings.TrimSpace(owner.GetString("name"))=="" {return e.BadRequestError("Invalid profile.",nil)}
+  owner.Set("profilePublic",public); owner.Set("hidden_profile_sections",hidden)
+  if err:=e.App.Save(owner); err!=nil{return e.BadRequestError("Unable to save profile.",err)}
+  return e.JSON(200,map[string]any{"profilePublic":public,"hiddenSections":hidden})
+ })
  s.Router.GET(profile, func(e *core.RequestEvent) error { noCache(e); if err := requireContentRole(e,false,true); err != nil { return err }; return e.JSON(200, profileData(e.Auth,false)) })
  s.Router.PATCH(profile, func(e *core.RequestEvent) error {
   noCache(e); if err := requireContentRole(e,false,true); err != nil { return err }
@@ -193,10 +221,10 @@ func bindPublicRoutes(s *core.ServeEvent) {
   for _,r:=range users { if !r.GetBool("profilePublic") {items=append(items,map[string]any{"name":"匿名成员"})} else {p:=profileData(r,true); items=append(items,map[string]any{"id":r.Id,"name":r.GetString("name"),"avatarUrl":p["avatarUrl"]})} }; return e.JSON(200,map[string]any{"items":items})
  })
  s.Router.GET("/api/hpahub/members/{id}",func(e *core.RequestEvent) error {
-  noCache(e); r,err:=visibleMember(e,e.Request.PathValue("id")); if err!=nil{return err}; cards,err:=records(e,"member_cards","owner = {:owner}",dbx.Params{"owner":r.Id}); if err!=nil{return e.InternalServerError("Unable to load cards.",err)}; list:=[]any{}; for _,c:=range cards { list=append(list,contentData(c,[]string{"members",r.Id,"cards",c.Id})) }; p:=profileData(r,true); delete(p,"profilePublic"); p["cards"]=list; skills,err:=publicMemberSkills(e,r); if err!=nil{return e.InternalServerError("Unable to load skills.",err)}; p["skills"]=skills; identities,err:=publicMemberIdentities(e,r); if err!=nil{return e.InternalServerError("Unable to load identities.",err)}; p["identities"]=identities; completed,ongoing,err:=publicMemberProjects(e,r); if err!=nil{return e.InternalServerError("Unable to load projects.",err)}; p["projectsCompleted"]=completed; p["projectsOngoing"]=ongoing; career,err:=publicMemberCareer(e,r); if err!=nil{return e.InternalServerError("Unable to load career.",err)}; p["career"]=career; relations,err:=publicMemberRelations(e,r); if err!=nil{return e.InternalServerError("Unable to load relations.",err)}; p["relations"]=relations; return e.JSON(200,p)
+  noCache(e); r,err:=visibleMember(e,e.Request.PathValue("id")); if err!=nil{return err}; cards,err:=records(e,"member_cards","owner = {:owner}",dbx.Params{"owner":r.Id}); if err!=nil{return e.InternalServerError("Unable to load cards.",err)}; list:=[]any{}; for _,c:=range cards { list=append(list,contentData(c,[]string{"members",r.Id,"cards",c.Id})) }; p:=profileData(r,true); delete(p,"profilePublic"); p["hiddenSections"]=r.GetStringSlice("hidden_profile_sections"); if profileSectionHidden(r,"cards") {list=[]any{}}; p["cards"]=list; skills,err:=publicMemberSkills(e,r); if err!=nil{return e.InternalServerError("Unable to load skills.",err)}; p["skills"]=skills; identities,err:=publicMemberIdentities(e,r); if err!=nil{return e.InternalServerError("Unable to load identities.",err)}; p["identities"]=identities; completed,ongoing,err:=publicMemberProjects(e,r); if err!=nil{return e.InternalServerError("Unable to load projects.",err)}; p["projectsCompleted"]=completed; p["projectsOngoing"]=ongoing; career,err:=publicMemberCareer(e,r); if err!=nil{return e.InternalServerError("Unable to load career.",err)}; p["career"]=career; relations,err:=publicMemberRelations(e,r); if err!=nil{return e.InternalServerError("Unable to load relations.",err)}; p["relations"]=relations; return e.JSON(200,p)
  })
- s.Router.GET("/api/hpahub/members/{id}/avatar",func(e *core.RequestEvent) error { noCache(e); r,err:=visibleMember(e,e.Request.PathValue("id")); if err!=nil{return err}; return serveAvatar(e,r) })
- s.Router.GET("/api/hpahub/members/{id}/cards/{card}/images/{file}",func(e *core.RequestEvent) error { noCache(e); r,err:=visibleMember(e,e.Request.PathValue("id")); if err!=nil{return err}; card,err:=e.App.FindRecordById("member_cards",e.Request.PathValue("card")); if err!=nil || card.GetString("owner")!=r.Id{return e.NotFoundError("Not found.",nil)}; return serveContentFile(e,card,"images",e.Request.PathValue("file")) })
+ s.Router.GET("/api/hpahub/members/{id}/avatar",func(e *core.RequestEvent) error { noCache(e); r,err:=visibleMember(e,e.Request.PathValue("id")); if err!=nil{return err}; if profileSectionHidden(r,"avatar") {return e.NotFoundError("Not found.",nil)}; return serveAvatar(e,r) })
+ s.Router.GET("/api/hpahub/members/{id}/cards/{card}/images/{file}",func(e *core.RequestEvent) error { noCache(e); r,err:=visibleMember(e,e.Request.PathValue("id")); if err!=nil{return err}; if profileSectionHidden(r,"cards") {return e.NotFoundError("Not found.",nil)}; card,err:=e.App.FindRecordById("member_cards",e.Request.PathValue("card")); if err!=nil || card.GetString("owner")!=r.Id{return e.NotFoundError("Not found.",nil)}; return serveContentFile(e,card,"images",e.Request.PathValue("file")) })
  bindContentCollection(s,false); bindContentCollection(s,true)
  s.Router.GET("/api/hpahub/showcase",func(e *core.RequestEvent) error { noCache(e); items,err:=records(e,"showcase_projects","published = true",nil); if err!=nil{return e.InternalServerError("Unable to load showcase.",err)}; out:=[]any{}; for _,r:=range items {out=append(out,contentData(r,[]string{"showcase",r.Id}))}; return e.JSON(200,map[string]any{"items":out}) })
  s.Router.GET("/api/hpahub/showcase/{id}",func(e *core.RequestEvent) error { noCache(e); r,err:=e.App.FindRecordById("showcase_projects",e.Request.PathValue("id")); if err!=nil || !r.GetBool("published") {return e.NotFoundError("Not found.",nil)}; return e.JSON(200,contentData(r,[]string{"showcase",r.Id})) })

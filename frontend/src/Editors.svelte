@@ -7,6 +7,7 @@
   export let token;
   export let role;
   export let manage = false;
+  export let cardsOnly = false;
   const dispatch = createEventDispatcher();
   let profile = { name: '', bio: '', profilePublic: false, avatarUrl: '', currentStatus: '' };
   let publicProfileId = '';
@@ -80,7 +81,7 @@
     clearPreviews();
     const [list, nextProfile, managed] = await Promise.all([
       request(base),
-      manage ? null : request('/api/hpahub/me/center'),
+      manage || cardsOnly ? null : request('/api/hpahub/me/center'),
       manage ? request('/api/hpahub/manage/projects') : null,
     ]);
     records = list.items;
@@ -184,8 +185,8 @@
   }
 </script>
 
-<main class="dashboard public-page editor-page">
-  <h1>{manage ? $t('项目大厅管理') : $t('修改个人名片')}</h1>
+<div class:dashboard={!cardsOnly} class="public-page editor-page">
+  {#if !cardsOnly}<h1>{manage ? $t('项目大厅管理') : $t('修改个人名片')}</h1>{/if}
   {#if error}<p class="message error" role="alert">{$t(error, errorParams)}</p>{/if}{#if notice}<p class="message success" role="status">{$t(notice)}</p>{/if}
   {#if manage}
     <section class="difficulty-section">
@@ -231,7 +232,7 @@
       {/if}
     </section>
   {/if}
-  {#if !manage}
+  {#if !manage && !cardsOnly}
     <section><h2>{$t('公开资料')}</h2><form class="editor-form" on:submit|preventDefault={saveProfile}>
       {#if avatarPreview && !removeAvatar}<img class="avatar" src={avatarPreview} alt={$t('新头像预览')} />{:else if profile.avatarUrl && previews[profile.avatarUrl] && !removeAvatar}<img class="avatar" src={previews[profile.avatarUrl]} alt={$t('当前头像')} />{/if}
       <label>{$t('昵称')} <input bind:value={profile.name} maxlength="80" required /></label>
@@ -249,7 +250,7 @@
     <div class="editor-toolbar"><button type="button" class="primary" on:click={() => edit()}>{manage ? $t('新建项目') : $t('新建卡片')}</button></div>
     {#if records.length}<div class="editor-list">{#each records as record}<article><h3>{record.title} {#if manage}<small>{record.published ? $t('已发布') : $t('草稿')}</small>{/if}</h3><p>{record.text}</p><div class="image-grid">{#each record.imageUrls || [] as url}{#if previews[url]}<a href={previews[url]} target="_blank" rel="noreferrer"><img src={previews[url]} alt={record.title} /></a>{/if}{/each}</div><div class="editor-actions"><button type="button" on:click={() => edit(record)}>{$t('编辑')}</button><button type="button" on:click={() => remove(record)} disabled={busy}>{$t('删除')}</button></div></article>{/each}</div>{:else}<p>{manage ? $t('暂无项目。') : $t('暂无卡片。')}</p>{/if}
   </section>
-</main>
+</div>
 
 {#if showEditor}
   <div class="editor-modal-backdrop" on:click={() => { showEditor = false; edit(); }} on:keydown={(e) => { if (e.key === 'Escape') { showEditor = false; edit(); } }} role="presentation">

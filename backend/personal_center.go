@@ -793,6 +793,19 @@ func bindPersonalCenterRoutes(e *core.ServeEvent) {
 		if err != nil {
 			return e.NotFoundError("Not found.", nil)
 		}
+		owner, err := e.App.FindRecordById("users", row.GetString("user_id"))
+		if err != nil {
+			return e.NotFoundError("Not found.", nil)
+		}
+		if !owner.GetBool("profilePublic") || profileSectionHidden(owner, "skills") {
+			if e.Auth == nil {
+				return e.NotFoundError("Not found.", nil)
+			}
+			viewer, member, err := personalCenterOwner(e.App, e.Auth)
+			if err != nil || !member || viewer.Id != owner.Id {
+				return e.NotFoundError("Not found.", nil)
+			}
+		}
 		return serveContentFile(e, row, "images", e.Request.PathValue("file"))
 	})
 	e.Router.POST("/api/hpahub/skills/{id}/like", func(e *core.RequestEvent) error {

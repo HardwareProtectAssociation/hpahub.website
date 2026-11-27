@@ -105,7 +105,7 @@ func homeHotEngineers(e *core.RequestEvent) ([]homeEngineer, error) {
 			continue
 		}
 		avatarURL := ""
-		if member.GetString("avatar") != "" {
+		if member.GetString("avatar") != "" && !profileSectionHidden(member, "avatar") {
 			avatarURL = contentURL("members", member.Id, "avatar")
 		}
 		candidates = append(candidates, candidate{

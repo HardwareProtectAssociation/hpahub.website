@@ -15,6 +15,8 @@ go run . migrate up --dir <临时数据目录>        # 在空库或已有库上
 
 迁移随后端启动自动执行。已有数据库升级时只新增集合/字段，并回填 `users.account_status`、`users.registration_source`；不会改动现有账号、硬件库、仓库和邀请码表。执行前仍应按 `README.md` 备份 `pb_data`。
 
+名片展示设置由 `1760000025_profile_visibility.go` 增加 `users.hidden_profile_sections` 保存；空值保持原有公开行为，隐藏不会删除资料。
+
 ## 集合总览
 
 文档中的 40 张业务表与 1 张用户扩展表均已建立，集合名与文档表名一致。
