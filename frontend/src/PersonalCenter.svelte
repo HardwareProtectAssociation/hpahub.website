@@ -880,7 +880,21 @@
   .stat-roles .rank-pill { font-size: 11px; padding: 2px 7px; }
   .stat-skills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
   .stat-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; align-items: baseline; }
-  .stat-tag { display: inline-flex; align-items: baseline; }
+  .stat-tag { display: inline-flex; align-items: baseline; position: relative; }
+  .tag-level { display: inline-block; background-size: 220% 100%; animation: rating-flow 3.4s linear infinite; }
+  .stat .tag-level { color: transparent; }
+  .tag-level.rank-5 { filter: brightness(1.25) drop-shadow(0 0 3px #78a0ffcc) drop-shadow(0 0 10px #62ff9b66); }
+  .tag-level.rank-4 { filter: brightness(2.4) drop-shadow(0 0 4px #ffd76a99); }
+  .tag-level.rank-3 { filter: brightness(2.2) drop-shadow(0 0 3px #cfd8e080); }
+  .tag-level.rank-2 { filter: brightness(2.2) drop-shadow(0 0 3px #d59a6a80); }
+  .tag-level.rank-1 { filter: brightness(2.0) drop-shadow(0 0 3px #c9ced380); }
+  @keyframes rating-flow {
+    from { background-position: 0% 50%; }
+    to { background-position: -220% 50%; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .tag-level { animation: none; }
+  }
   .show-all { border: 0; background: none; padding: 0; color: var(--ink-subtle); font-size: 11px; text-decoration: underline; cursor: pointer; white-space: nowrap; }
   .center-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
   .center-section { min-width: 0; padding: 24px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--shadow-sm); }
