@@ -232,11 +232,18 @@ func bindPublicRoutes(s *core.ServeEvent) {
 }
 func bindContentCollection(s *core.ServeEvent, project bool) {
  base,collection := "/api/hpahub/me/cards","member_cards"; parts:=[]string{"me","cards"}; if project {base,collection="/api/hpahub/manage/showcase","showcase_projects";parts=[]string{"manage","showcase"} }
- authorize:=func(e *core.RequestEvent) error {return requireContentRole(e,project,!project)}
- find:=func(e *core.RequestEvent)(*core.Record,error) { r,err:=e.App.FindRecordById(collection,e.Request.PathValue("id")); if err!=nil || (!project && r.GetString("owner")!=e.Auth.Id) {return nil,e.NotFoundError("Not found.",nil)}; return r,nil }
+ authorize:=func(e *core.RequestEvent) error {return requireContentRole(e,project,false)}
+ ownerID:=func(e *core.RequestEvent)(string,error) {
+  if project {return "",nil}
+  owner,member,err:=personalCenterOwner(e.App,e.Auth)
+  if err!=nil {return "",e.InternalServerError("Unable to load profile.",err)}
+  if !member {return "",e.ForbiddenError("No member profile is linked to this account.",nil)}
+  return owner.Id,nil
+ }
+ find:=func(e *core.RequestEvent)(*core.Record,error) { r,err:=e.App.FindRecordById(collection,e.Request.PathValue("id")); if err!=nil {return nil,e.NotFoundError("Not found.",nil)}; if !project {owner,err:=ownerID(e); if err!=nil {return nil,err}; if r.GetString("owner")!=owner {return nil,e.NotFoundError("Not found.",nil)}}; return r,nil }
  data:=func(r *core.Record) map[string]any {return contentData(r,append(append([]string{},parts...),r.Id))}
- s.Router.GET(base,func(e *core.RequestEvent) error { noCache(e); if err:=authorize(e);err!=nil{return err}; filter:=""; params:=dbx.Params{}; if !project {filter="owner = {:owner}";params["owner"]=e.Auth.Id}; rows,err:=records(e,collection,filter,params);if err!=nil{return e.InternalServerError("Unable to load content.",err)};out:=[]any{};for _,r:=range rows {out=append(out,data(r))};return e.JSON(200,map[string]any{"items":out}) })
- s.Router.POST(base,func(e *core.RequestEvent) error { noCache(e);if err:=authorize(e);err!=nil{return err};c,err:=e.App.FindCollectionByNameOrId(collection);if err!=nil{return e.InternalServerError("Collection unavailable.",err)};r:=core.NewRecord(c);if !project {r.Set("owner",e.Auth.Id)};if err:=saveContent(e,r,project);err!=nil{return err};return e.JSON(200,data(r)) })
+ s.Router.GET(base,func(e *core.RequestEvent) error { noCache(e); if err:=authorize(e);err!=nil{return err}; filter:=""; params:=dbx.Params{}; if !project {owner,err:=ownerID(e); if err!=nil{return err}; filter="owner = {:owner}";params["owner"]=owner}; rows,err:=records(e,collection,filter,params);if err!=nil{return e.InternalServerError("Unable to load content.",err)};out:=[]any{};for _,r:=range rows {out=append(out,data(r))};return e.JSON(200,map[string]any{"items":out}) })
+ s.Router.POST(base,func(e *core.RequestEvent) error { noCache(e);if err:=authorize(e);err!=nil{return err};c,err:=e.App.FindCollectionByNameOrId(collection);if err!=nil{return e.InternalServerError("Collection unavailable.",err)};r:=core.NewRecord(c);if !project {owner,err:=ownerID(e); if err!=nil{return err}; r.Set("owner",owner)};if err:=saveContent(e,r,project);err!=nil{return err};return e.JSON(200,data(r)) })
  s.Router.PATCH(base+"/{id}",func(e *core.RequestEvent) error { noCache(e);if err:=authorize(e);err!=nil{return err};r,err:=find(e);if err!=nil{return err};if err:=saveContent(e,r,project);err!=nil{return err};return e.JSON(200,data(r)) })
  s.Router.DELETE(base+"/{id}",func(e *core.RequestEvent) error { noCache(e);if err:=authorize(e);err!=nil{return err};r,err:=find(e);if err!=nil{return err};if err=e.App.Delete(r);err!=nil{return e.InternalServerError("Unable to delete content.",err)};return e.NoContent(http.StatusNoContent) })
  s.Router.GET(base+"/{id}/images/{file}",func(e *core.RequestEvent) error { noCache(e);if err:=authorize(e);err!=nil{return err};r,err:=find(e);if err!=nil{return err};return serveContentFile(e,r,"images",e.Request.PathValue("file")) })

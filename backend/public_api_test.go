@@ -154,6 +154,17 @@ func TestPublicProfilesCardsAndShowcase(t *testing.T) {
 	want(jsonRequest("GET", visibility, "", ""), http.StatusUnauthorized)
 	want(jsonRequest("GET", visibility, superToken, ""), http.StatusForbidden)
 	want(jsonRequest("GET", visibility, linkedSuperToken, ""), http.StatusOK)
+	want(jsonRequest("GET", base+"/me/cards", superToken, ""), http.StatusForbidden)
+	want(jsonRequest("GET", base+"/me/cards", linkedSuperToken, ""), http.StatusOK)
+	linkedCard := multipartRequest("POST", base+"/me/cards", linkedSuperToken, map[string][]string{"title": {"Admin card"}}, 0)
+	want(linkedCard, http.StatusOK)
+	linkedCardID, _ := object(linkedCard)["id"].(string)
+	if linkedCardID == "" { t.Fatalf("missing admin card id: %s", linkedCard.Body.String()) }
+	storedLinked, err := app.FindRecordById("member_cards", linkedCardID)
+	if err != nil || storedLinked.GetString("owner") != member.Id { t.Fatalf("admin card owner mismatch: %v", err) }
+	want(multipartRequest("PATCH", base+"/me/cards/"+linkedCardID, superToken, map[string][]string{"title": {"No owner"}}, 0), http.StatusForbidden)
+	want(multipartRequest("PATCH", base+"/me/cards/"+linkedCardID, linkedSuperToken, map[string][]string{"title": {"Admin card 2"}}, 0), http.StatusOK)
+	want(jsonRequest("DELETE", base+"/me/cards/"+linkedCardID, linkedSuperToken, ""), http.StatusNoContent)
 	want(jsonRequest("PUT", visibility, memberToken, `{"profilePublic":true,"hiddenSections":["unknown"]}`), http.StatusBadRequest)
 	want(jsonRequest("PUT", visibility, memberToken, `{"profilePublic":true,"hiddenSections":["bio","avatar","status","cards","identities","projects","career","skills"]}`), http.StatusOK)
 	hidden := jsonRequest("GET", base+"/members/"+member.Id, "", "")
