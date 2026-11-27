@@ -194,7 +194,43 @@ func bindMyProjectRoutes(e *core.ServeEvent) {
 		if input.ProposedDifficulty != "" {
 			project.Set("owner_proposed_difficulty", input.ProposedDifficulty)
 		}
-		if err := e.App.Save(project); err != nil {
+		err = e.App.RunInTransaction(func(tx core.App) error {
+			if err := tx.Save(project); err != nil {
+				return err
+			}
+			versions, err := tx.FindCollectionByNameOrId("project_versions")
+			if err != nil {
+				return err
+			}
+			snapshot := core.NewRecord(versions)
+			snapshot.Set("project_id", project.Id)
+			snapshot.Set("version", 1)
+			snapshot.Set("editor_id", creator.Id)
+			snapshot.Set("snapshot", map[string]any{
+				"title":                    input.Title,
+				"summary":                  input.Summary,
+				"description":              input.Description,
+				"collaborationMode":        input.CollaborationMode,
+				"joinMode":                 input.JoinMode,
+				"acceptsSponsorship":       input.AcceptsSponsorship,
+				"allowOthersManagement":    input.AllowOthersManagement,
+				"confidentialityRequested": input.ConfidentialityRequested,
+				"confidentialityTerms":     input.ConfidentialityTerms,
+				"estimatedDurationDays":    input.EstimatedDurationDays,
+				"longTerm":                 input.LongTerm,
+				"executionStatus":          input.ExecutionStatus,
+				"plannedStartDate":         input.PlannedStartDate,
+				"scheduleNote":             input.ScheduleNote,
+				"proposedDifficulty":       input.ProposedDifficulty,
+				"adventureStyle":           input.AdventureStyle,
+				"projectNature":            input.ProjectNature,
+				"projectNeeds":             projectNeeds,
+				"providerOffers":           providerOffers,
+				"statusReason":             input.StatusReason,
+			})
+			return tx.Save(snapshot)
+		})
+		if err != nil {
 			return e.InternalServerError("Unable to create project.", err)
 		}
 		return e.JSON(200, map[string]any{"ok": true, "id": project.Id})

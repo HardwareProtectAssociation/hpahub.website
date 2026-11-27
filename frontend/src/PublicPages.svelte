@@ -29,6 +29,10 @@
   let activeTab = 'completed';
   let loading = true;
   let errorParams = {};
+  let projectOffset = 0;
+  let projectHasMore = false;
+  let projectPageLoading = false;
+  let projectPageError = '';
   const parts = pathname.split('/').filter(Boolean);
   const section = parts[0];
   const id = parts[1];
@@ -42,6 +46,11 @@
       return;
     }
     if (!['community', 'showcase'].includes(section)) { loading = false; return; }
+    if (section === 'showcase' && !id) {
+      data = { items: [] };
+      await loadMoreProjects();
+      return;
+    }
     try {
       const endpoint = section === 'community' ? 'members' : 'projects';
       const response = await fetch(`/api/hpahub/${endpoint}${id ? '/' + encodeURIComponent(id) : ''}`, {
@@ -62,6 +71,27 @@
       }
     } catch (e) { error = e.message; } finally { loading = false; }
   });
+  async function loadMoreProjects() {
+    if (projectPageLoading || (projectOffset > 0 && !projectHasMore)) return;
+    projectPageLoading = true;
+    projectPageError = '';
+    try {
+      const response = await fetch(`/api/hpahub/projects?offset=${projectOffset}`, {
+        cache: 'no-store',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!response.ok) throw new Error(`加载失败（${response.status}）`);
+      const page = await response.json();
+      data = { ...data, items: [...(data?.items || []), ...page.items] };
+      projectOffset = page.nextOffset;
+      projectHasMore = page.hasMore;
+    } catch (e) {
+      projectPageError = e.message;
+    } finally {
+      projectPageLoading = false;
+      loading = false;
+    }
+  }
   $: items = Array.isArray(data) ? data : data?.items || [];
   // shortcut: 演示卡片在 /api/hpahub/home 无数据时展示版式，真实内容稳定后删除
   const demoProjects = [
@@ -555,7 +585,7 @@
         <div class="filter-row" role="group" aria-label={$t('项目状态')}><button type="button" class:active={!hallStatus} on:click={() => hallStatus = ''}>{$t('全部')}</button>{#each hallStatuses as status}<button type="button" class:active={hallStatus === status} on:click={() => hallStatus = hallStatus === status ? '' : status}>{$t(statusLabels[status])}</button>{/each}</div>
         <div class="filter-row" role="group" aria-label={$t('项目性质')}><button type="button" class:active={!hallNature} on:click={() => hallNature = ''}>{$t('全部')}</button>{#each Object.entries(natureLabels) as [value, label]}<button type="button" class:active={hallNature === value} on:click={() => hallNature = hallNature === value ? '' : value}>{$t(label)}</button>{/each}</div>
       </div>
-      <p class="hall-count">{$t('共 {count} 个项目', { count: hallProjects.length })}</p>
+      <p class="hall-count">{$t('已加载 {count} 个项目', { count: items.length })}</p>
       {#if hallProjects.length}
         <div class="public-grid">
           {#each hallProjects as project}
@@ -576,6 +606,12 @@
           {/each}
         </div>
       {:else}<p>{$t(items.length ? '没有符合筛选条件的项目。' : '暂无公开项目。')}</p>{/if}
+      {#if projectPageError}<p role="alert">{projectPageError}</p>{/if}
+      {#if projectHasMore || projectPageLoading || projectPageError}
+        <button class="secondary load-more" type="button" on:click={loadMoreProjects} disabled={projectPageLoading}>
+          {$t(projectPageLoading ? '加载中…' : '加载更多项目')}
+        </button>
+      {/if}
     {/if}
   {:else}<h1>{$t('页面不存在')}</h1><a href="/">{$t('返回首页')}</a>{/if}
 </main>

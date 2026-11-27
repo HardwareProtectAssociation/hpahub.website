@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"strconv"
 	"strings"
 	"time"
 
@@ -118,7 +119,15 @@ func bindPublicProjectRoutes(e *core.ServeEvent) {
 	})
 	e.Router.GET("/api/hpahub/projects", func(e *core.RequestEvent) error {
 		noCache(e)
-		rows, err := e.App.FindRecordsByFilter("projects", `review_status = "approved"`, "-published_at,-updated", 100, 0)
+		offset := 0
+		if value := e.Request.URL.Query().Get("offset"); value != "" {
+			parsed, err := strconv.Atoi(value)
+			if err != nil || parsed < 0 || parsed%20 != 0 {
+				return e.BadRequestError("Invalid project offset.", nil)
+			}
+			offset = parsed
+		}
+		rows, err := e.App.FindRecordsByFilter("projects", `review_status = "approved"`, "-published_at,-updated", 21, offset)
 		if err != nil {
 			return e.InternalServerError("Unable to load projects.", err)
 		}
@@ -126,6 +135,10 @@ func bindPublicProjectRoutes(e *core.ServeEvent) {
 		followCounts, err := projectFollowCounts(e)
 		if err != nil {
 			return e.InternalServerError("Unable to load projects.", err)
+		}
+		hasMore := len(rows) > 20
+		if hasMore {
+			rows = rows[:20]
 		}
 		items := make([]publicProject, 0, len(rows))
 		for _, project := range rows {
@@ -139,7 +152,7 @@ func bindPublicProjectRoutes(e *core.ServeEvent) {
 			card.FollowCount = followCounts[project.Id]
 			items = append(items, card)
 		}
-		return e.JSON(200, map[string]any{"items": items})
+		return e.JSON(200, map[string]any{"items": items, "hasMore": hasMore, "nextOffset": offset + 20})
 	})
 	e.Router.GET("/api/hpahub/projects/{id}", func(e *core.RequestEvent) error {
 		noCache(e)
