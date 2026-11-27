@@ -1418,3 +1418,66 @@ tbody tr:hover td {
     transition-duration: 0.01ms !important;
   }
 }
+
+
+/* Dark green matrix theme */
+:root {
+  color-scheme: dark;
+  --bg-canvas: #030a06;
+  --bg-canvas-deep: #06110b;
+  --surface: #09170f;
+  --surface-elevated: #0d1d13;
+  --surface-glass: rgba(4, 15, 9, .94);
+  --surface-tint: #122b1c;
+  --surface-tint-hover: #1b3b28;
+  --surface-soft: #0c1b12;
+  --ink-primary: #e5f5e9;
+  --ink-secondary: #bad6c2;
+  --ink-muted: #91b29c;
+  --ink-subtle: #7da18a;
+  --border-subtle: rgba(101, 233, 151, .14);
+  --border-default: rgba(101, 233, 151, .24);
+  --border-strong: rgba(101, 233, 151, .5);
+  --accent: #238654;
+  --accent-deep: #8eecaf;
+  --accent-bright: #62ff9b;
+  --accent-glow: rgba(38, 236, 117, .2);
+  --accent-ring: rgba(98, 255, 155, .42);
+  --accent-soft: rgba(98, 255, 155, .09);
+  --danger: #ff9b9b;
+  --danger-bg: #341719;
+  --danger-border: #704143;
+  --warn-ink: #f1d089;
+  --warn-bg: #332814;
+  --shadow-xs: 0 2px 8px #0004;
+  --shadow-sm: 0 8px 24px #0005;
+  --shadow-md: 0 18px 40px #0007;
+  --shadow-glow: 0 0 20px #20e87322;
+  --radius-sm: 5px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+}
+body {
+  background-color: var(--bg-canvas);
+  background-image: radial-gradient(ellipse 900px 500px at 75% 8%, #0b4a2a66, transparent 70%),
+    linear-gradient(to right, #62ff9b08 1px, transparent 1px),
+    linear-gradient(to bottom, #62ff9b08 1px, transparent 1px);
+  background-size: auto, 40px 40px, 40px 40px;
+}
+::selection { background: #3ab56e; color: #031008; }
+.site-footer { background: #030d07d9; }
+.topbar-right .text-button[aria-current="page"] { background: linear-gradient(90deg, #1a613a80, transparent); color: var(--accent-bright); }
+.primary, button.primary, .tabs button.active, .tabs .active, .profile-tabs button.active,
+.message-tabs button.active, .project-tabs button.active, .status-filters button.active {
+  background: #62e893 !important;
+  border-color: #62e893 !important;
+  color: #031008 !important;
+}
+.primary:hover:not(:disabled), button.primary:hover:not(:disabled) { background: #8affb1 !important; }
+.menu-toggle { background: #50dc83; color: #031008; }
+.archive-art {
+  background: linear-gradient(to right, #62ff9b12 1px, transparent 1px),
+    linear-gradient(to bottom, #62ff9b12 1px, transparent 1px),
+    radial-gradient(circle at 75% 50%, #124c2c, #07160d 70%);
+  background-size: 20px 20px, 20px 20px, auto;
+}
