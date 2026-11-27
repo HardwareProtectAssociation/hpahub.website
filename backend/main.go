@@ -73,15 +73,18 @@ func main() {
 			return err
 		}
 		bindInvitationRoutes(e)
+		bindMembershipApplicationRoutes(e)
 		bindPublicRoutes(e)
 		bindPublicProjectRoutes(e)
 		bindHomeRoutes(e)
 		bindAdminConsoleRoutes(e)
+		bindMemberTitleRoutes(e)
 		bindMyProjectRoutes(e)
 		bindDifficultyVotingRoutes(e)
 		bindMessageRoutes(e)
 		bindMemberRelationRoutes(e)
 		bindHardwareConfigRoutes(e)
+		bindHardwareDatabaseRoutes(e)
 		bindPersonalCenterRoutes(e)
 		_, err := app.DB().NewQuery(`CREATE TABLE IF NOT EXISTS hpahub_backup_policy (
 			id INTEGER PRIMARY KEY CHECK (id = 1), interval_hours INTEGER NOT NULL,
@@ -158,6 +161,9 @@ func main() {
 }
 
 func runScheduled(app core.App, mu *sync.Mutex) {
+	if err := promoteExpiredDepartures(app); err != nil {
+		app.Logger().Error("escalate expired project departure requests", "error", err)
+	}
 	mu.Lock()
 	defer mu.Unlock()
 	p, err := loadPolicy(app)

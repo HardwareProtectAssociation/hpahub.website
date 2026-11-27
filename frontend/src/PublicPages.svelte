@@ -5,14 +5,23 @@
   import RedactedText from './RedactedText.svelte';
   import Select from './Select.svelte';
   import MarkdownContent from './MarkdownContent.svelte';
+  import CardCanvas from './CardCanvas.svelte';
   export let pathname;
   export let token = '';
   let data = null;
+  let projectVersions = [];
+  let latestProjectVersion = 1;
+  let selectedProjectVersion = '';
+  let selectedProjectVersionEditor = '';
+  let projectVersionSnapshot = null;
+  let projectVersionLoading = false;
+  let projectVersionError = '';
   let home = null;
   let error = '';
   let skillError = '';
   let applyMessage = '';
   let applyProfession = '';
+  let identityOptions = [];
   let applyTime = '';
   let applyAbility = '';
   let applyError = '';
@@ -20,12 +29,20 @@
   let applying = false;
   let acceptTerms = false;
   let management = null, managementError = '', managementBusy = false;
+  let leaveReason = '';
+  let leaveBusy = false;
+  let leaveError = '';
+  let removalReason = '';
+  let removalTarget = '';
   let followBusy = false;
   let followError = '';
   let improvementMessage = '';
   let improvementError = '';
   let improvementNotice = '';
   let improving = false;
+  let completionMessage = '';
+  let completionBusy = false;
+  let completionError = '';
   let relationBusy = '';
   let relationError = '';
   let activeTab = 'completed';
@@ -38,6 +55,12 @@
   const parts = pathname.split('/').filter(Boolean);
   const section = parts[0];
   const id = parts[1];
+  const pageAction = parts[2];
+  $: projectInfo = projectVersionSnapshot || data || {};
+  $: projectVersionOptions = projectVersions.map((version) => ({
+    value: String(version.version),
+    label: `${$t('版本')} ${version.version}${version.created ? ` · ${formatDate(version.created)}` : ''} · ${$t('修改者')}：${version.editorName || $t('未填写')}`,
+  }));
   onMount(async () => {
     if (pathname === '/') {
       try {
@@ -61,7 +84,19 @@
       });
       if (!response.ok) { error = response.status === 404 ? '内容不存在或未公开。' : '加载失败（{status}）'; errorParams = { status: response.status }; return; }
       data = await response.json();
-      if (section === 'showcase' && id && token) await loadManagement();
+      if (section === 'showcase' && id) {
+        await loadPublicProjectVersions();
+        if (token) {
+          await loadManagement();
+        }
+        if (data.canApply && token) {
+          try {
+            const response = await fetch('/api/hpahub/me/center', { cache: 'no-store', headers: { Authorization: `Bearer ${token}` } });
+            if (!response.ok) throw new Error();
+            identityOptions = (await response.json()).identityOptions || [];
+          } catch { applyError = '身份列表加载失败，请刷新页面重试。'; }
+        }
+      }
       if (section === 'community' && id) {
         const candidates = [
           ['completed', data.projectsCompleted?.length || 0],
@@ -94,13 +129,55 @@
       loading = false;
     }
   }
+
+  async function loadPublicProjectVersions() {
+    try {
+      const response = await fetch(`/api/hpahub/projects/${encodeURIComponent(id)}/versions`, {
+        cache: 'no-store',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!response.ok) throw new Error();
+      const result = await response.json();
+      projectVersions = result.items || [];
+      latestProjectVersion = Number(result.currentVersion || data?.version || 1);
+      selectedProjectVersion = String(latestProjectVersion);
+      selectedProjectVersionEditor = projectVersions.find((version) => Number(version.version) === latestProjectVersion)?.editorName || '';
+    } catch {
+      projectVersionError = '版本记录加载失败，请刷新页面重试。';
+    }
+  }
+
+  async function selectPublicProjectVersion(event) {
+    const version = Number(event.detail);
+    if (!Number.isInteger(version) || version < 1) return;
+    selectedProjectVersion = String(version);
+    selectedProjectVersionEditor = projectVersions.find((item) => Number(item.version) === version)?.editorName || '';
+    projectVersionSnapshot = null;
+    projectVersionError = '';
+    if (version === latestProjectVersion) return;
+    projectVersionLoading = true;
+    try {
+      const response = await fetch(`/api/hpahub/projects/${encodeURIComponent(id)}/versions/${version}`, {
+        cache: 'no-store',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!response.ok) throw new Error();
+      const result = await response.json();
+      projectVersionSnapshot = result.snapshot || {};
+      selectedProjectVersionEditor = result.editorName || selectedProjectVersionEditor;
+    } catch {
+      projectVersionError = '版本记录加载失败，请刷新页面重试。';
+    } finally {
+      projectVersionLoading = false;
+    }
+  }
   $: items = Array.isArray(data) ? data : data?.items || [];
   // shortcut: 演示卡片在 /api/hpahub/home 无数据时展示版式，真实内容稳定后删除
   const demoProjects = [
-    { id: '', title: '智能家居中控系统', summary: '开发一套基于树莓派的智能家居中控系统，包含硬件设计、固件和前端界面。', ownerName: '示例工程师', ownerAvatarUrl: '', followCount: 12, updated: '', difficulty: 'S', adventureStyle: 'project' },
-    { id: '', title: '开源键盘固件', summary: '可配置的分体键盘固件，支持多层键位、宏、OLED 状态显示和无线切换。', ownerName: '示例工程师', ownerAvatarUrl: '', followCount: 8, updated: '', difficulty: 'A', adventureStyle: 'dungeon' },
-    { id: '', title: '桌面灯带控制器', summary: '为桌面工作区设计一套可调色温的灯带控制器，包含固件、外壳和简单上位机。', ownerName: '示例工程师', ownerAvatarUrl: '', followCount: 5, updated: '', difficulty: 'B', adventureStyle: 'boss' },
-    { id: '', title: '桌面电源管理器', summary: '为桌面设备设计一个集中供电和理线的小型电源管理器。', ownerName: '示例工程师', ownerAvatarUrl: '', followCount: 3, updated: '', difficulty: 'C', adventureStyle: 'project' },
+    { id: '', title: '智能家居中控系统', ownerName: '示例工程师', ownerAvatarUrl: '', followCount: 12, updated: '', difficulty: 'S', adventureStyle: 'project' },
+    { id: '', title: '开源键盘固件', ownerName: '示例工程师', ownerAvatarUrl: '', followCount: 8, updated: '', difficulty: 'A', adventureStyle: 'dungeon' },
+    { id: '', title: '桌面灯带控制器', ownerName: '示例工程师', ownerAvatarUrl: '', followCount: 5, updated: '', difficulty: 'B', adventureStyle: 'boss' },
+    { id: '', title: '桌面电源管理器', ownerName: '示例工程师', ownerAvatarUrl: '', followCount: 3, updated: '', difficulty: 'C', adventureStyle: 'project' },
   ];
   const demoEngineers = [
     { id: '', name: '示例工程师 A', avatarUrl: '', identities: [{ name: '电子工程师' }], admireCount: 24 },
@@ -124,7 +201,7 @@
       if (hallStatus && project.status !== hallStatus) return false;
       if (hallNature && project.projectNature !== hallNature) return false;
       if (!hallQueryText) return true;
-      return [project.title, project.summary, project.creatorName, project.ownerName].some((value) => String(value || '').toLowerCase().includes(hallQueryText));
+      return [project.title, project.creatorName, project.ownerName].some((value) => String(value || '').toLowerCase().includes(hallQueryText));
     })
     .sort((a, b) => {
       if (hallSort === 'hot') return (b.followCount || 0) - (a.followCount || 0) || (b.participantCount || 0) - (a.participantCount || 0);
@@ -178,13 +255,81 @@
       if (response.ok) management = await response.json();
     } catch { managementError = '加载管理信息失败'; }
   }
+  async function submitCompletionRequest() {
+    if (!completionMessage.trim() || completionBusy) return;
+    completionBusy = true; completionError = '';
+    try {
+      const response = await fetch(`/api/hpahub/projects/${encodeURIComponent(id)}/completions`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ message: completionMessage }) });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.message || '提交完成申请失败');
+      data = { ...data, viewerCompletionPending: true, canRequestCompletion: false };
+      completionMessage = '';
+    } catch (err) { completionError = err.message || '提交完成申请失败'; }
+    finally { completionBusy = false; }
+  }
   async function updateManagement(path, body) {
     managementBusy = true; managementError = '';
     try {
       const response = await fetch(`/api/hpahub/projects/${encodeURIComponent(id)}/${path}`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       if (!response.ok) { const result = await response.json().catch(() => ({})); throw new Error(result.message || '操作失败'); }
+      const result = await response.json().catch(() => null);
+      if (path.includes('/owner-response') && result) {
+        data = { ...data, departureRequest: result };
+        if (result.status === 'approved') { window.location.reload(); return; }
+      }
       await loadManagement();
     } catch (err) { managementError = err.message || '操作失败'; }
+    finally { managementBusy = false; }
+  }
+
+  async function awardProjectTitle(member) {
+    managementBusy = true; managementError = '';
+    try {
+      const response = await fetch(`/api/hpahub/projects/${encodeURIComponent(id)}/titles`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: member.id }) });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.message || '授予头衔失败');
+      await loadManagement();
+    } catch (err) { managementError = err.message || '授予头衔失败'; }
+    finally { managementBusy = false; }
+  }
+
+  async function submitLeaveRequest() {
+    if (!leaveReason.trim() || leaveBusy) return;
+    leaveBusy = true; leaveError = '';
+    try {
+      const response = await fetch(`/api/hpahub/projects/${encodeURIComponent(id)}/leave-requests`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: leaveReason }) });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.message || '申请退出失败');
+      data = { ...data, canRequestLeave: false, departureRequest: result };
+      leaveReason = '';
+    } catch (err) { leaveError = err.message || '申请退出失败'; }
+    finally { leaveBusy = false; }
+  }
+
+  async function respondToRemoval(decision) {
+    if (!data?.removalRequest || managementBusy) return;
+    managementBusy = true; managementError = '';
+    try {
+      const response = await fetch(`/api/hpahub/projects/${encodeURIComponent(id)}/departure-requests/${encodeURIComponent(data.removalRequest.id)}/member-response`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ decision }) });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.message || '回应失败');
+      if (result.status === 'approved') { window.location.reload(); return; }
+      data = { ...data, removalRequest: result, alreadyMember: result.status !== 'approved' };
+      await loadManagement();
+    } catch (err) { managementError = err.message || '回应失败'; }
+    finally { managementBusy = false; }
+  }
+
+  async function submitRemovalRequest(member) {
+    if (!removalReason.trim() || managementBusy) return;
+    managementBusy = true; managementError = '';
+    try {
+      const response = await fetch(`/api/hpahub/projects/${encodeURIComponent(id)}/members/${encodeURIComponent(member.id)}/removal-requests`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: removalReason }) });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.message || '请离申请提交失败');
+      removalReason = ''; removalTarget = '';
+      await loadManagement();
+    } catch (err) { managementError = err.message || '请离申请提交失败'; }
     finally { managementBusy = false; }
   }
 
@@ -287,19 +432,20 @@
       <h1>{$t('硬件保护协会')}</h1>
       <p class="hero-en">Hardware Protection Association</p>
       <p class="hero-motto">{$t('创造，保护，调查')}</p>
-      <p class="hero-disclaimer"><span class="disclaimer-mark" aria-hidden="true">※</span>{$t('本网站所有内容纯属娱乐，世界上不存在硬件保护协会或任何相关组织。')}<span class="disclaimer-sign"><span class="disclaimer-corrupt" title={$t('数据解析错误')} aria-label={$t('数据解析错误')}>[ERR 0x5F] UTF8_DECODE_FAILED: å…¬ä¼—èµ„è®¯åº”å¯¹åŠžå…¬å®¤</span><span class="disclaimer-tag">// {$t('数据已隐藏')}</span></span></p>
-      <p class="hero-actions"><a href="/brief">{$t('协会简介')}</a><a href="/rules">{$t('协会会规')}</a></p>
+      <p class="hero-disclaimer"><span class="disclaimer-mark" aria-hidden="true">※</span>{$t('本网站所有内容纯属娱乐，世界上不存在硬件保护协会或任何相关组织。')}<span class="disclaimer-sign" aria-hidden="true"><span class="disclaimer-corrupt">[ERR 0x5F] UTF8_DECODE_FAILED: å…¬ä¼—èµ„è®¯åº”å¯¹åŠžå…¬å®¤</span><span class="disclaimer-tag">// {$t('数据已隐藏')}</span></span></p>
+      <p class="hero-actions"><a href="/showcase">{$t('项目大厅')}</a><a href="/brief">{$t('协会简介')}</a><a href="/rules">{$t('协会会规')}</a></p>
     </section>
     <section class="home-shelf">
       <div class="shelf-head"><h2>{$t('热门项目')}</h2><a href="/showcase">{$t('项目大厅')} →</a></div>
       <div class="home-grid">
         {#each shownProjects as project (project.id || project.title)}
           <a class="yt-card" href={project.id ? '/showcase/' + encodeURIComponent(project.id) : '/showcase'}>
-            <span class={`yt-thumb yt-${project.adventureStyle}`}>{#if project.difficulty}<span class={`yt-badge rank rank-pill difficulty-badge rank-${difficultyRank(project.difficulty)}`}>{$t('难度')} {project.difficulty}</span>{:else}<span class="yt-badge rank-pending">{$t('难度')} {$t('待定')}</span>{/if}</span>
+            <span class={`yt-thumb yt-${project.adventureStyle}`}>{#if project.difficulty}<span class={`yt-badge rank rank-pill difficulty-badge rank-${difficultyRank(project.difficulty)}`}>{$t('项目级别')} {project.difficulty}</span>{:else}<span class="yt-badge rank-pending">{$t('项目级别')} {$t('待定')}</span>{/if}</span>
             <div class="yt-body">
               {#if project.ownerAvatarUrl}<img class="yt-avatar" src={project.ownerAvatarUrl} alt="" loading="lazy" />{:else}<span class="yt-avatar" aria-hidden="true"></span>{/if}
               <div>
                 <h3>{project.title}</h3>
+                {#if project.projectNumber}<small class="project-number">{project.projectNumber}</small>{/if}
                 <p class="yt-meta"><RedactedText text={project.ownerName || '—'} hidden={!!project.ownerRedacted} /></p>
                 <p class="yt-meta">{$t('关注')} {project.followCount}{#if project.updated} · {formatDate(project.updated)}{/if}</p>
               </div>
@@ -334,17 +480,21 @@
         <div class="member-profile-copy">
           <h1>{data.name}</h1>
           <p><RedactedText text={data.bio} hidden={!!data.bioRedacted} /></p>
-          {#if data.currentStatus || data.gender || data.identities?.length}
             <div class="profile-badges" aria-label={$t('个人资料')}>
               {#if data.currentStatus}<span class={`profile-badge status-badge status-${data.statusRedacted ? 'redacted' : data.currentStatus}`}>{$t('当前状态')} · <RedactedText text={$t(currentStatusLabels[data.currentStatus] || data.currentStatus)} hidden={!!data.statusRedacted} /></span>{/if}
               {#if data.gender}<span class={`profile-badge gender-badge gender-${data.gender}`}>{$t('性别')} · {$t(genderLabels[data.gender] || data.gender)}</span>{/if}
-              {#each data.identities as identity}
-                <span class={`profile-badge role-badge role-${identity.category === 'main' ? 'main' : 'support'}`}>
-                  {#if identity.redacted}<RedactedText text={identity.name} hidden={true} />{:else}{$t(identity.category === 'main' ? '主力职业' : '辅助职业')} · {identity.name}{/if}
-                </span>
-              {/each}
+              {#if data.identities?.length}
+                {#each data.identities as identity}
+                  <span class={`profile-badge role-badge role-${identity.category === 'main' ? 'main' : 'support'}`}>
+                    {#if identity.redacted}<RedactedText text={identity.name} hidden={true} />{:else}{$t(identity.category === 'main' ? '主力职业' : '辅助职业')} · {identity.name}{/if}
+                  </span>
+                {/each}
+              {:else}<span class="profile-badge role-badge">{$t('职业')} · {$t('未填写')}</span>{/if}
+              {#if (data.earnedTitles || data.officialTitles || []).length}
+                {#each data.earnedTitles || data.officialTitles || [] as title}<span class="profile-badge title-badge">{$t(title.isOfficial ? '官方头衔' : '项目头衔')} · {title.name}{#if !title.isOfficial && title.issuedByName} · {$t('授予者')}：{title.issuedByName}{/if}</span>{/each}
+              {:else if data.wornTitle}<span class="profile-badge profile-fact">{$t('佩戴头衔')} · {data.wornTitle}</span>
+              {:else}<span class="profile-badge title-badge">{$t('头衔')} · {$t('未填写')}</span>{/if}
             </div>
-          {/if}
         </div>
       </header>
       {#if data.relations}
@@ -366,7 +516,7 @@
           {#if !token}<p class="relation-hint">{$t('登录后可设置互动关系。')}</p>{/if}
         </div>
       {/if}
-      {#if data.cards?.length}<div class="public-grid">{#each data.cards as card}<article class="public-card"><h2><RedactedText text={card.title} hidden={!!card.redacted} /></h2>{#if card.redacted}<p><RedactedText text={card.text} hidden={true} /></p>{:else}<MarkdownContent text={card.text} />{/if}<div class="image-grid">{#if card.redacted}{#each Array(card.imageCount || 0) as _}<span class="redacted-image" title={$t('资料隐藏')} aria-label={$t('资料隐藏')}></span>{/each}{/if}{#each card.imageUrls || [] as url}<a href={url} target="_blank" rel="noreferrer"><img src={url} alt={card.title} loading="lazy" /></a>{/each}</div></article>{/each}</div>{:else}<p>{$t('暂无公开卡片。')}</p>{/if}
+      {#if data.cards?.length}<div class="public-grid">{#each data.cards as card}<article class="public-card"><h2><RedactedText text={card.title} hidden={!!card.redacted} /></h2>{#if card.redacted}<p><RedactedText text={card.text} hidden={true} /></p>{:else if card.layout?.version === 1}<CardCanvas layout={card.layout} images={card.imageUrls || []} />{:else}<MarkdownContent text={card.text} />{/if}{#if card.redacted || card.layout?.version !== 1}<div class="image-grid">{#if card.redacted}{#each Array(card.imageCount || 0) as _}<span class="redacted-image" title={$t('资料隐藏')} aria-label={$t('资料隐藏')}></span>{/each}{/if}{#each card.imageUrls || [] as url}<a href={url} target="_blank" rel="noreferrer"><img src={url} alt={card.title} loading="lazy" /></a>{/each}</div>{/if}</article>{/each}</div>{:else}<p>{$t('暂无公开卡片。')}</p>{/if}
       <nav class="profile-tabs" aria-label={$t('公开资料')}>
         <button type="button" class:active={activeTab === 'completed'} on:click={() => activeTab = 'completed'}>{$t('完成项目')}<span>{data.projectsCompleted?.length || 0}</span></button>
         <button type="button" class:active={activeTab === 'ongoing'} on:click={() => activeTab = 'ongoing'}>{$t('进行中项目')}<span>{data.projectsOngoing?.length || 0}</span></button>
@@ -378,10 +528,10 @@
           <div class="public-grid">
             {#each data.projectsCompleted as project}
               <article class="public-card project-card">
-                {#if project.redacted}<h2><RedactedText text={project.title} hidden={true} /></h2><p><RedactedText text={project.summary} hidden={true} /></p>{:else}
-                <div class="project-meta"><span class="project-status done">{$t('已完成')}</span>{#if project.difficulty}<span class={`rank rank-pill difficulty-badge rank-${difficultyRank(project.difficulty)}`}>{$t('难度')} {project.difficulty}</span>{:else}<span class="rank-pending">{$t('难度')} {$t('待定')}</span>{/if}</div>
+                {#if project.redacted}<h2><RedactedText text={project.title} hidden={true} /></h2>{:else}
+                <div class="project-meta"><span class="project-status done">{$t('已完成')}</span>{#if project.completionNumber}<span>{$t('第 {number} 次', { number: project.completionNumber })}</span>{/if}{#if project.difficulty}<span class={`rank rank-pill difficulty-badge rank-${difficultyRank(project.difficulty)}`}>{$t('项目级别')} {project.difficulty}</span>{:else}<span class="rank-pending">{$t('项目级别')} {$t('待定')}</span>{/if}</div>
                 <h2><a href={'/showcase/' + encodeURIComponent(project.id)}>{project.title}</a></h2>
-                <p>{project.summary}</p>
+                {#if project.projectNumber}<small class="project-number">{project.projectNumber}</small>{/if}
                 <p class="project-owner">{#if project.ownerAvatarUrl}<img class="owner-avatar" src={project.ownerAvatarUrl} alt="" loading="lazy" />{:else}<span class="owner-avatar" aria-hidden="true"></span>{/if}{$t('负责人')}：<RedactedText text={project.ownerName || '—'} hidden={!!project.ownerRedacted} />{#if project.updated} · {$t('更新于')} {formatDate(project.updated)}{/if}</p>{/if}
               </article>
             {/each}
@@ -394,10 +544,10 @@
           <div class="public-grid">
             {#each data.projectsOngoing as project}
               <article class="public-card project-card">
-                {#if project.redacted}<h2><RedactedText text={project.title} hidden={true} /></h2><p><RedactedText text={project.summary} hidden={true} /></p>{:else}
-                <div class="project-meta"><span class="project-status">{$t('进行中')}</span>{#if project.difficulty}<span class={`rank rank-pill difficulty-badge rank-${difficultyRank(project.difficulty)}`}>{$t('难度')} {project.difficulty}</span>{:else}<span class="rank-pending">{$t('难度')} {$t('待定')}</span>{/if}</div>
+                {#if project.redacted}<h2><RedactedText text={project.title} hidden={true} /></h2>{:else}
+                <div class="project-meta"><span class="project-status">{$t('进行中')}</span>{#if project.difficulty}<span class={`rank rank-pill difficulty-badge rank-${difficultyRank(project.difficulty)}`}>{$t('项目级别')} {project.difficulty}</span>{:else}<span class="rank-pending">{$t('项目级别')} {$t('待定')}</span>{/if}</div>
                 <h2><a href={'/showcase/' + encodeURIComponent(project.id)}>{project.title}</a></h2>
-                <p>{project.summary}</p>
+                {#if project.projectNumber}<small class="project-number">{project.projectNumber}</small>{/if}
                 <p class="project-owner">{#if project.ownerAvatarUrl}<img class="owner-avatar" src={project.ownerAvatarUrl} alt="" loading="lazy" />{:else}<span class="owner-avatar" aria-hidden="true"></span>{/if}{$t('负责人')}：<RedactedText text={project.ownerName || '—'} hidden={!!project.ownerRedacted} />{#if project.updated} · {$t('更新于')} {formatDate(project.updated)}{/if}</p>{/if}
               </article>
             {/each}
@@ -475,66 +625,137 @@
         {/if}
       {/if}
     {:else}
-      <h1>{$t('成员')}</h1><p>{$t('认识 HPA 的成员。')}</p>{#if items.length}<div class="public-grid">{#each items as member}<article class="public-card member-card">{#if member.avatarUrl}<img class="avatar" src={member.avatarUrl} alt="" />{:else}<span class="avatar avatar-default" aria-hidden="true"></span>{/if}<h2>{#if member.id}<a href={'/community/' + encodeURIComponent(member.id)}>{member.name}</a>{:else}{member.name}{/if}</h2></article>{/each}</div>{:else}<p>{$t('暂无成员。')}</p>{/if}
+      <h1>{$t('成员')}</h1><p>{$t('认识 HPA 的成员。')}</p>
+      {#if items.length}
+        <div class="public-grid">
+          {#each items as member}
+            <a class="public-card member-card member-card-link" href={member.id ? '/community/' + encodeURIComponent(member.id) : undefined}>
+              <div class="member-card-head">
+                {#if member.avatarUrl}<img class="avatar" src={member.avatarUrl} alt="" />{:else}<span class="avatar avatar-default" aria-hidden="true"></span>{/if}
+                <h2>{member.name}</h2>
+              </div>
+              <div class="member-card-details">
+                <span class="member-card-item">{$t('职业')} · {member.smallCard?.profession || $t('未填写')}</span>
+                <span class="member-card-item">{$t('头衔')} · {member.smallCard?.title || $t('未填写')}{#if member.smallCard?.title && member.smallCard.titleIssuer} · {$t('授予者')}：{member.smallCard.titleIssuer}{/if}</span>
+                <span class="member-card-item">{$t('技能')} · {member.smallCard?.skill || $t('未填写')}</span>
+                <div class="member-card-ratings">
+                  <span class="member-card-label">{$t('获得评分')}</span>
+                  <div class="member-card-rating-list" aria-label={$t('获得评分')}>
+                    {#if member.smallCard?.ratings?.length}
+                      {#each member.smallCard.ratings as rating}<span class={`rank rank-pill difficulty-badge rank-${difficultyRank(rating.grade)}`}>{rating.grade}{rating.count}</span>{/each}
+                    {:else}
+                      <span class="member-card-item member-card-empty">{$t('暂未获得')}</span>
+                    {/if}
+                  </div>
+                </div>
+              </div>
+            </a>
+          {/each}
+        </div>
+      {:else}<p>{$t('暂无成员。')}</p>{/if}
     {/if}
   {:else if section === 'showcase'}
-    {#if id}
+    {#if id && pageAction === 'apply'}
+      {#if data}
+        <main class="dashboard project-apply-page">
+          <a href={'/showcase/' + encodeURIComponent(data.id)}>{$t('返回项目详情')}</a>
+          <header class="page-heading"><div><h1>{$t(data.joinMode === 'open' ? '加入项目' : '申请加入')}</h1><p>{data.title}</p></div></header>
+          {#if !token}
+            <section class="project-apply"><p>{$t('登录后可加入或申请加入此项目。')}</p><a class="primary" href="/sign-in">{$t('登录')}</a></section>
+          {:else if data.canApply}
+            <section class="project-apply" aria-labelledby="project-apply-title">
+              <h2 id="project-apply-title">{$t(data.joinMode === 'open' ? '加入项目' : '申请加入')}</h2>
+              <p>{data.joinMode === 'open' ? $t('此项目允许自由加入，填写身份和帮助后即可成为成员。') : $t('此项目需要申请，填写身份和帮助后等待审批。')}</p>
+              <label>{$t('参与身份')}<select bind:value={applyProfession}><option value="">{$t('请选择身份')}</option>{#each identityOptions as identity}<option value={identity.name}>{identity.name}</option>{/each}</select></label>
+              <label>{$t('可提供的帮助')}<textarea bind:value={applyAbility} maxlength="200" rows="2" placeholder={$t('例如：负责结构设计与打样')}></textarea></label>
+              <label>{$t('可投入时间')}<input bind:value={applyTime} maxlength="100" placeholder={$t('例如：每周 10 小时、周末')} /></label>
+              <label>{$t('补充说明')}<textarea bind:value={applyMessage} maxlength="500" rows="3" placeholder={$t('例如：我可以负责结构设计与打样。')}></textarea></label>
+              {#if data.confidentialityRequested}<label class="agreement-check"><input type="checkbox" bind:checked={acceptTerms} />{$t('我同意保密协议')}</label>{/if}
+              {#if applyError}<p class="message error" role="alert">{$t(applyError)}</p>{/if}
+              <button type="button" class="primary" on:click={applyToProject} disabled={applying || !applyProfession || !applyAbility.trim() || (data.confidentialityRequested && !acceptTerms)}>{applying ? $t('正在提交…') : $t(data.joinMode === 'open' ? '直接加入' : '提交申请')}</button>
+            </section>
+          {:else if data.applicationPending}
+            <p class="message success" role="status">{$t('申请已提交，等待管理员审批。')}</p>
+          {:else if data.alreadyMember}
+            <p class="message success" role="status">{$t('你已加入此项目。')}</p>
+          {:else}
+            <section class="project-apply"><p>{$t('该项目当前不可加入。')}</p></section>
+          {/if}
+        </main>
+      {/if}
+    {:else if id}
+      {#if pageAction === 'content'}
+        <header class="project-content-heading">
+          <div><a href={'/showcase/' + encodeURIComponent(data.id)}>{$t('返回项目信息')}</a><p class="project-content-kicker">{$t('项目内容')}</p><h1>{data.title}</h1>{#if data.projectNumber}<small class="project-number">{data.projectNumber}</small>{/if}</div>
+          {#if data.canFollow || data.canApply}<div class="project-detail-actions">
+            {#if data.canFollow}<div class="follow-row">
+              <button type="button" class:following={data.following} class="follow-button" on:click={toggleFollow} disabled={followBusy}>
+                <span aria-hidden="true">{data.following ? '♥' : '♡'}</span>
+                {data.following ? $t('已关注') : $t('关注项目')}
+              </button>
+              {#if followError}<span class="follow-error">{$t(followError)}</span>{/if}
+            </div>{/if}
+            {#if data.canApply}<a class="primary" href={'/showcase/' + encodeURIComponent(data.id) + '/apply'}>{$t(data.joinMode === 'open' ? '加入项目' : '申请加入')}</a>{/if}
+          </div>{/if}
+        </header>
+      {:else}
       <a href="/showcase">{$t('返回项目列表')}</a>
       <header class="project-detail-head">
-        <div class="project-meta"><span class:done={data.status === 'completed'} class="project-status">{statusLabel(data.status)}</span>{#if data.difficulty}<span class={`rank rank-pill difficulty-badge rank-${difficultyRank(data.difficulty)}`}>{$t('难度')} {data.difficulty}</span>{:else}<span class="rank-pending">{$t('难度')} {$t('待定')}</span>{/if}{#if data.currentStage}<span class="project-stage">{$t('当前阶段')}：{data.currentStage}</span>{/if}</div>
-        <h1>{data.title}</h1>
-        <p>{data.summary}</p>
-        {#if data.coverUrl}<img class="project-detail-cover" src={data.coverUrl} alt={data.title} />{/if}
-        <p class="project-owner">{$t('负责人')}：<RedactedText text={data.ownerName || '—'} hidden={!!data.ownerRedacted} />{#if data.updated} · {$t('更新于')} {formatDate(data.updated)}{/if}</p>
-        <p class="project-owner">{$t('发起人')}：<RedactedText text={data.creatorName || '—'} hidden={!!data.creatorRedacted} /></p>
-        <p class="project-owner">{$t('管理员')}：{data.managers?.length || 0}{#if data.managers?.length} · {#each data.managers as manager, index}{#if index}、{/if}<RedactedText text={manager.name || '—'} hidden={!!manager.redacted} />{/each}{/if}</p>
-        <p class="project-owner">{$t('发布时间')}：{data.publishedAt ? formatDate(data.publishedAt) : '—'} · {$t('参与人数')}：{data.participantCount || 0} · {$t('关注度')}：{data.followCount || 0}</p>
-        {#if data.description && data.description !== data.summary}<p class="project-description">{data.description}</p>{/if}
-        <p class="project-owner">{$t('是否接受赞助')}：{$t(data.acceptsSponsorship ? '是' : '否')} · {$t('允许他人管理')}：{$t(data.allowOthersManagement ? '是' : '否')} · {$t('是否需要保密')}：{$t(data.confidentialityRequested ? '是' : '否')}</p>
-        {#if data.projectNeeds?.length}<p class="project-owner">{$t('项目需要')}：{data.projectNeeds.map((need) => $t(({ funding: '资金支持', technical: '技术支持', equipment: '设备支持', venue: '场地支持', manpower: '人手支持', promotion: '宣传支持', emotional: '情绪支持' })[need] || need)).join(' · ')}</p>{/if}
-        {#if data.providerOffers?.length}<p class="project-owner">{$t('发起人可提供')}：{data.providerOffers.map((offer) => $t(({ technical: '技术', funding: '资金', equipment: '设备', venue: '场地', manpower: '人手', promotion: '宣传' })[offer] || offer)).join(' · ')}</p>{/if}
-        {#if data.collaborationMode}<p class="project-owner">{$t('协作方式')}：{$t(data.collaborationMode === 'independent' ? '独立项目' : '协作项目')}</p>{/if}
-        {#if data.collaborationMode === 'collaborative'}<p class="project-owner">{$t('加入方式')}：{$t(data.joinMode === 'open' ? '自由加入' : '申请加入')}</p>{/if}
-        {#if data.plannedStartDate}<p class="project-owner">{$t('计划开始日期')}：{formatDate(data.plannedStartDate)}</p>{/if}
-        {#if data.scheduleNote}<p class="project-description">{$t('时间安排')}：{data.scheduleNote}</p>{/if}
-        {#if data.statusReason}<p class="project-owner">{$t('状态原因')}：{data.statusReason}</p>{/if}
-        {#if data.projectNature}<p class="project-owner">{$t('项目性质')}：{$t(({ commercial: '商业盈利', learning: '学习交流', showcase: '技术展示', research: '科学研究' })[data.projectNature])}</p>{/if}
-        {#if data.longTerm}<p class="project-owner">{$t('预计周期')}：{$t('长期项目')}</p>{:else if data.estimatedDurationDays}<p class="project-owner">{$t('预计周期')}：{data.estimatedDurationDays} {$t('天')}</p>{/if}
-        {#if data.proposedDifficulty}<p class="project-owner">{$t('发起人自评')}：<span class={`rank rank-text rank-${difficultyRank(data.proposedDifficulty)}`}>{data.proposedDifficulty}</span></p>{:else}<p class="project-owner">{$t('发起人自评')}：{$t('待定')}</p>{/if}
-        {#if data.difficulty}<p class="project-owner">{$t('共识')}：<span class={`rank rank-text rank-${difficultyRank(data.difficulty)}`}>{data.difficulty}</span></p>{:else}<p class="project-owner">{$t('共识')}：{$t('待定')}</p>{/if}
-        {#if data.ownerConfirmed}<span class="confirmed">✓ {$t('发起人已确认')}</span>{/if}
-        {#if data.approveCount}<span>{$t('同意')}：{data.approveCount}</span>{/if}
-        {#if data.opposeCount}<span>{$t('反对')}：{data.opposeCount}</span>{/if}
+        <div class="project-meta"><span class:done={data.status === 'completed'} class="project-status">{statusLabel(data.status)}</span>{#if data.difficulty}<span class={`rank rank-pill difficulty-badge rank-${difficultyRank(data.difficulty)}`}>{$t('项目级别')} {data.difficulty}</span>{:else}<span class="rank-pending">{$t('项目级别')} {$t('待定')}</span>{/if}{#if data.currentStage}<span class="project-stage">{$t('当前阶段')}：{data.currentStage}</span>{/if}</div>
+        <div class="project-title-row">
+          <h1>{projectInfo.title || data.title}</h1>
+          {#if data.canFollow || data.canApply}<div class="project-detail-actions">
+            {#if data.canFollow}<div class="follow-row">
+              <button type="button" class:following={data.following} class="follow-button" on:click={toggleFollow} disabled={followBusy}>
+                <span aria-hidden="true">{data.following ? '♥' : '♡'}</span>
+                {data.following ? $t('已关注') : $t('关注项目')}
+              </button>
+              {#if followError}<span class="follow-error">{$t(followError)}</span>{/if}
+            </div>{/if}
+            {#if data.canApply}<a class="primary" href={'/showcase/' + encodeURIComponent(data.id) + '/apply'}>{$t(data.joinMode === 'open' ? '加入项目' : '申请加入')}</a>{/if}
+          </div>{/if}
+        </div>
+        <p class="project-title-meta">{#if data.projectNumber}<span class="project-number">{data.projectNumber}</span>{/if}<span>{$t('发起人')}：<RedactedText text={data.creatorName || $t('未填写')} hidden={!!data.creatorRedacted} /></span><span>{$t('发布时间')}：{data.publishedAt ? formatDate(data.publishedAt) : $t('未填写')}</span></p>
+        {#if data.coverUrl}<img class="project-detail-cover" src={data.coverUrl} alt={data.title} />{:else}<div class="project-cover-placeholder project-detail-cover" aria-hidden="true"><span>HPA HUB</span></div>{/if}
+        <section class="project-section project-introduction" aria-labelledby="project-introduction-title">
+          <h2 id="project-introduction-title">{$t('项目简介')}</h2>
+          <p class="project-description">{projectInfo.summary || $t('未填写')}</p>
+        </section>
+        <section class="project-information" aria-label={$t('项目信息')}>
+          <div class="project-information-heading">
+            <h2>{$t('项目信息')}</h2>
+            {#if projectVersions.length > 1}<div class="project-version-picker"><span>{$t('版本')}</span><Select bind:value={selectedProjectVersion} ariaLabel={$t('版本')} options={projectVersionOptions} disabled={projectVersionLoading} on:value={selectPublicProjectVersion} /></div>{/if}
+          </div>
+          {#if projectVersions.length}<p class="project-version-message project-version-editor">{$t('当前版本修改者')}：{selectedProjectVersionEditor || $t('未填写')}</p>{/if}
+          {#if projectVersionLoading}<p class="project-version-message">{$t('加载版本中…')}</p>{/if}
+          {#if projectVersionError}<p class="project-version-message" role="alert">{$t(projectVersionError)}</p>{/if}
+          <div class="project-info-table-wrap"><table class="project-info-table"><tbody>
+            <tr><th scope="row">{$t('负责人')}</th><td><RedactedText text={data.ownerName || $t('未填写')} hidden={!!data.ownerRedacted} />{#if data.updated}<span class="info-secondary"> · {$t('更新于')} {formatDate(data.updated)}</span>{/if}</td></tr>
+            <tr><th scope="row">{$t('管理员')}</th><td>{#if data.managers?.length}{#each data.managers as manager, index}{#if index}、{/if}<RedactedText text={manager.name || $t('未填写')} hidden={!!manager.redacted} />{/each}{:else}{$t('未填写')}{/if}</td></tr>
+            <tr><th scope="row">{$t('赞助者')}</th><td>{projectInfo.sponsor || $t('未填写')}</td></tr>
+            <tr><th scope="row">{$t('危险性')}</th><td>{projectInfo.dangerLevel ? $t(({ low: '低', medium: '中', high: '高', extreme: '极高' })[projectInfo.dangerLevel] || projectInfo.dangerLevel) : $t('未填写')}</td></tr>
+            <tr><th scope="row">{$t('难度')}</th><td>{projectInfo.taskDifficulty ? $t(({ easy: '简单', normal: '一般', hard: '困难', extreme: '极难' })[projectInfo.taskDifficulty] || projectInfo.taskDifficulty) : $t('未填写')}</td></tr>
+            <tr><th scope="row">{$t('项目设置')}</th><td class="info-tags"><span>{$t('是否接受赞助')}：{$t(projectInfo.acceptsSponsorship ? '是' : '否')}</span><span>{$t('允许他人管理')}：{$t(projectInfo.allowOthersManagement ? '是' : '否')}</span><span>{$t('是否需要保密')}：{$t(projectInfo.confidentialityRequested ? '是' : '否')}</span></td></tr>
+            <tr><th scope="row">{$t('项目需要')}</th><td>{#if projectInfo.projectNeeds?.length}{projectInfo.projectNeeds.map((need) => $t(({ funding: '资金支持', technical: '技术支持', equipment: '设备支持', venue: '场地支持', manpower: '人手支持', promotion: '宣传支持', emotional: '情绪支持' })[need] || need) + (projectInfo.projectNeedDetails?.[need] ? '：' + projectInfo.projectNeedDetails[need] : '')).join(' · ')}{:else}{$t('未填写')}{/if}</td></tr>
+            <tr><th scope="row">{$t('发起人可提供')}</th><td>{#if projectInfo.providerOffers?.length}{projectInfo.providerOffers.map((offer) => $t(({ technical: '技术', funding: '资金', equipment: '设备', venue: '场地', manpower: '人手', promotion: '宣传', title: '头衔认证' })[offer] || offer) + (projectInfo.providerOfferDetails?.[offer] ? '：' + projectInfo.providerOfferDetails[offer] : '')).join(' · ')}{:else}{$t('未填写')}{/if}</td></tr>
+            <tr><th scope="row">{$t('协作方式')}</th><td>{projectInfo.collaborationMode ? $t(projectInfo.collaborationMode === 'independent' ? '独立项目' : '协作项目') : $t('未填写')}</td></tr>
+            {#if projectInfo.collaborationMode === 'collaborative'}<tr><th scope="row">{$t('加入方式')}</th><td>{$t(projectInfo.joinMode === 'open' ? '自由加入' : '申请加入')}</td></tr>{/if}
+            <tr><th scope="row">{$t('计划开始日期')}</th><td>{projectInfo.plannedStartDate ? formatDate(projectInfo.plannedStartDate) : $t('未填写')}</td></tr>
+            <tr><th scope="row">{$t('时间安排')}</th><td>{projectInfo.scheduleNote || $t('未填写')}</td></tr>
+            <tr><th scope="row">{$t('状态原因')}</th><td>{projectInfo.statusReason || $t('未填写')}</td></tr>
+            <tr><th scope="row">{$t('项目性质')}</th><td>{projectInfo.projectNature ? $t(({ commercial: '商业盈利', learning: '学习交流', showcase: '技术展示', research: '科学研究' })[projectInfo.projectNature]) : $t('未填写')}</td></tr>
+            <tr><th scope="row">{$t('重复项目')}</th><td>{#if projectInfo.repeatable}{$t('是')} · {$t('每位参与者最多完成次数')}：{projectInfo.repeatLimit}{:else}{$t('否')}{/if}</td></tr>
+            <tr><th scope="row">{$t('预计周期')}</th><td>{#if projectInfo.longTerm}{$t('长期项目')}{:else if projectInfo.estimatedDurationDays}{projectInfo.estimatedDurationDays} {$t('天')}{:else}{$t('未填写')}{/if}</td></tr>
+          </tbody></table></div>
+          <div class="project-content-link"><a class="primary" href={'/showcase/' + encodeURIComponent(data.id) + '/content'}>{$t('进入项目内容')}</a></div>
+        </section>
       </header>
+      {/if}
+      {#if pageAction === 'content'}
       {#if data.confidentialityRequested && data.confidentialityTerms}
         <section class="project-section"><h2>{$t('保密协议')}</h2><p class="project-description">{data.confidentialityTerms}</p></section>
       {/if}
-      {#if data.canFollow}
-        <div class="follow-row">
-          <button type="button" class:following={data.following} class="follow-button" on:click={toggleFollow} disabled={followBusy}>
-            <span aria-hidden="true">{data.following ? '♥' : '♡'}</span>
-            {data.following ? $t('已关注') : $t('关注项目')}
-          </button>
-          {#if followError}<span class="follow-error">{$t(followError)}</span>{/if}
-        </div>
-      {/if}
-      {#if data.canApply}
-        <section class="project-apply" aria-labelledby="project-apply-title">
-          <h2 id="project-apply-title">{$t(data.joinMode === 'open' ? '加入项目' : '申请加入')}</h2>
-          <p>{data.joinMode === 'open' ? $t('此项目允许自由加入，点击下方按钮直接成为成员。') : $t('此项目需要申请，填写你的技能和可投入时间。')}</p>
-          {#if data.joinMode !== 'open'}
-            <label>{$t('你的职业')}<input bind:value={applyProfession} maxlength="100" placeholder={$t('例如：电子工程师、机械设计师')} /></label>
-            <label>{$t('可投入时间')}<input bind:value={applyTime} maxlength="100" placeholder={$t('例如：每周 10 小时、周末')} /></label>
-            <label>{$t('能力上限')}<textarea bind:value={applyAbility} maxlength="200" rows="2" placeholder={$t('简单描述你的技能水平和能承担的工作范围')}></textarea></label>
-          {/if}
-          <label>{$t('补充说明')}<textarea bind:value={applyMessage} maxlength="500" rows="3" placeholder={$t('例如：我可以负责结构设计与打样。')}></textarea></label>
-          {#if data.confidentialityRequested}
-            <label class="agreement-check"><input type="checkbox" bind:checked={acceptTerms} />{$t('我同意保密协议')}</label>
-          {/if}
-          {#if applyError}<p class="message error" role="alert">{$t(applyError)}</p>{/if}
-          <button type="button" class="primary" on:click={applyToProject} disabled={applying || (data.confidentialityRequested && !acceptTerms)}>{applying ? $t('正在提交…') : $t(data.joinMode === 'open' ? '直接加入' : '提交申请')}</button>
-        </section>
-      {:else if data.canRequestImprovement}
+      {#if data.canRequestImprovement}
         <section class="project-apply" aria-labelledby="project-improvement-title">
           <h2 id="project-improvement-title">{$t('申请改进')}</h2>
           <p>{$t('这个项目已经完成，你可以提出改进方向或补充方案。')}</p>
@@ -549,6 +770,42 @@
         <p class="message success" role="status">{$t(improvementNotice || '改进申请已提交，等待管理员审批。')}</p>
       {:else if data.applicationPending}
         <p class="message success" role="status">{$t(applyNotice || '申请已提交，等待管理员审批。')}</p>
+      {:else if data.alreadyMember}
+        <p class="message success" role="status">{$t('你已加入此项目。')}</p>
+        {#if data.repeatable}
+          <section class="project-apply">
+            <h2>{$t('重复任务完成')} · {data.viewerCompletionCount || 0}/{data.repeatLimit}</h2>
+            {#if data.canRequestCompletion && !data.departureRequest && !data.removalRequest}
+              <p>{$t('完成一次任务后提交说明，项目管理者审核通过后会计入你的完成项目；项目会继续开放。')}</p>
+              <textarea bind:value={completionMessage} maxlength="5000" rows="4" placeholder={$t('请说明本次完成的任务或成果')}></textarea>
+              {#if completionError}<p class="message error" role="alert">{$t(completionError)}</p>{/if}
+              <button type="button" class="primary" on:click={submitCompletionRequest} disabled={completionBusy || !completionMessage.trim()}>{completionBusy ? $t('正在提交…') : $t('申请任务完成')}</button>
+            {:else if data.viewerCompletionPending}
+              <p class="message success" role="status">{$t('完成申请已提交，等待项目管理者审核。')}</p>
+            {:else if (data.viewerCompletionCount || 0) >= data.repeatLimit}
+              <p>{$t('你已达到该项目的个人完成次数上限。')}</p>
+            {/if}
+          </section>
+        {/if}
+        {#if data.departureRequest}
+          <p class="message success" role="status">{$t(data.departureRequest.status === 'pending_admin' ? '退出申请已转交管理员审核。' : '退出申请已提交，等待项目发起人在48小时内处理。')}</p>
+        {:else if data.removalRequest}
+          <section class="project-apply">
+            <h2>{$t('项目发起人申请你离开项目')}</h2><p>{$t('申请原因')}：{data.removalRequest.reason}</p>
+            {#if data.removalRequest.status === 'pending_member'}
+              <p>{$t('请在48小时内同意或拒绝；拒绝或超时将转交管理员审核。')}</p>
+              <button type="button" class="primary" on:click={() => respondToRemoval('approve')} disabled={managementBusy}>{$t('同意请离')}</button>
+              <button type="button" class="secondary" on:click={() => respondToRemoval('reject')} disabled={managementBusy}>{$t('拒绝并交管理员审核')}</button>
+            {:else}<p class="message success">{$t('请离申请已转交管理员审核。')}</p>{/if}
+          </section>
+        {:else if data.canRequestLeave}
+          <section class="project-apply">
+            <h2>{$t('申请退出项目')}</h2><p>{$t('说明退出原因，项目发起人将在48小时内同意或拒绝；拒绝或超时后交管理员审核。')}</p>
+            <textarea bind:value={leaveReason} maxlength="2000" rows="3" placeholder={$t('请填写退出原因（必填）')}></textarea>
+            {#if leaveError}<p class="message error" role="alert">{$t(leaveError)}</p>{/if}
+            <button type="button" class="secondary" on:click={submitLeaveRequest} disabled={leaveBusy || !leaveReason.trim()}>{leaveBusy ? $t('正在提交…') : $t('提交退出申请')}</button>
+          </section>
+        {/if}
       {:else if !token}
         <p class="project-apply-hint"><a href="/sign-in">{$t('登录')}</a>{$t('后可申请加入或改进。')}</p>
       {/if}
@@ -558,12 +815,38 @@
           {#if managementError}<p class="message error" role="alert">{$t(managementError)}</p>{/if}
           {#if management.requests.length}<h3>{$t('加入申请')}</h3>
             {#each management.requests as request}
-              <div class="management-row"><span>{request.name} · {$t(request.source === 'improvement' ? '申请改进' : '申请加入')} {request.message}</span><button type="button" disabled={managementBusy} on:click={() => updateManagement('applications/' + encodeURIComponent(request.id), { status: 'accepted' })}>{$t('通过')}</button><button type="button" disabled={managementBusy} on:click={() => updateManagement('applications/' + encodeURIComponent(request.id), { status: 'rejected' })}>{$t('拒绝')}</button></div>
+              <div class="management-row"><span>{request.name} · {$t(request.source === 'improvement' ? '申请改进' : '申请加入')} {request.profession} {request.ability} {request.time} {request.message}</span><button type="button" disabled={managementBusy} on:click={() => updateManagement('applications/' + encodeURIComponent(request.id), { status: 'accepted' })}>{$t('通过')}</button><button type="button" disabled={managementBusy} on:click={() => updateManagement('applications/' + encodeURIComponent(request.id), { status: 'rejected' })}>{$t('拒绝')}</button></div>
+            {/each}
+          {/if}
+          {#if management.completionRequests?.length}<h3>{$t('任务完成申请')}</h3>
+            {#each management.completionRequests as request}
+              <div class="management-row"><span>{request.name} · {$t('第 {number} 次', { number: request.number })} · {request.message}</span><button type="button" class="primary" disabled={managementBusy} on:click={() => updateManagement('completion-requests/' + encodeURIComponent(request.id), { decision: 'approve' })}>{$t('通过并计入完成项目')}</button><button type="button" class="secondary" disabled={managementBusy} on:click={() => updateManagement('completion-requests/' + encodeURIComponent(request.id), { decision: 'reject' })}>{$t('拒绝')}</button></div>
+            {/each}
+          {/if}
+          {#if management.isOwner && management.departureRequests?.some((request) => request.type === 'leave' && request.status === 'pending_owner')}
+            <h3>{$t('退出申请')}</h3>
+            {#each management.departureRequests.filter((request) => request.type === 'leave' && request.status === 'pending_owner') as request}
+              <div class="management-row"><span>{request.memberName}：{request.reason} · {$t('截止')} {new Date(request.expiresAt).toLocaleString()}</span><button type="button" class="primary" disabled={managementBusy} on:click={() => updateManagement('departure-requests/' + encodeURIComponent(request.id) + '/owner-response', { decision: 'approve' })}>{$t('同意退出')}</button><button type="button" class="secondary" disabled={managementBusy} on:click={() => updateManagement('departure-requests/' + encodeURIComponent(request.id) + '/owner-response', { decision: 'reject' })}>{$t('拒绝并交管理员审核')}</button></div>
+            {/each}
+          {/if}
+          {#if management.isOwner && management.titleAwardAvailable}
+            <h3>{$t('项目头衔授予')} · {management.titleAwardName}</h3>
+            <p>{$t('项目完成后，可向已加入的参与者授予此头衔。')}</p>
+            {#each management.members as member}
+              <div class="management-row"><span>{member.name}</span>{#if member.titleAwarded}<span class="muted">{$t('已授予')}</span>{:else}<button type="button" class="primary" disabled={managementBusy} on:click={() => awardProjectTitle(member)}>{$t('授予头衔')}</button>{/if}</div>
             {/each}
           {/if}
           {#if management.canAssign}<h3>{$t('项目管理权')}</h3>
             {#each management.members as member}
               <div class="management-row"><span>{member.name}</span><button type="button" disabled={managementBusy || member.id === management.viewerId} on:click={() => updateManagement('managers/' + encodeURIComponent(member.id), { manager: !member.manager })}>{$t(member.manager ? '撤销管理权' : '授予管理权')}</button></div>
+            {/each}
+          {/if}
+          {#if management.isOwner}<h3>{$t('请离参与者')}</h3>
+            {#each management.members.filter((member) => member.id !== management.viewerId) as member}
+              <div class="management-row"><span>{member.name}{#if member.departureRequest}<span class="muted"> · {$t(member.departureRequest.status === 'pending_admin' ? '管理员审核中' : '等待参与者回应')}</span>{/if}</span>
+                {#if !member.departureRequest}<button type="button" class="secondary" on:click={() => removalTarget = removalTarget === member.id ? '' : member.id}>{$t('申请请离')}</button>{/if}
+              </div>
+              {#if removalTarget === member.id}<div class="management-row"><textarea bind:value={removalReason} maxlength="2000" rows="2" placeholder={$t('请填写请离原因（必填）')}></textarea><button type="button" class="primary" disabled={managementBusy || !removalReason.trim()} on:click={() => submitRemovalRequest(member)}>{$t('提交请离申请')}</button></div>{/if}
             {/each}
           {/if}
         </section>
@@ -594,12 +877,13 @@
           <p>{$t('暂无协作成员。')}</p>
         {/if}
       </section>
+      {/if}
     {:else}
       <h1>{$t('项目大厅')}</h1>
       <p>{$t('浏览公开的共创项目。')}</p>
       <div class="hall-toolbar">
         <input type="search" bind:value={hallQuery} placeholder={$t('搜索项目名称、简介或负责人')} aria-label={$t('搜索项目')} />
-        <div class="hall-sort"><span>{$t('排序')}</span><Select bind:value={hallSort} ariaLabel={$t('排序')} options={[{ value: 'latest', label: $t('最新发布') }, { value: 'hot', label: $t('热度') }, { value: 'difficulty', label: $t('难度') }, { value: 'participants', label: $t('参与人数') }]} /></div>
+        <div class="hall-sort"><span>{$t('排序')}</span><Select bind:value={hallSort} ariaLabel={$t('排序')} options={[{ value: 'latest', label: $t('最新发布') }, { value: 'hot', label: $t('热度') }, { value: 'difficulty', label: $t('项目级别') }, { value: 'participants', label: $t('参与人数') }]} /></div>
       </div>
       <div class="hall-filters">
         <div class="filter-row" role="group" aria-label={$t('项目状态')}><button type="button" class:active={!hallStatus} on:click={() => hallStatus = ''}>{$t('全部')}</button>{#each hallStatuses as status}<button type="button" class:active={hallStatus === status} on:click={() => hallStatus = hallStatus === status ? '' : status}>{$t(statusLabels[status])}</button>{/each}</div>
@@ -610,15 +894,15 @@
         <div class="public-grid">
           {#each hallProjects as project}
             <a class="public-card project-card project-card-link" href={'/showcase/' + encodeURIComponent(project.id)}>
-              {#if project.difficulty}<span class={`difficulty-star star-${difficultyRank(project.difficulty)}`} title={`${$t('难度')} ${project.difficulty}`} aria-label={`${$t('难度')} ${project.difficulty}`}>{project.difficulty}</span>{:else}<span class="difficulty-star star-0" title={$t('难度')} aria-label={$t('难度')}>?</span>{/if}
-              {#if project.coverUrl}<img class="project-card-cover" src={project.coverUrl} alt={project.title} loading="lazy" />{/if}
+              {#if project.difficulty}<span class={`difficulty-star star-${difficultyRank(project.difficulty)}`} title={`${$t('项目级别')} ${project.difficulty}`} aria-label={`${$t('项目级别')} ${project.difficulty}`}>{project.difficulty}</span>{:else}<span class="difficulty-star star-0" title={$t('项目级别')} aria-label={$t('项目级别')}>?</span>{/if}
+              {#if project.coverUrl}<img class="project-card-cover" src={project.coverUrl} alt={project.title} loading="lazy" />{:else}<div class="project-cover-placeholder project-card-cover" aria-hidden="true"><span>HPA HUB</span></div>{/if}
               <div class="project-meta"><span class:done={project.status === 'completed'} class="project-status">{statusLabel(project.status)}</span></div>
               <h2>{project.title}</h2>
-              <p>{project.summary}</p>
+              {#if project.projectNumber}<small class="project-number">{project.projectNumber}</small>{/if}
               <div class="project-people">
                 <span class="people-block"><span class="people-label">{$t('发起人')}</span>{#if project.creatorRedacted}<span class="people-avatar hidden" title={$t('资料隐藏')} aria-label={$t('资料隐藏')}></span>{:else if project.creatorAvatarUrl}<img class="people-avatar" src={project.creatorAvatarUrl} alt={project.creatorName || ''} title={project.creatorName || ''} loading="lazy" />{:else if project.creatorName}<span class="people-avatar" title={project.creatorName}></span>{:else}<span class="people-vacant">{$t('待加入')}</span>{/if}</span>
                 <span class="people-block"><span class="people-label">{$t('首席工程师')}</span>{#if project.ownerRedacted}<span class="people-avatar hidden" title={$t('资料隐藏')} aria-label={$t('资料隐藏')}></span>{:else if project.ownerAvatarUrl}<img class="people-avatar" src={project.ownerAvatarUrl} alt={project.ownerName || ''} title={project.ownerName || ''} loading="lazy" />{:else if project.ownerName}<span class="people-avatar" title={project.ownerName}></span>{:else}<span class="people-vacant">{$t('待加入')}</span>{/if}</span>
-                <span class="people-block"><span class="people-label">{$t('赞助者')}</span><span class="people-vacant">{$t('待加入')}</span></span>
+                <span class="people-block"><span class="people-label">{$t('赞助者')}</span>{#if project.sponsor}<span>{project.sponsor}</span>{:else}<span class="people-vacant">{$t('待加入')}</span>{/if}</span>
               </div>
               <p class="project-owner">{$t('发布时间')}：{project.publishedAt ? formatDate(project.publishedAt) : '—'} · {$t('参与人数')}：{project.participantCount || 0}</p>
               <p class="project-owner">{$t('关注度')}：{project.followCount || 0}</p>
@@ -773,6 +1057,8 @@
   .hero-actions a {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
+    min-height: 44px;
     padding: 10px 20px;
     border-radius: var(--radius-sm);
     border: 1px solid var(--border-default);
@@ -793,6 +1079,10 @@
   .hero-actions a:hover {
     transform: translateY(-2px);
   }
+  .hero-actions a:focus-visible {
+    outline: 2px solid var(--accent-bright);
+    outline-offset: 3px;
+  }
   .hero-actions a:first-child:hover {
     background: linear-gradient(135deg, var(--accent-bright), var(--accent));
   }
@@ -809,13 +1099,24 @@
   .project-apply textarea { width: 100%; padding: 10px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--ink-primary); font: inherit; resize: vertical; }
   .project-apply label { display: grid; gap: 5px; margin-bottom: 10px; color: var(--ink-secondary); font-size: 13px; font-weight: 500; }
   .project-apply input { width: 100%; padding: 9px 10px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--ink-primary); font: inherit; }
-  .project-apply input:focus, .project-apply textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); outline: none; }
+  .project-apply select { width: 100%; min-height: 44px; padding: 9px 10px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--ink-primary); font: inherit; }
+  .project-apply input:focus, .project-apply select:focus, .project-apply textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); outline: none; }
   .project-apply .agreement { white-space: pre-wrap; }
   .project-apply .agreement-check { display: flex; align-items: center; gap: 8px; }
   .project-apply .agreement-check input { width: auto; }
   .project-apply .message { margin: 8px 0; }
   .project-apply-hint { color: var(--ink-muted); font-size: 13px; }
   .follow-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: -8px 0 18px; }
+  .project-title-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+  .project-title-row h1 { flex: 1; min-width: 0; }
+  .project-title-meta { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: -2px 0 12px; color: var(--ink-muted); font-size: 13px; }
+  .project-content-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin: 24px 0 32px; padding-bottom: 18px; border-bottom: 1px solid var(--border-subtle); }
+  .project-content-heading h1 { margin: 8px 0 0; }
+  .project-content-kicker { margin: 14px 0 0; color: var(--ink-muted); font-size: 12px; }
+  .project-content-link { display: flex; justify-content: flex-end; margin-top: 18px; }
+  .project-detail-actions { display: flex; flex: none; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+  .project-detail-actions .follow-row { margin: 0; }
+  .project-detail-actions button { white-space: nowrap; }
   .follow-button { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border: 1px solid var(--border-default); border-radius: 999px; background: var(--surface-elevated); color: var(--accent-deep); font-size: 13px; font-weight: 600; transition: background-color var(--t-fast) var(--ease-out), border-color var(--t-fast) var(--ease-out), transform var(--t-fast) var(--ease-out); }
   .follow-button:hover:not(:disabled) { background: var(--surface-tint); border-color: var(--border-strong); transform: translateY(-1px); }
   .follow-button.following { border-color: #e3bcc4; background: #fff4f6; color: #a84358; }
@@ -843,6 +1144,32 @@
   .hall-count { color: var(--ink-subtle); font-size: 12px; margin: 0 0 16px; }
   .project-card-cover { display: block; width: 100%; height: 150px; object-fit: cover; border-radius: var(--radius-sm); margin-bottom: 12px; background: var(--surface-tint); }
   .project-detail-cover { display: block; width: 100%; max-height: 420px; object-fit: cover; border-radius: var(--radius-md); border: 1px solid var(--border-subtle); margin: 16px 0 8px; }
+  .project-cover-placeholder {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    aspect-ratio: 16 / 9;
+    color: rgba(190, 235, 211, 0.72);
+    background:
+      linear-gradient(135deg, transparent 49.7%, rgba(99, 224, 150, 0.09) 50%, transparent 50.3%),
+      radial-gradient(circle at 72% 28%, rgba(99, 224, 150, 0.24), transparent 24%),
+      linear-gradient(135deg, #102b1e, #07150d 68%);
+  }
+  .project-cover-placeholder::before,
+  .project-cover-placeholder::after {
+    position: absolute;
+    width: 42%;
+    aspect-ratio: 1;
+    border: 1px solid rgba(99, 224, 150, 0.2);
+    border-radius: 50%;
+    content: '';
+  }
+  .project-cover-placeholder::after { width: 28%; border-color: rgba(190, 235, 211, 0.16); }
+  .project-cover-placeholder span { z-index: 1; font-size: 12px; font-weight: 700; letter-spacing: 0.26em; }
+  .project-card-cover.project-cover-placeholder { height: 150px; }
+  .project-detail-cover.project-cover-placeholder { height: auto; max-height: none; }
   .project-card-link:hover h2 { color: var(--accent-deep); }
   .project-card h2 a { text-decoration: none; color: var(--ink-primary); transition: color var(--t-fast) var(--ease-out); }
   .project-card:hover h2 a { color: var(--accent-deep); }
@@ -850,6 +1177,21 @@
   .project-card p.project-owner { margin-bottom: 0; }
   .project-description { margin-top: 16px; max-width: 70ch; white-space: pre-wrap; color: var(--ink-secondary); }
   .project-detail-head { margin: 24px 0 32px; }
+  .project-information { margin: 20px 0; }
+  .project-information-heading { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 10px; }
+  .project-information h2 { margin: 0; font-size: 17px; }
+  .project-version-picker { display: flex; align-items: center; gap: 8px; color: var(--ink-subtle); font-size: 12px; }
+  .project-version-picker .select { width: min(230px, 55vw); }
+  .project-version-message { margin: 0 0 8px; color: var(--ink-subtle); font-size: 12px; }
+  .project-info-table-wrap { overflow: hidden; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface-elevated); }
+  .project-info-table { width: 100%; border-collapse: collapse; table-layout: fixed; color: var(--ink-secondary); font-size: 13px; }
+  .project-info-table th, .project-info-table td { padding: 11px 14px; border-bottom: 1px solid var(--border-subtle); text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+  .project-info-table tr:last-child th, .project-info-table tr:last-child td { border-bottom: 0; }
+  .project-info-table th { width: 22%; color: var(--ink-muted); background: var(--surface-soft); font-weight: 600; }
+  .project-info-table td { white-space: pre-wrap; }
+  .project-info-table .info-secondary { color: var(--ink-subtle); }
+  .project-info-table .info-tags { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+  .project-info-table .info-tags span { white-space: nowrap; }
   .project-detail-head h1 { margin: 8px 0 12px; letter-spacing: -0.025em; }
   .project-section { margin: 32px 0; }
   .project-section h2 { margin-bottom: 12px; }
@@ -994,6 +1336,15 @@
   .recognized { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border: 1px solid transparent; border-radius: 999px; font-size: 11px; font-weight: 600; letter-spacing: 0.02em; }
   .recognized::before { content: '✦'; }
   @media (max-width: 600px) {
+    .project-information-heading { align-items: flex-start; flex-wrap: wrap; }
+    .project-version-picker { width: 100%; }
+    .project-version-picker .select { flex: 1; width: auto; }
+    .project-title-row { align-items: flex-start; flex-wrap: wrap; }
+    .project-detail-actions { width: 100%; justify-content: flex-start; }
+    .project-content-heading { align-items: flex-start; flex-direction: column; }
+    .project-info-table th, .project-info-table td { padding: 9px 10px; }
+    .project-info-table th { width: 32%; }
+    .project-info-table .info-tags { display: grid; gap: 5px; }
     .public-hero { padding: 30px 22px; margin-bottom: 28px; }
     .hero-orb { width: 180px; height: 180px; right: -40px; top: -40px; }
   }
@@ -1032,7 +1383,23 @@
   }
   .engineer-avatar { background: linear-gradient(135deg, #143c24, #07150d); }
   @media (max-width: 600px) {
-    .public-hero { min-height: 0; padding: 38px 24px; }
-    .hero-orb { width: 150px; height: 150px; right: -50px; top: 36px; margin: 0; opacity: .45; }
+    .public-hero { min-height: 0; padding: 32px 20px; margin-bottom: 28px; }
+    .hero-orb { width: 130px; height: 130px; right: -55px; top: 22px; margin: 0; opacity: .25; }
+    .hero-disclaimer { font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
+    .hero-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .hero-actions a:first-child { grid-column: 1 / -1; }
+    .hero-actions a { padding-inline: 10px; text-align: center; }
+    .home-grid, .engineer-grid { grid-template-columns: minmax(0, 1fr); }
+    .yt-card h3 { display: block; overflow: visible; overflow-wrap: anywhere; }
+    .shelf-head { flex-wrap: wrap; }
+    .home-shelf { margin: 28px 0; padding-top: 20px; }
+    .home-grid { gap: 12px; }
+    .yt-body > div { min-width: 0; }
+    .engineer-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .engineer-card { min-width: 0; padding: 16px 10px; }
+    .engineer-card h3 { max-width: 100%; overflow-wrap: anywhere; }
+  }
+  @media (max-width: 320px) {
+    .engineer-grid { grid-template-columns: minmax(0, 1fr); }
   }
 </style>

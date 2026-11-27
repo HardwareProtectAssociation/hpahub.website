@@ -14,6 +14,7 @@ import (
 )
 
 type publicProject struct {
+	CompletionNumber int                   `json:"completionNumber,omitempty"`
 	Redacted         bool                  `json:"redacted,omitempty"`
 	OwnerRedacted    bool                  `json:"ownerRedacted,omitempty"`
 	CreatorName      string                `json:"creatorName,omitempty"`
@@ -23,11 +24,15 @@ type publicProject struct {
 	ParticipantCount int                   `json:"participantCount,omitempty"`
 	FollowCount      int                   `json:"followCount"`
 	ID               string                `json:"id"`
+	ProjectNumber    string                `json:"projectNumber"`
 	Title            string                `json:"title"`
+	Sponsor          string                `json:"sponsor"`
 	Summary          string                `json:"summary"`
 	Status           string                `json:"status"`
 	ProjectNature    string                `json:"projectNature,omitempty"`
 	Difficulty       string                `json:"difficulty"`
+	DangerLevel      string                `json:"dangerLevel"`
+	TaskDifficulty   string                `json:"taskDifficulty"`
 	AdventureStyle   string                `json:"adventureStyle"`
 	OwnerID          string                `json:"ownerId"`
 	OwnerName        string                `json:"ownerName"`
@@ -57,6 +62,12 @@ type publicProjectMember struct {
 
 type publicProjectDetail struct {
 	publicProject
+	Version                  int                   `json:"version"`
+	Repeatable               bool                  `json:"repeatable"`
+	RepeatLimit              int                   `json:"repeatLimit"`
+	ViewerCompletionCount    int                   `json:"viewerCompletionCount"`
+	ViewerCompletionPending  bool                  `json:"viewerCompletionPending"`
+	CanRequestCompletion     bool                  `json:"canRequestCompletion"`
 	Description              string                `json:"description"`
 	CollaborationMode        string                `json:"collaborationMode"`
 	ScheduleNote             string                `json:"scheduleNote"`
@@ -64,6 +75,8 @@ type publicProjectDetail struct {
 	StatusReason             string                `json:"statusReason,omitempty"`
 	ProjectNeeds             []string              `json:"projectNeeds"`
 	ProviderOffers           []string              `json:"providerOffers"`
+	ProjectNeedDetails       map[string]string     `json:"projectNeedDetails"`
+	ProviderOfferDetails     map[string]string     `json:"providerOfferDetails"`
 	AcceptsSponsorship       bool                  `json:"acceptsSponsorship"`
 	AllowOthersManagement    bool                  `json:"allowOthersManagement"`
 	ConfidentialityRequested bool                  `json:"confidentialityRequested"`
@@ -76,6 +89,10 @@ type publicProjectDetail struct {
 	Members                  []publicProjectMember `json:"members"`
 	CanApply                 bool                  `json:"canApply"`
 	ApplicationPending       bool                  `json:"applicationPending"`
+	AlreadyMember            bool                  `json:"alreadyMember"`
+	CanRequestLeave          bool                  `json:"canRequestLeave"`
+	DepartureRequest         *memberDeparture      `json:"departureRequest,omitempty"`
+	RemovalRequest           *memberDeparture      `json:"removalRequest,omitempty"`
 	CanRequestImprovement    bool                  `json:"canRequestImprovement"`
 	ImprovementPending       bool                  `json:"improvementPending"`
 	CanFollow                bool                  `json:"canFollow"`
@@ -90,6 +107,7 @@ type publicProjectDetail struct {
 
 type managedProject struct {
 	ID                 string `json:"id"`
+	ProjectNumber      string `json:"projectNumber"`
 	Title              string `json:"title"`
 	Summary            string `json:"summary"`
 	Status             string `json:"status"`
@@ -103,6 +121,20 @@ type managedProject struct {
 	OwnerConfirmed     bool   `json:"ownerConfirmed"`
 	ApproveCount       int    `json:"approveCount"`
 	OpposeCount        int    `json:"opposeCount"`
+}
+
+func publicProjectInfoSnapshot(project *core.Record) map[string]any {
+	return map[string]any{
+		"title": project.GetString("title"), "summary": project.GetString("summary"), "sponsor": project.GetString("sponsor"), "collaborationMode": project.GetString("collaboration_mode"), "joinMode": project.GetString("join_mode"),
+		"acceptsSponsorship": project.GetBool("accepts_sponsorship"), "allowOthersManagement": project.GetBool("allow_others_management"),
+		"confidentialityRequested": project.GetBool("confidentiality_requested"), "estimatedDurationDays": project.GetInt("estimated_duration_days"),
+		"longTerm": project.GetBool("is_long_term"), "executionStatus": project.GetString("execution_status"), "plannedStartDate": project.GetString("planned_start_date"),
+		"scheduleNote": project.GetString("schedule_note"), "proposedDifficulty": project.GetString("owner_proposed_difficulty"),
+		"dangerLevel": project.GetString("danger_level"), "taskDifficulty": project.GetString("task_difficulty"),
+		"projectNature": project.GetString("project_nature"), "projectNeeds": project.GetStringSlice("project_needs"), "providerOffers": project.GetStringSlice("provider_offers"),
+		"projectNeedDetails": projectSelectionDetails(project, "project_need_details"), "providerOfferDetails": projectSelectionDetails(project, "provider_offer_details"), "statusReason": project.GetString("status_reason"),
+		"repeatable": project.GetBool("is_repeatable"), "repeatLimit": max(project.GetInt("repeat_limit"), 1),
+	}
 }
 
 // bindPublicProjectRoutes exposes only approved, non-deleted projects. Draft,
@@ -154,6 +186,86 @@ func bindPublicProjectRoutes(e *core.ServeEvent) {
 		}
 		return e.JSON(200, map[string]any{"items": items, "hasMore": hasMore, "nextOffset": offset + 20})
 	})
+	e.Router.GET("/api/hpahub/projects/{id}/versions", func(e *core.RequestEvent) error {
+		noCache(e)
+		project, err := e.App.FindRecordById("projects", e.Request.PathValue("id"))
+		if err != nil || project.GetString("review_status") != "approved" || project.GetString("deleted_at") != "" {
+			return e.NotFoundError("Not found.", nil)
+		}
+		rows, err := e.App.FindRecordsByFilter("project_versions", "project_id = {:project}", "-version", 0, 0, dbx.Params{"project": project.Id})
+		if err != nil {
+			return e.InternalServerError("Unable to load project versions.", err)
+		}
+		currentVersion := project.GetInt("version")
+		if currentVersion < 1 {
+			currentVersion = 1
+		}
+		items := make([]map[string]any, 0, len(rows))
+		for _, row := range rows {
+			if row.GetInt("version") > currentVersion {
+				currentVersion = row.GetInt("version")
+			}
+			items = append(items, map[string]any{
+				"version": row.GetInt("version"), "created": row.GetString("created"),
+				"editorName": publicProjectVersionEditor(e, project, row),
+			})
+		}
+		if len(items) == 0 {
+			created := project.GetString("published_at")
+			if created == "" {
+				created = project.GetString("created")
+			}
+			items = append(items, map[string]any{"version": currentVersion, "created": created})
+		}
+		return e.JSON(200, map[string]any{"currentVersion": currentVersion, "items": items})
+	})
+	e.Router.GET("/api/hpahub/projects/{id}/versions/{version}", func(e *core.RequestEvent) error {
+		noCache(e)
+		project, err := e.App.FindRecordById("projects", e.Request.PathValue("id"))
+		if err != nil || project.GetString("review_status") != "approved" || project.GetString("deleted_at") != "" {
+			return e.NotFoundError("Not found.", nil)
+		}
+		version, err := strconv.Atoi(e.Request.PathValue("version"))
+		if err != nil || version < 1 {
+			return e.NotFoundError("Not found.", nil)
+		}
+		rows, err := e.App.FindRecordsByFilter("project_versions", "project_id = {:project} && version <= {:version}", "version", 0, 0, dbx.Params{"project": project.Id, "version": version})
+		if err != nil {
+			return e.InternalServerError("Unable to load project version.", err)
+		}
+		snapshot := publicProjectInfoSnapshot(project)
+		var selected *core.Record
+		for _, row := range rows {
+			values, err := projectSnapshotMap(row.Get("snapshot"))
+			if err != nil {
+				return e.InternalServerError("Unable to read project version.", err)
+			}
+			for key, value := range values {
+				snapshot[key] = value
+			}
+			if row.GetInt("version") == version {
+				selected = row
+			}
+		}
+		if selected == nil {
+			currentVersion := project.GetInt("version")
+			if currentVersion < 1 {
+				currentVersion = 1
+			}
+			if version != currentVersion || len(rows) != 0 {
+				return e.NotFoundError("Not found.", nil)
+			}
+		}
+		delete(snapshot, "description")
+		delete(snapshot, "confidentialityTerms")
+		created := project.GetString("created")
+		editorName := ""
+		if selected != nil {
+			created = selected.GetString("created")
+			editorName = publicProjectVersionEditor(e, project, selected)
+		}
+		return e.JSON(200, map[string]any{"version": version, "created": created, "editorName": editorName, "snapshot": snapshot})
+	})
 	e.Router.GET("/api/hpahub/projects/{id}", func(e *core.RequestEvent) error {
 		noCache(e)
 		project, err := e.App.FindRecordById("projects", e.Request.PathValue("id"))
@@ -170,6 +282,9 @@ func bindPublicProjectRoutes(e *core.ServeEvent) {
 		}
 		detail := publicProjectDetail{
 			publicProject:            card,
+			Version:                  max(project.GetInt("version"), 1),
+			Repeatable:               project.GetBool("is_repeatable"),
+			RepeatLimit:              max(project.GetInt("repeat_limit"), 1),
 			Description:              projectDescriptionText(project),
 			CollaborationMode:        project.GetString("collaboration_mode"),
 			ScheduleNote:             project.GetString("schedule_note"),
@@ -177,6 +292,8 @@ func bindPublicProjectRoutes(e *core.ServeEvent) {
 			StatusReason:             project.GetString("status_reason"),
 			ProjectNeeds:             project.GetStringSlice("project_needs"),
 			ProviderOffers:           project.GetStringSlice("provider_offers"),
+			ProjectNeedDetails:       projectSelectionDetails(project, "project_need_details"),
+			ProviderOfferDetails:     projectSelectionDetails(project, "provider_offer_details"),
 			AcceptsSponsorship:       project.GetBool("accepts_sponsorship"),
 			AllowOthersManagement:    project.GetBool("allow_others_management"),
 			ConfidentialityRequested: project.GetBool("confidentiality_requested"),
@@ -205,6 +322,9 @@ func bindPublicProjectRoutes(e *core.ServeEvent) {
 			if owner, member, err := personalCenterOwner(e.App, e.Auth); err == nil && member {
 				if project.GetString("owner_user_id") == owner.Id {
 					detail.IsOwner = true
+				}
+				if err := promoteExpiredProjectDepartures(e.App, project.Id); err != nil {
+					return e.InternalServerError("Unable to update expired departure requests.", err)
 				}
 			}
 		}
@@ -237,7 +357,7 @@ func bindPublicProjectRoutes(e *core.ServeEvent) {
 			if err != nil {
 				continue
 			}
-			if profileSectionHidden(member, "projects") || profileSectionHidden(member, "project:"+project.Id) {
+			if profileSectionHidden(member, "projects") || profileSectionHiddenForViewer(e.App, member, "project:"+project.Id, e.Auth) {
 				detail.Members = append(detail.Members, publicProjectMember{Redacted: true, Name: maskedText(publicPersonName(member)), Duties: maskedText(membership.GetString("duties"))})
 				continue
 			}
@@ -254,6 +374,29 @@ func bindPublicProjectRoutes(e *core.ServeEvent) {
 				activeMember := false
 				if _, err := e.App.FindFirstRecordByFilter("project_members", `project_id = {:project} && user_id = {:user} && status = "active"`, dbx.Params{"project": project.Id, "user": viewer.Id}); err == nil {
 					activeMember = true
+					detail.AlreadyMember = true
+				}
+				if activeMember {
+					if project.GetBool("is_repeatable") {
+						approved, countErr := e.App.FindRecordsByFilter("project_completion_requests", `project_id = {:project} && user_id = {:user} && status = "approved"`, "", 0, 0, dbx.Params{"project": project.Id, "user": viewer.Id})
+						if countErr != nil {
+							return e.InternalServerError("Unable to load completion records.", countErr)
+						}
+						detail.ViewerCompletionCount = len(approved)
+						_, pendingErr := e.App.FindFirstRecordByFilter("project_completion_requests", `project_id = {:project} && user_id = {:user} && status = "pending"`, dbx.Params{"project": project.Id, "user": viewer.Id})
+						detail.ViewerCompletionPending = pendingErr == nil
+						detail.CanRequestCompletion = !detail.ViewerCompletionPending && len(approved) < detail.RepeatLimit && project.GetString("execution_status") != "completed" && project.GetString("execution_status") != "terminated"
+					}
+					if departure, err := openDepartureForMember(e.App, project.Id, viewer.Id); err == nil {
+						item := departureData(e.App, departure)
+						if item.Type == "leave" {
+							detail.DepartureRequest = &item
+						} else {
+							detail.RemovalRequest = &item
+						}
+					} else if errors.Is(err, sql.ErrNoRows) {
+						detail.CanRequestLeave = true
+					}
 				}
 				hasPending := false
 				if pending, err := e.App.FindFirstRecordByFilter("project_join_requests", `project_id = {:project} && user_id = {:user} && status = "pending"`, dbx.Params{"project": project.Id, "user": viewer.Id}); err == nil {
@@ -364,6 +507,9 @@ func bindPublicProjectRoutes(e *core.ServeEvent) {
 				} else if err != nil {
 					return e.InternalServerError("Unable to add member.", err)
 				}
+				if duties := joinRequestDuties(request); duties != "" {
+					membership.Set("duties", duties)
+				}
 				membership.Set("status", "active")
 				membership.Set("joined_at", time.Now())
 				if err := tx.Save(membership); err != nil {
@@ -465,6 +611,7 @@ func bindPublicProjectRoutes(e *core.ServeEvent) {
 			}
 			items = append(items, managedProject{
 				ID:                 project.Id,
+				ProjectNumber:      project.GetString("project_number"),
 				Title:              project.GetString("title"),
 				Summary:            project.GetString("summary"),
 				Status:             project.GetString("execution_status"),
@@ -494,6 +641,18 @@ func bindPublicProjectRoutes(e *core.ServeEvent) {
 	})
 }
 
+func publicProjectVersionEditor(e *core.RequestEvent, project, version *core.Record) string {
+	editor, err := e.App.FindRecordById("users", version.GetString("editor_id"))
+	if err != nil {
+		return ""
+	}
+	name := publicPersonName(editor)
+	if profileSectionHidden(editor, "projects") || profileSectionHiddenForViewer(e.App, editor, "project:"+project.Id, e.Auth) {
+		return maskedText(name)
+	}
+	return name
+}
+
 func validProjectDifficulty(value string) bool {
 	for _, option := range []string{"D", "C", "B", "A", "S"} {
 		if value == option {
@@ -515,7 +674,7 @@ func projectHallCard(e *core.RequestEvent, project *core.Record, users map[strin
 			return publicProjectMember{}
 		}
 		name := publicPersonName(user)
-		hidden := profileSectionHidden(user, "projects") || profileSectionHidden(user, "project:"+project.Id)
+		hidden := profileSectionHidden(user, "projects") || profileSectionHiddenForViewer(e.App, user, "project:"+project.Id, e.Auth)
 		if hidden {
 			name = maskedText(name)
 		}
@@ -566,7 +725,7 @@ func projectSummary(e *core.RequestEvent, project *core.Record, owners map[strin
 	ownerRedacted := false
 	if owner != nil {
 		ownerName = publicPersonName(owner)
-		ownerRedacted = profileSectionHidden(owner, "projects") || profileSectionHidden(owner, "project:"+project.Id)
+		ownerRedacted = profileSectionHidden(owner, "projects") || profileSectionHiddenForViewer(e.App, owner, "project:"+project.Id, e.Auth)
 		if ownerRedacted {
 			ownerName = maskedText(ownerName)
 			ownerID = ""
@@ -578,11 +737,15 @@ func projectSummary(e *core.RequestEvent, project *core.Record, owners map[strin
 	return publicProject{
 		OwnerRedacted:  ownerRedacted,
 		ID:             project.Id,
+		ProjectNumber:  project.GetString("project_number"),
 		Title:          project.GetString("title"),
+		Sponsor:        project.GetString("sponsor"),
 		Summary:        project.GetString("summary"),
 		Status:         project.GetString("execution_status"),
 		ProjectNature:  project.GetString("project_nature"),
 		Difficulty:     project.GetString("difficulty"),
+		DangerLevel:    project.GetString("danger_level"),
+		TaskDifficulty: project.GetString("task_difficulty"),
 		AdventureStyle: project.GetString("adventure_style"),
 		OwnerID:        ownerID,
 		OwnerName:      ownerName,

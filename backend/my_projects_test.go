@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tests"
@@ -119,7 +120,7 @@ func TestCreateProjectDetails(t *testing.T) {
 		mux.ServeHTTP(response, req)
 		return response
 	}
-	response := call(`{"title":" 新项目 ","executionStatus":"not_started","summary":"简介","description":"项目详情","proposedDifficulty":"A","adventureStyle":"boss","projectNature":"research","projectNeeds":["funding","technical","venue","funding"],"providerOffers":["technical","venue","technical"],"collaborationMode":"independent","joinMode":"approval","acceptsSponsorship":true,"allowOthersManagement":true,"confidentialityRequested":true,"confidentialityTerms":"测试协议","estimatedDurationDays":30,"plannedStartDate":"2027-01-01","scheduleNote":"计划"}`)
+	response := call(`{"title":" 新项目 ","executionStatus":"not_started","summary":"简介","description":"项目详情","proposedDifficulty":"A","adventureStyle":"boss","projectNature":"research","projectNeeds":["funding","technical","venue","funding"],"providerOffers":["technical","venue","technical"],"projectNeedDetails":{"funding":"  元器件预算  ","emotional":"忽略"},"providerOfferDetails":{"technical":"电路设计"},"collaborationMode":"independent","joinMode":"approval","acceptsSponsorship":true,"allowOthersManagement":true,"confidentialityRequested":true,"confidentialityTerms":"测试协议","estimatedDurationDays":30,"plannedStartDate":"2027-01-01","scheduleNote":"计划"}`)
 	if response.Code != http.StatusOK {
 		t.Fatalf("create = %d: %s", response.Code, response.Body.String())
 	}
@@ -141,6 +142,12 @@ func TestCreateProjectDetails(t *testing.T) {
 	}
 	if offers := project.GetStringSlice("provider_offers"); len(offers) != 2 || offers[0] != "technical" || offers[1] != "venue" {
 		t.Fatalf("provider offers not saved/deduplicated: %v", offers)
+	}
+	if got := projectSelectionDetails(project, "project_need_details"); got["funding"] != "元器件预算" || len(got) != 1 {
+		t.Fatalf("project need details = %v", got)
+	}
+	if got := projectSelectionDetails(project, "provider_offer_details"); got["technical"] != "电路设计" {
+		t.Fatalf("provider offer details = %v", got)
 	}
 	if response = call(`{"title":"无效需求","projectNature":"research","projectNeeds":["unknown"]}`); response.Code != http.StatusBadRequest {
 		t.Fatalf("invalid project needs = %d: %s", response.Code, response.Body.String())
@@ -215,7 +222,7 @@ func TestCreateProjectDetails(t *testing.T) {
 	if removedCoverResponse.Code != http.StatusNotFound {
 		t.Fatalf("removed public cover = %d", removedCoverResponse.Code)
 	}
-	editRequest := httptest.NewRequest("PATCH", "/api/hpahub/me/projects/"+project.Id, strings.NewReader(`{"title":"更新后的项目","summary":"新简介","description":"新详情","projectNature":"learning","executionStatus":"ongoing","projectNeeds":["venue"],"providerOffers":["technical"]}`))
+	editRequest := httptest.NewRequest("PATCH", "/api/hpahub/me/projects/"+project.Id, strings.NewReader(`{"title":"更新后的项目","summary":"新简介","description":"新详情","projectNature":"learning","executionStatus":"ongoing","projectNeeds":["venue"],"providerOffers":["technical"],"projectNeedDetails":{"venue":"工作室"},"providerOfferDetails":{"technical":"设计电路"}}`))
 	editRequest.Header.Set("Authorization", "Bearer "+token)
 	editRequest.Header.Set("Content-Type", "application/json")
 	editResponse := httptest.NewRecorder()
@@ -229,6 +236,12 @@ func TestCreateProjectDetails(t *testing.T) {
 	}
 	if edited.GetString("title") != "更新后的项目" || edited.GetInt("version") != 2 || projectDescriptionText(edited) != "新详情" || len(edited.GetStringSlice("project_needs")) != 1 || edited.GetStringSlice("project_needs")[0] != "venue" {
 		t.Fatalf("project edit not saved: %v", edited)
+	}
+	if got := projectSelectionDetails(edited, "project_need_details"); got["venue"] != "工作室" {
+		t.Fatalf("edited need details = %v", got)
+	}
+	if got := projectSelectionDetails(edited, "provider_offer_details"); got["technical"] != "设计电路" {
+		t.Fatalf("edited offer details = %v", got)
 	}
 	versionsRequest := httptest.NewRequest("GET", "/api/hpahub/me/projects/"+project.Id+"/versions", nil)
 	versionsRequest.Header.Set("Authorization", "Bearer "+token)
@@ -245,7 +258,7 @@ func TestCreateProjectDetails(t *testing.T) {
 	if err := json.Unmarshal(versionsResponse.Body.Bytes(), &versionList); err != nil {
 		t.Fatal(err)
 	}
-	if len(versionList.Items) != 1 || versionList.Items[0].Version != 2 {
+	if len(versionList.Items) != 2 || versionList.Items[0].Version != 2 || versionList.Items[1].Version != 1 {
 		t.Fatalf("unexpected versions: %+v", versionList.Items)
 	}
 	versionDetailRequest := httptest.NewRequest("GET", "/api/hpahub/me/projects/"+project.Id+"/versions/2", nil)
@@ -256,15 +269,22 @@ func TestCreateProjectDetails(t *testing.T) {
 		t.Fatalf("version detail = %d: %s", versionDetailResponse.Code, versionDetailResponse.Body.String())
 	}
 	var versionDetail struct {
-		Version  int `json:"version"`
-		Snapshot struct {
-			Title string `json:"title"`
-		} `json:"snapshot"`
+		Version int `json:"version"`
+		Changes []struct {
+			Field string `json:"field"`
+			After any    `json:"after"`
+		} `json:"changes"`
 	}
 	if err := json.Unmarshal(versionDetailResponse.Body.Bytes(), &versionDetail); err != nil {
 		t.Fatal(err)
 	}
-	if versionDetail.Version != 2 || versionDetail.Snapshot.Title != "更新后的项目" {
+	changedTitle := false
+	for _, change := range versionDetail.Changes {
+		if change.Field == "title" && change.After == "更新后的项目" {
+			changedTitle = true
+		}
+	}
+	if versionDetail.Version != 2 || !changedTitle {
 		t.Fatalf("unexpected version detail: %+v", versionDetail)
 	}
 	pausedEdit := httptest.NewRequest("PATCH", "/api/hpahub/me/projects/"+project.Id, strings.NewReader(`{"title":"更新后的项目","summary":"新简介","description":"新详情","projectNature":"learning","executionStatus":"paused","projectNeeds":[],"providerOffers":[]}`))
@@ -274,6 +294,11 @@ func TestCreateProjectDetails(t *testing.T) {
 	mux.ServeHTTP(pausedEditResponse, pausedEdit)
 	if pausedEditResponse.Code != http.StatusBadRequest {
 		t.Fatalf("edit paused without reason = %d: %s", pausedEditResponse.Code, pausedEditResponse.Body.String())
+	}
+	// Advance only the disposable fixture past the edit cooldown so this
+	// request exercises termination validation rather than the daily limit.
+	if _, err := app.DB().NewQuery("UPDATE projects SET project_last_edit_at = 0 WHERE id = {:id}").Bind(dbx.Params{"id": project.Id}).Execute(); err != nil {
+		t.Fatal(err)
 	}
 	terminatedEdit := httptest.NewRequest("PATCH", "/api/hpahub/me/projects/"+project.Id, strings.NewReader(`{"title":"更新后的项目","summary":"新简介","description":"新详情","projectNature":"learning","executionStatus":"terminated","statusReason":"合作方退出","projectNeeds":[],"providerOffers":[]}`))
 	terminatedEdit.Header.Set("Authorization", "Bearer "+token)

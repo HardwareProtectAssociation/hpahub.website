@@ -48,7 +48,7 @@ func bindDifficultyVotingRoutes(e *core.ServeEvent) {
 				return e.ForbiddenError("Insufficient permissions.", nil)
 			}
 		}
-		status, err := difficultyStatusForProject(e.App, e.Request.PathValue("id"))
+		status, err := difficultyStatusForProject(e.App, e.Request.PathValue("id"), e.Auth)
 		if err != nil {
 			return e.InternalServerError("Unable to load difficulty status.", err)
 		}
@@ -111,7 +111,7 @@ func bindDifficultyVotingRoutes(e *core.ServeEvent) {
 		if err := updateProjectDifficultyConsensus(e.App, project); err != nil {
 			return e.InternalServerError("Unable to update difficulty.", err)
 		}
-		status, err := difficultyStatusForProject(e.App, project.Id)
+		status, err := difficultyStatusForProject(e.App, project.Id, e.Auth)
 		if err != nil {
 			return e.InternalServerError("Unable to load difficulty status.", err)
 		}
@@ -157,7 +157,7 @@ func bindDifficultyVotingRoutes(e *core.ServeEvent) {
 		if err := updateProjectDifficultyConsensus(e.App, project); err != nil {
 			return e.InternalServerError("Unable to update difficulty.", err)
 		}
-		status, err := difficultyStatusForProject(e.App, project.Id)
+		status, err := difficultyStatusForProject(e.App, project.Id, e.Auth)
 		if err != nil {
 			return e.InternalServerError("Unable to load difficulty status.", err)
 		}
@@ -200,7 +200,7 @@ func bindDifficultyVotingRoutes(e *core.ServeEvent) {
 		if err := updateProjectDifficultyConsensus(e.App, project); err != nil {
 			return e.InternalServerError("Unable to update difficulty.", err)
 		}
-		status, err := difficultyStatusForProject(e.App, project.Id)
+		status, err := difficultyStatusForProject(e.App, project.Id, e.Auth)
 		if err != nil {
 			return e.InternalServerError("Unable to load difficulty status.", err)
 		}
@@ -208,7 +208,7 @@ func bindDifficultyVotingRoutes(e *core.ServeEvent) {
 	})
 }
 
-func difficultyStatusForProject(app core.App, projectID string) (*difficultyStatus, error) {
+func difficultyStatusForProject(app core.App, projectID string, viewers ...*core.Record) (*difficultyStatus, error) {
 	project, err := app.FindRecordById("projects", projectID)
 	if err != nil {
 		return nil, err
@@ -228,6 +228,10 @@ func difficultyStatusForProject(app core.App, projectID string) (*difficultyStat
 	if err != nil {
 		return nil, err
 	}
+	var viewer *core.Record
+	if len(viewers) > 0 {
+		viewer = viewers[0]
+	}
 	for _, vote := range votes {
 		diff := vote.GetString("difficulty")
 		if vote.GetString("stance") == "approve" {
@@ -240,7 +244,7 @@ func difficultyStatusForProject(app core.App, projectID string) (*difficultyStat
 		comment := vote.GetString("comment")
 		if voter, err := app.FindRecordById("users", voterID); err == nil {
 			voterName = publicPersonName(voter)
-			if profileSectionHidden(voter, "projects") || profileSectionHidden(voter, "project:"+projectID) {
+			if profileSectionHidden(voter, "projects") || profileSectionHiddenForViewer(app, voter, "project:"+projectID, viewer) {
 				voterName = maskedText(voterName)
 				voterID = ""
 				comment = maskedText(comment)

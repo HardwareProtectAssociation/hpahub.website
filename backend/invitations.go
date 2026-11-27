@@ -158,6 +158,7 @@ func registerInvitation(app core.App, email, password, confirm, code string, now
 		user = core.NewRecord(collection)
 		user.SetEmail(email)
 		user.Set("role", "member")
+		user.Set("registration_source", "invitation")
 		user.SetPassword(password)
 		if err := tx.Save(user); err != nil {
 			return err

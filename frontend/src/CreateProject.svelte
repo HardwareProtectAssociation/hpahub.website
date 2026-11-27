@@ -3,15 +3,17 @@
   import { t } from './i18n.js';
   import Select from './Select.svelte';
   export let token;
-  let title = '', summary = '', description = '', difficulty = '', nature = '';
+  let title = '', summary = '', sponsor = '', difficulty = '', dangerLevel = '', taskDifficulty = '', nature = '';
   let collaboration = 'collaborative', joinMode = 'open', sponsorship = false;
   let startDate = '', duration = '', scheduleNote = '', error = '', creating = false;
   let executionStatus = 'not_started', allowOthersManagement = false, confidentialityRequested = false, confidentialityTerms = '';
+  let repeatable = false, repeatLimit = 1;
   let statusReason = '';  let cover = null, coverPreview = '', createdId = '';
   let projectNeeds = [];
   let providerOffers = [];
+  let projectNeedDetails = {}, providerOfferDetails = {};
   const needOptions = [['funding', '资金支持'], ['technical', '技术支持'], ['equipment', '设备支持'], ['venue', '场地支持'], ['manpower', '人手支持'], ['promotion', '宣传支持'], ['emotional', '情绪支持']];
-  const offerOptions = [['technical', '技术'], ['funding', '资金'], ['equipment', '设备'], ['venue', '场地'], ['manpower', '人手'], ['promotion', '宣传']];
+  const offerOptions = [['technical', '技术'], ['funding', '资金'], ['equipment', '设备'], ['venue', '场地'], ['manpower', '人手'], ['promotion', '宣传'], ['title', '头衔认证']];
 
   async function createProject() {
     if (!title.trim() || creating) return;
@@ -22,7 +24,7 @@
       const response = await fetch('/api/hpahub/me/projects', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: title.trim(), summary: summary.trim(), description: description.trim(), proposedDifficulty: difficulty, projectNature: nature, projectNeeds, providerOffers, collaborationMode: collaboration, joinMode, acceptsSponsorship: sponsorship, allowOthersManagement, confidentialityRequested, confidentialityTerms: confidentialityRequested ? confidentialityTerms.trim() : '', plannedStartDate: executionStatus === 'completed' ? '' : startDate, estimatedDurationDays: !['completed', 'long_term'].includes(executionStatus) && duration ? Number(duration) : 0, longTerm: executionStatus === 'long_term', executionStatus, statusReason: statusReason.trim(), scheduleNote: scheduleNote.trim() }),
+        body: JSON.stringify({ title: title.trim(), summary: summary.trim(), sponsor: sponsor.trim(), proposedDifficulty: difficulty, dangerLevel, taskDifficulty, projectNature: nature, projectNeeds, providerOffers, projectNeedDetails, providerOfferDetails, collaborationMode: collaboration, joinMode, acceptsSponsorship: sponsorship, allowOthersManagement, confidentialityRequested, confidentialityTerms: confidentialityRequested ? confidentialityTerms.trim() : '', plannedStartDate: executionStatus === 'completed' ? '' : startDate, estimatedDurationDays: !['completed', 'long_term'].includes(executionStatus) && duration ? Number(duration) : 0, longTerm: executionStatus === 'long_term', executionStatus, repeatable, repeatLimit: repeatable ? Number(repeatLimit) : 1, statusReason: statusReason.trim(), scheduleNote: scheduleNote.trim() }),
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.message || '创建失败，请重试。');
@@ -66,29 +68,35 @@
   <form on:submit|preventDefault={createProject}>
     <fieldset class="needs"><legend>{$t('项目需要')}</legend>
       {#each needOptions as [value, label]}
-        <label><input type="checkbox" bind:group={projectNeeds} value={value} />{$t(label)}</label>
+        <div class="need-item"><label><input type="checkbox" bind:group={projectNeeds} value={value} />{$t(label)}</label>{#if projectNeeds.includes(value)}<label class="detail-input">{$t(label)} · {$t('具体补充（可选）')}<textarea rows="2" maxlength="500" bind:value={projectNeedDetails[value]}></textarea></label>{/if}</div>
       {/each}
     </fieldset>
     <fieldset class="needs"><legend>{$t('发起人可提供')}</legend>
       {#each offerOptions as [value, label]}
-        <label><input type="checkbox" bind:group={providerOffers} value={value} />{$t(label)}</label>
+        <div class="need-item"><label><input type="checkbox" bind:group={providerOffers} value={value} />{$t(label)}</label>{#if providerOffers.includes(value)}<label class="detail-input">{#if value === 'title'}{$t('头衔名称')}<input bind:value={providerOfferDetails[value]} maxlength="10" required placeholder="最多10个字" />{:else}{$t(label)} · {$t('具体补充（可选）')}<textarea rows="2" maxlength="500" bind:value={providerOfferDetails[value]}></textarea>{/if}</label>{/if}</div>
       {/each}
     </fieldset>
     <label>{$t('项目名称')}<input bind:value={title} maxlength="160" required /></label>
-    <label>{$t('项目简介')}<textarea bind:value={summary} maxlength="2000" rows="3"></textarea></label>
-    <label>{$t('项目详情')}<textarea bind:value={description} maxlength="10000" rows="7"></textarea></label>
+    <label>{$t('项目简介')}<textarea bind:value={summary} maxlength="2000" rows="4" placeholder={$t('介绍项目目标、内容或参与方式')} /></label>
+    <label>{$t('赞助者')}<input bind:value={sponsor} maxlength="500" placeholder={$t('可填写赞助者姓名或组织名称')} /></label>
     <label>{$t('项目封面（可选，最多 2 MiB）')}<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" on:change={selectCover} /></label>
     {#if coverPreview}<img class="cover-preview" src={coverPreview} alt={$t('封面预览')} />{/if}
 
     <div class="fields">
-      <div class="select-field"><span>{$t('项目状态')}</span><Select bind:value={executionStatus} ariaLabel={$t('项目状态')} options={[['not_started', '未开始'], ['ongoing', '已启动'], ['long_term', '长期项目'], ['paused', '暂停中'], ['completed', '已完成'], ['terminated', '已中止']].map(([value, label]) => ({ value, label: $t(label) }))} /></div>
-      <div class="select-field"><span>{$t('发起人自评难度')}</span><Select bind:value={difficulty} ariaLabel={$t('发起人自评难度')} options={[{ value: '', label: $t('暂不设置') }, ...['D', 'C', 'B', 'A', 'S'].map((value) => ({ value, label: value }))]} /></div>
+      <div class="select-field"><span>{$t('项目状态')}</span><Select bind:value={executionStatus} ariaLabel={$t('项目状态')} options={[['not_started', '未开始'], ['ongoing', '已启动'], ['long_term', '长期项目'], ['paused', '暂停中'], ...(!repeatable ? [['completed', '已完成']] : []), ['terminated', '已中止']].map(([value, label]) => ({ value, label: $t(label) }))} /></div>
+      <div class="select-field"><span>{$t('发起人自评项目级别')}</span><Select bind:value={difficulty} ariaLabel={$t('发起人自评项目级别')} options={[{ value: '', label: $t('暂不设置') }, ...['D', 'C', 'B', 'A', 'S'].map((value) => ({ value, label: value }))]} /></div>
+      <div class="select-field"><span>{$t('危险性')}</span><Select bind:value={dangerLevel} ariaLabel={$t('危险性')} options={[{ value: '', label: $t('暂不设置') }, ...[['low', '低'], ['medium', '中'], ['high', '高'], ['extreme', '极高']].map(([value, label]) => ({ value, label: $t(label) }))]} /></div>
+      <div class="select-field"><span>{$t('难度')}</span><Select bind:value={taskDifficulty} ariaLabel={$t('难度')} options={[{ value: '', label: $t('暂不设置') }, ...[['easy', '简单'], ['normal', '一般'], ['hard', '困难'], ['extreme', '极难']].map(([value, label]) => ({ value, label: $t(label) }))]} /></div>
       <div class="select-field"><span>{$t('项目性质')}</span><Select bind:value={nature} ariaLabel={$t('项目性质')} options={[{ value: '', label: $t('请选择') }, ...[['commercial', '商业盈利'], ['learning', '学习交流'], ['showcase', '技术展示'], ['research', '科学研究']].map(([value, label]) => ({ value, label: $t(label) }))]} /></div>
       <div class="select-field"><span>{$t('协作方式')}</span><Select bind:value={collaboration} ariaLabel={$t('协作方式')} options={[{ value: 'collaborative', label: $t('协作项目') }, { value: 'independent', label: $t('独立项目') }]} /></div>
       {#if collaboration === 'collaborative'}<div class="select-field"><span>{$t('加入方式')}</span><Select bind:value={joinMode} ariaLabel={$t('加入方式')} options={[{ value: 'open', label: $t('自由加入') }, { value: 'approval', label: $t('申请加入') }]} /></div>{/if}
       {#if executionStatus !== 'completed'}<label>{$t('计划开始日期')}<input type="date" bind:value={startDate} /></label>{/if}
       {#if !['completed', 'long_term'].includes(executionStatus)}<label>{$t('预计周期（天）')}<input type="number" min="1" max="36500" step="1" bind:value={duration} /></label>{/if}
     </div>
+    <fieldset class="arrangements"><legend>{$t('重复项目')}</legend>
+      <label class="repeat-toggle"><input type="checkbox" bind:checked={repeatable} on:change={() => { if (repeatable && executionStatus === 'completed') executionStatus = 'ongoing'; }} />{$t('允许每位参与者重复完成任务')}</label>
+      {#if repeatable}<label>{$t('每位参与者最多完成次数')}<input type="number" min="1" max="9999" step="1" bind:value={repeatLimit} required /></label><small>{$t('每次完成都需提交申请，经项目管理者通过后计入个人完成项目。项目本身保持进行中。')}</small>{/if}
+    </fieldset>
     {#if ['paused', 'terminated'].includes(executionStatus)}<label>{$t('暂停或中止原因')}<textarea bind:value={statusReason} maxlength="2000" rows="3" required></textarea></label>{/if}
     <label>{$t('时间安排')}<textarea bind:value={scheduleNote} maxlength="2000" rows="3"></textarea></label>
     <fieldset class="arrangements"><legend>{$t('项目安排')}</legend>
@@ -115,6 +123,8 @@
   .arrangements legend { padding: 0 5px; color: var(--ink-secondary); font-size: 14px; }
   .arrangement-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 20px; }
   .arrangement-row > span:first-child { color: var(--ink-secondary); font-size: 14px; }
+  .repeat-toggle { display: flex; align-items: center; gap: 8px; }
+  .repeat-toggle input { accent-color: var(--accent); }
   .choices { display: inline-flex; gap: 8px; }
   .choices label { display: inline-flex; flex-direction: row; align-items: center; gap: 6px; padding: 4px 12px; border: 1px solid var(--border-default); border-radius: 999px; color: var(--ink-secondary); font-size: 13px; cursor: pointer; transition: border-color var(--t-fast) var(--ease-out), background-color var(--t-fast) var(--ease-out), color var(--t-fast) var(--ease-out); }
   .choices label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-deep); }
@@ -124,6 +134,8 @@
   .needs label { display: inline-flex; align-items: center; gap: 7px; padding: 5px 12px; border: 1px solid var(--border-default); border-radius: 999px; color: var(--ink-secondary); font-size: 13px; cursor: pointer; transition: border-color var(--t-fast) var(--ease-out), background-color var(--t-fast) var(--ease-out), color var(--t-fast) var(--ease-out); }
   .needs label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-deep); }
   .needs input { accent-color: var(--accent); margin: 0; }
+  .need-item:has(.detail-input) { flex: 1 1 100%; }
+  .needs .detail-input { display: grid; margin-top: 8px; padding: 0; border: 0; border-radius: 0; cursor: text; }
   .actions { display: flex; align-items: center; gap: 12px; }
   .actions .secondary { width: auto; min-height: 44px; padding: 0 18px; justify-content: center; }
   @media (max-width: 600px) { form { padding: 18px; } }

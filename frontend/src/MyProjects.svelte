@@ -16,13 +16,15 @@
   const reviewLabels = { pending: '待审核', approved: '已通过', rejected: '已拒绝' };
   const natureLabels = { commercial: '商业盈利', learning: '学习交流', showcase: '技术展示', research: '科学研究' };
   const needOptions = [['funding', '资金支持'], ['technical', '技术支持'], ['equipment', '设备支持'], ['venue', '场地支持'], ['manpower', '人手支持'], ['promotion', '宣传支持'], ['emotional', '情绪支持']];
-  const offerOptions = [['technical', '技术'], ['funding', '资金'], ['equipment', '设备'], ['venue', '场地'], ['manpower', '人手'], ['promotion', '宣传']];
+  const offerOptions = [['technical', '技术'], ['funding', '资金'], ['equipment', '设备'], ['venue', '场地'], ['manpower', '人手'], ['promotion', '宣传'], ['title', '头衔认证']];
   let manageProject = null;
   let editForm = null;
   let versions = [];
   let manageBusy = false;
   let manageError = '';
   let manageNotice = '';
+  let canEditProject = true;
+  let nextProjectEditAt = '';
   let coverFile = null;
   let coverPreview = '';
   let removeCover = false;
@@ -31,6 +33,30 @@
   let versionError = '';
   const needLabelMap = Object.fromEntries(needOptions);
   const offerLabelMap = Object.fromEntries(offerOptions);
+  const versionFieldLabels = {
+    title: '项目名称', summary: '项目简介', collaborationMode: '协作方式',
+    joinMode: '加入方式', acceptsSponsorship: '接受赞助', allowOthersManagement: '允许他人管理',
+    confidentialityRequested: '需要保密', confidentialityTerms: '保密协议内容', estimatedDurationDays: '预计周期（天）',
+    longTerm: '长期项目', executionStatus: '项目状态', plannedStartDate: '计划开始日期', scheduleNote: '时间安排',
+    repeatable: '重复项目', repeatLimit: '每位参与者最多完成次数', sponsor: '赞助者',
+    proposedDifficulty: '项目级别', dangerLevel: '危险性', taskDifficulty: '难度', adventureStyle: '冒险风格', projectNature: '项目性质', projectNeeds: '项目需要',
+    providerOffers: '发起人可提供', projectNeedDetails: '需求说明', providerOfferDetails: '提供说明', statusReason: '状态原因',
+  };
+
+  function formatVersionValue(field, value) {
+    if (value === null || value === undefined || value === '') return $t('无');
+    if (field === 'executionStatus') return $t(statusLabels[value] || value);
+    if (field === 'projectNature') return $t(natureLabels[value] || value);
+    if (field === 'projectNeeds' && Array.isArray(value)) return value.map((item) => $t(needLabelMap[item] || item)).join(' · ') || $t('无');
+    if (field === 'providerOffers' && Array.isArray(value)) return value.map((item) => $t(offerLabelMap[item] || item)).join(' · ') || $t('无');
+    if (field === 'projectNeeds') return $t(needLabelMap[value] || value);
+    if (field === 'providerOffers') return $t(offerLabelMap[value] || value);
+    if (typeof value === 'boolean') return $t(value ? '是' : '否');
+    if (typeof value === 'object') {
+      return Object.entries(value).map(([key, item]) => `${$t(needLabelMap[key] || offerLabelMap[key] || key)}：${item}`).join(' · ') || $t('无');
+    }
+    return String(value);
+  }
 
   async function request(path, options = {}) {
     const response = await fetch(path, {
@@ -39,7 +65,12 @@
       cache: 'no-store',
     });
     const body = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(body.message || `请求失败（${response.status}）`);
+    if (!response.ok) {
+      const error = new Error(body.message || `请求失败（${response.status}）`);
+      error.status = response.status;
+      error.body = body;
+      throw error;
+    }
     return body;
   }
 
@@ -62,17 +93,26 @@
       ]);
       editForm = {
         title: detail.title || '',
+        sponsor: detail.sponsor || '',
+        dangerLevel: detail.dangerLevel || '',
+        taskDifficulty: detail.taskDifficulty || '',
         summary: detail.summary || '',
         description: detail.description || '',
         projectNature: detail.projectNature || '',
         executionStatus: detail.executionStatus || 'ongoing',
+        repeatable: detail.repeatable || false,
+        repeatLimit: detail.repeatLimit || 1,
         statusReason: detail.statusReason || '',
         projectNeeds: detail.projectNeeds || [],
         providerOffers: detail.providerOffers || [],
+        projectNeedDetails: detail.projectNeedDetails || {},
+        providerOfferDetails: detail.providerOfferDetails || {},
         coverUrl: detail.coverUrl || '',
       };
       versions = versionList.items || [];
       manageProject = project;
+      canEditProject = detail.canEdit !== false;
+      nextProjectEditAt = detail.nextEditAt || '';
     } catch (err) {
       error = err.message || String(err);
     }
@@ -91,6 +131,8 @@
     versionDetail = null;
     versionError = '';
     versionBusy = '';
+    canEditProject = true;
+    nextProjectEditAt = '';
   }
 
   function selectCover(event) {
@@ -159,12 +201,20 @@
       removeCover = false;
       manageNotice = coverError ? '' : $t('项目已保存为版本 {version}。', { version: result.version });
       manageError = coverError;
+      canEditProject = false;
+      nextProjectEditAt = result.nextProjectEditAt || '';
       manageProject = { ...manageProject, title: editForm.title, version: result.version };
       const versionList = await request(`/api/hpahub/me/projects/${encodeURIComponent(manageProject.id)}/versions`);
       versions = versionList.items || [];
       load();
     } catch (err) {
-      manageError = err.message || String(err);
+      if (err.status === 429) {
+        canEditProject = false;
+        nextProjectEditAt = err.body?.nextProjectEditAt || '';
+        manageError = '项目信息每天只能修改一次';
+      } else {
+        manageError = err.message || String(err);
+      }
     } finally {
       manageBusy = false;
     }
@@ -226,13 +276,13 @@
       <div class="project-list">
         {#each projectsFor(activeTab) as project}
           <article class="project-card">
-            {#if project.difficulty}<span class={`difficulty-star star-${difficultyRank(project.difficulty)}`} title={`${$t('难度')} ${project.difficulty}`} aria-label={`${$t('难度')} ${project.difficulty}`}>{project.difficulty}</span>{:else}<span class="difficulty-star star-0" title={$t('难度')} aria-label={$t('难度')}>?</span>{/if}
+            {#if project.difficulty}<span class={`difficulty-star star-${difficultyRank(project.difficulty)}`} title={`${$t('项目级别')} ${project.difficulty}`} aria-label={`${$t('项目级别')} ${project.difficulty}`}>{project.difficulty}</span>{:else}<span class="difficulty-star star-0" title={$t('项目级别')} aria-label={$t('项目级别')}>?</span>{/if}
             <div class="project-meta">
               <span class:done={project.status === 'completed'} class="project-status">{$t(statusLabels[project.status] || project.status)}</span>
               {#if activeTab === 'initiated'}<span class="review">{$t(reviewLabels[project.reviewStatus] || project.reviewStatus)}</span><span class="version">{$t('版本')} {project.version || 1}</span>{/if}
             </div>
             <h2><a href={'/showcase/' + encodeURIComponent(project.id)}>{project.title}</a></h2>
-            <p>{project.summary}</p>
+            {#if project.projectNumber}<small class="project-number">{project.projectNumber}</small>{/if}
             <p class="project-owner">{#if project.ownerAvatarUrl}<img class="owner-avatar" src={project.ownerAvatarUrl} alt="" loading="lazy" />{:else}<span class="owner-avatar" aria-hidden="true"></span>{/if}{$t('负责人')}：<RedactedText text={project.ownerName || '—'} hidden={!!project.ownerRedacted} />{#if project.updated} · {$t('更新于')} {new Date(project.updated).toLocaleDateString()}{/if}</p>
             {#if activeTab === 'initiated'}<div class="card-actions"><button type="button" class="manage-button" on:click={() => openManage(project)}>{$t('管理项目')}</button></div>{/if}
           </article>
@@ -253,10 +303,11 @@
       </div>
       {#if manageError}<p class="message error" role="alert">{$t(manageError)}</p>{/if}
       {#if manageNotice}<p class="message success" role="status">{$t(manageNotice)}</p>{/if}
+      {#if !canEditProject}<p class="message">{$t('项目信息每天只能修改一次')}{#if nextProjectEditAt} · {$t('下次可修改：{time}', { time: new Date(nextProjectEditAt).toLocaleString() })}{/if}</p>{/if}
       <form on:submit|preventDefault={saveManage}>
         <label>{$t('项目名称')}<input bind:value={editForm.title} maxlength="160" required /></label>
-        <label>{$t('项目简介')}<textarea bind:value={editForm.summary} maxlength="2000" rows="2"></textarea></label>
-        <label>{$t('项目详情')}<textarea bind:value={editForm.description} maxlength="10000" rows="4"></textarea></label>
+        <label>{$t('项目简介')}<textarea bind:value={editForm.summary} maxlength="2000" rows="4" placeholder={$t('介绍项目目标、内容或参与方式')} /></label>
+        <label>{$t('赞助者')}<input bind:value={editForm.sponsor} maxlength="500" placeholder={$t('可填写赞助者姓名或组织名称')} /></label>
         <div class="manage-cover">
           <div class="cover-preview-wrap">
             {#if coverPreview && !removeCover}<img class="cover-image" src={coverPreview} alt={$t('封面预览')} />
@@ -269,13 +320,16 @@
           </div>
         </div>
         <div class="manage-grid">
-          <div class="select-field"><span>{$t('项目状态')}</span><Select bind:value={editForm.executionStatus} ariaLabel={$t('项目状态')} options={Object.entries(statusLabels).map(([value, label]) => ({ value, label: $t(label) }))} /></div>
+          <div class="select-field"><span>{$t('项目状态')}</span><Select bind:value={editForm.executionStatus} ariaLabel={$t('项目状态')} options={Object.entries(statusLabels).filter(([value]) => !editForm.repeatable || value !== 'completed').map(([value, label]) => ({ value, label: $t(label) }))} /></div>
           <div class="select-field"><span>{$t('项目性质')}</span><Select bind:value={editForm.projectNature} ariaLabel={$t('项目性质')} options={[{ value: '', label: $t('未填写') }, ...Object.entries(natureLabels).map(([value, label]) => ({ value, label: $t(label) }))]} /></div>
+          <div class="select-field"><span>{$t('危险性')}</span><Select bind:value={editForm.dangerLevel} ariaLabel={$t('危险性')} options={[{ value: '', label: $t('未填写') }, ...[['low', '低'], ['medium', '中'], ['high', '高'], ['extreme', '极高']].map(([value, label]) => ({ value, label: $t(label) }))]} /></div>
+          <div class="select-field"><span>{$t('难度')}</span><Select bind:value={editForm.taskDifficulty} ariaLabel={$t('难度')} options={[{ value: '', label: $t('未填写') }, ...[['easy', '简单'], ['normal', '一般'], ['hard', '困难'], ['extreme', '极难']].map(([value, label]) => ({ value, label: $t(label) }))]} /></div>
         </div>
+        <fieldset class="manage-options"><legend>{$t('重复项目')}</legend><label><input type="checkbox" bind:checked={editForm.repeatable} on:change={() => { if (editForm.repeatable && editForm.executionStatus === 'completed') editForm.executionStatus = 'ongoing'; }} />{$t('允许每位参与者重复完成任务')}</label>{#if editForm.repeatable}<label>{$t('每位参与者最多完成次数')}<input type="number" min="1" max="9999" step="1" bind:value={editForm.repeatLimit} required /></label><p class="muted">{$t('每次完成都需提交申请，经项目管理者通过后计入个人完成项目。项目本身保持进行中。')}</p>{/if}</fieldset>
         {#if ['paused', 'terminated'].includes(editForm.executionStatus)}<label>{$t('暂停或中止原因')}<textarea bind:value={editForm.statusReason} maxlength="2000" rows="3" required></textarea></label>{/if}
-        <fieldset class="manage-options"><legend>{$t('项目需要')}</legend>{#each needOptions as [value, label]}<label><input type="checkbox" bind:group={editForm.projectNeeds} value={value} />{$t(label)}</label>{/each}</fieldset>
-        <fieldset class="manage-options"><legend>{$t('发起人可提供')}</legend>{#each offerOptions as [value, label]}<label><input type="checkbox" bind:group={editForm.providerOffers} value={value} />{$t(label)}</label>{/each}</fieldset>
-        <div class="manage-actions"><button class="primary" type="submit" disabled={manageBusy}>{manageBusy ? $t('正在保存…') : $t('保存修改')}</button><button type="button" class="secondary" on:click={closeManage}>{$t('取消')}</button></div>
+        <fieldset class="manage-options"><legend>{$t('项目需要')}</legend>{#each needOptions as [value, label]}<div class="manage-option"><label><input type="checkbox" bind:group={editForm.projectNeeds} value={value} />{$t(label)}</label>{#if editForm.projectNeeds.includes(value)}<label class="detail-input">{$t(label)} · {$t('具体补充（可选）')}<textarea rows="2" maxlength="500" bind:value={editForm.projectNeedDetails[value]}></textarea></label>{/if}</div>{/each}</fieldset>
+        <fieldset class="manage-options"><legend>{$t('发起人可提供')}</legend>{#each offerOptions as [value, label]}<div class="manage-option"><label><input type="checkbox" bind:group={editForm.providerOffers} value={value} />{$t(label)}</label>{#if editForm.providerOffers.includes(value)}<label class="detail-input">{#if value === 'title'}{$t('头衔名称')}<input bind:value={editForm.providerOfferDetails[value]} maxlength="10" required placeholder="最多10个字" />{:else}{$t(label)} · {$t('具体补充（可选）')}<textarea rows="2" maxlength="500" bind:value={editForm.providerOfferDetails[value]}></textarea>{/if}</label>{/if}</div>{/each}</fieldset>
+        <div class="manage-actions"><button class="primary" type="submit" disabled={manageBusy || !canEditProject}>{manageBusy ? $t('正在保存…') : $t('保存修改')}</button><button type="button" class="secondary" on:click={closeManage}>{$t('取消')}</button></div>
       </form>
       <section class="version-history">
         <h3>{$t('版本历史')}</h3>
@@ -285,19 +339,18 @@
           <p class="empty">{$t('暂无版本记录。')}</p>
         {/if}
         {#if versionError}<p class="message error" role="alert">{$t(versionError)}</p>{/if}
-        {#if versionDetail?.snapshot}
+        {#if versionDetail?.changes}
           <div class="version-detail">
-            <div class="version-detail-head"><strong>{$t('版本')} {versionDetail.version}</strong><span>{new Date(versionDetail.created).toLocaleString()}</span></div>
-            <dl>
-              <div><dt>{$t('项目名称')}</dt><dd>{versionDetail.snapshot.title || '—'}</dd></div>
-              <div><dt>{$t('项目简介')}</dt><dd>{versionDetail.snapshot.summary || '—'}</dd></div>
-              <div><dt>{$t('项目详情')}</dt><dd>{versionDetail.snapshot.description || '—'}</dd></div>
-              <div><dt>{$t('项目状态')}</dt><dd>{$t(statusLabels[versionDetail.snapshot.executionStatus] || '—')}</dd></div>
-              {#if versionDetail.snapshot.statusReason}<div><dt>{$t('状态原因')}</dt><dd>{versionDetail.snapshot.statusReason}</dd></div>{/if}
-              <div><dt>{$t('项目性质')}</dt><dd>{$t(natureLabels[versionDetail.snapshot.projectNature] || '—')}</dd></div>
-              <div><dt>{$t('项目需要')}</dt><dd>{(versionDetail.snapshot.projectNeeds || []).map((value) => $t(needLabelMap[value] || value)).join(' · ') || '—'}</dd></div>
-              <div><dt>{$t('发起人可提供')}</dt><dd>{(versionDetail.snapshot.providerOffers || []).map((value) => $t(offerLabelMap[value] || value)).join(' · ') || '—'}</dd></div>
-            </dl>
+            <div class="version-detail-head"><strong>{$t('版本')} {versionDetail.version}</strong><span>{new Date(versionDetail.created).toLocaleString()}{#if versionDetail.editorName} · {versionDetail.editorName}{/if}</span></div>
+            {#if versionDetail.isInitial}
+              <p>{$t('初始版本：项目创建时的基础内容。')}</p>
+            {:else if versionDetail.changes.length}
+              <dl>{#each versionDetail.changes as change}
+                <div><dt>{$t(versionFieldLabels[change.field] || change.field)}{#if change.detailKey} · {$t(needLabelMap[change.detailKey] || offerLabelMap[change.detailKey] || change.detailKey)}{/if}</dt><dd><span>{formatVersionValue(change.field, change.before)}</span><span aria-hidden="true"> → </span><strong>{formatVersionValue(change.field, change.after)}</strong></dd></div>
+              {/each}</dl>
+            {:else}
+              <p>{$t('此版本没有可显示的内容差异。')}</p>
+            {/if}
           </div>
         {/if}
       </section>
@@ -358,6 +411,8 @@
   .manage-options { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 10px 12px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); }
   .manage-options legend { padding: 0 5px; color: var(--ink-secondary); font-size: 13px; }
   .manage-options label { display: inline-flex; flex-direction: row; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid var(--border-default); border-radius: 999px; font-size: 12px; cursor: pointer; }
+  .manage-option:has(.detail-input) { flex: 1 1 100%; }
+  .manage-options .detail-input { display: grid; margin-top: 8px; padding: 0; border: 0; border-radius: 0; cursor: text; }
   .manage-options label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-deep); }
   .manage-actions { display: flex; gap: 10px; }
   .manage-actions .secondary { width: auto; min-height: 44px; padding: 0 18px; justify-content: center; }
