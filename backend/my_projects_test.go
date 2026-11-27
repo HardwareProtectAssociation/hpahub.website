@@ -115,7 +115,7 @@ func TestCreateProjectDetails(t *testing.T) {
 		mux.ServeHTTP(response, req)
 		return response
 	}
-	response := call(`{"title":" 新项目 ","executionStatus":"not_started","summary":"简介","description":"项目详情","proposedDifficulty":"A","adventureStyle":"boss","projectNature":"research","projectNeeds":["funding","technical","funding"],"collaborationMode":"independent","joinMode":"approval","acceptsSponsorship":true,"allowOthersManagement":true,"confidentialityRequested":true,"confidentialityTerms":"测试协议","estimatedDurationDays":30,"plannedStartDate":"2027-01-01","scheduleNote":"计划"}`)
+	response := call(`{"title":" 新项目 ","executionStatus":"not_started","summary":"简介","description":"项目详情","proposedDifficulty":"A","adventureStyle":"boss","projectNature":"research","projectNeeds":["funding","technical","venue","funding"],"providerOffers":["technical","venue","technical"],"collaborationMode":"independent","joinMode":"approval","acceptsSponsorship":true,"allowOthersManagement":true,"confidentialityRequested":true,"confidentialityTerms":"测试协议","estimatedDurationDays":30,"plannedStartDate":"2027-01-01","scheduleNote":"计划"}`)
 	if response.Code != http.StatusOK {
 		t.Fatalf("create = %d: %s", response.Code, response.Body.String())
 	}
@@ -132,11 +132,17 @@ func TestCreateProjectDetails(t *testing.T) {
 	if project.GetString("execution_status") != "not_started" || project.GetString("confidentiality_terms") != "测试协议" || project.GetString("project_nature") != "research" || project.GetString("title") != "新项目" || projectDescriptionText(project) != "项目详情" || project.GetString("collaboration_mode") != "independent" || project.GetString("join_mode") != "approval" || !project.GetBool("accepts_sponsorship") || !project.GetBool("allow_others_management") || !project.GetBool("confidentiality_requested") || project.GetInt("estimated_duration_days") != 30 || project.GetString("planned_start_date") == "" || project.GetString("schedule_note") != "计划" {
 		t.Fatalf("project details not saved: %v", project)
 	}
-	if needs := project.GetStringSlice("project_needs"); len(needs) != 2 || needs[0] != "funding" || needs[1] != "technical" {
+	if needs := project.GetStringSlice("project_needs"); len(needs) != 3 || needs[0] != "funding" || needs[1] != "technical" || needs[2] != "venue" {
 		t.Fatalf("project needs not saved/deduplicated: %v", needs)
+	}
+	if offers := project.GetStringSlice("provider_offers"); len(offers) != 2 || offers[0] != "technical" || offers[1] != "venue" {
+		t.Fatalf("provider offers not saved/deduplicated: %v", offers)
 	}
 	if response = call(`{"title":"无效需求","projectNature":"research","projectNeeds":["unknown"]}`); response.Code != http.StatusBadRequest {
 		t.Fatalf("invalid project needs = %d: %s", response.Code, response.Body.String())
+	}
+	if response = call(`{"title":"无效提供","projectNature":"research","providerOffers":["unknown"]}`); response.Code != http.StatusBadRequest {
+		t.Fatalf("invalid provider offers = %d: %s", response.Code, response.Body.String())
 	}
 	other := publicProjectTestUser(t, app, "other-create@example.com", "其他人")
 	otherToken, err := other.NewAuthToken()

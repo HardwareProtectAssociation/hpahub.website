@@ -57,6 +57,7 @@ func bindMyProjectRoutes(e *core.ServeEvent) {
 			AdventureStyle           string   `json:"adventureStyle"`
 			ProjectNature            string   `json:"projectNature"`
 			ProjectNeeds             []string `json:"projectNeeds"`
+			ProviderOffers           []string `json:"providerOffers"`
 		}
 		if err := e.BindBody(&input); err != nil {
 			return e.BadRequestError("Invalid project.", err)
@@ -111,7 +112,7 @@ func bindMyProjectRoutes(e *core.ServeEvent) {
 		if input.ProjectNature != "" && input.ProjectNature != "commercial" && input.ProjectNature != "learning" && input.ProjectNature != "showcase" && input.ProjectNature != "research" {
 			return e.BadRequestError("Invalid project purpose.", nil)
 		}
-		validNeeds := map[string]bool{"funding": true, "technical": true, "equipment": true, "manpower": true, "promotion": true, "emotional": true}
+		validNeeds := map[string]bool{"funding": true, "technical": true, "equipment": true, "venue": true, "manpower": true, "promotion": true, "emotional": true}
 		projectNeeds := make([]string, 0, len(input.ProjectNeeds))
 		seenNeeds := map[string]bool{}
 		for _, need := range input.ProjectNeeds {
@@ -121,6 +122,18 @@ func bindMyProjectRoutes(e *core.ServeEvent) {
 			if !seenNeeds[need] {
 				seenNeeds[need] = true
 				projectNeeds = append(projectNeeds, need)
+			}
+		}
+		validOffers := map[string]bool{"technical": true, "funding": true, "equipment": true, "venue": true, "manpower": true, "promotion": true}
+		providerOffers := make([]string, 0, len(input.ProviderOffers))
+		seenOffers := map[string]bool{}
+		for _, offer := range input.ProviderOffers {
+			if !validOffers[offer] {
+				return e.BadRequestError("Invalid provider offers.", nil)
+			}
+			if !seenOffers[offer] {
+				seenOffers[offer] = true
+				providerOffers = append(providerOffers, offer)
 			}
 		}
 		if input.AdventureStyle == "" {
@@ -160,6 +173,7 @@ func bindMyProjectRoutes(e *core.ServeEvent) {
 		project.Set("adventure_style", input.AdventureStyle)
 		project.Set("project_nature", input.ProjectNature)
 		project.Set("project_needs", projectNeeds)
+		project.Set("provider_offers", providerOffers)
 		project.Set("version", 1)
 		project.Set("published_at", time.Now())
 		if input.ProposedDifficulty != "" {
