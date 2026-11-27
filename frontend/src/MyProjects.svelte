@@ -1,4 +1,5 @@
 <script>
+  import RedactedText from './RedactedText.svelte';
   import { onMount } from 'svelte';
   import { t } from './i18n.js';
   import { difficultyRank } from './tiers.js';
@@ -114,7 +115,7 @@
             </div>
             <h2><a href={'/showcase/' + encodeURIComponent(project.id)}>{project.title}</a></h2>
             <p>{project.summary}</p>
-            <p class="project-owner">{#if project.ownerAvatarUrl}<img class="owner-avatar" src={project.ownerAvatarUrl} alt="" loading="lazy" />{:else}<span class="owner-avatar" aria-hidden="true"></span>{/if}{$t('负责人')}：{project.ownerName || '—'}{#if project.updated} · {$t('更新于')} {new Date(project.updated).toLocaleDateString()}{/if}</p>
+            <p class="project-owner">{#if project.ownerAvatarUrl}<img class="owner-avatar" src={project.ownerAvatarUrl} alt="" loading="lazy" />{:else}<span class="owner-avatar" aria-hidden="true"></span>{/if}{$t('负责人')}：<RedactedText text={project.ownerName || '—'} hidden={!!project.ownerRedacted} />{#if project.updated} · {$t('更新于')} {new Date(project.updated).toLocaleDateString()}{/if}</p>
           </article>
         {/each}
       </div>

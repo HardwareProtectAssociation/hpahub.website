@@ -13,6 +13,8 @@ import (
 )
 
 type publicProject struct {
+	Redacted       bool   `json:"redacted,omitempty"`
+	OwnerRedacted  bool   `json:"ownerRedacted,omitempty"`
 	ID             string `json:"id"`
 	Title          string `json:"title"`
 	Summary        string `json:"summary"`
@@ -37,9 +39,10 @@ type publicProjectStage struct {
 }
 
 type publicProjectMember struct {
-	ID     string `json:"id"`
-	Name   string `json:"name"`
-	Duties string `json:"duties"`
+	Redacted bool   `json:"redacted,omitempty"`
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Duties   string `json:"duties"`
 }
 
 type publicProjectDetail struct {
@@ -165,10 +168,12 @@ func bindPublicProjectRoutes(e *core.ServeEvent) {
 			if err != nil {
 				continue
 			}
+			if profileSectionHidden(member, "projects") || profileSectionHidden(member, "project:"+project.Id) {
+				detail.Members = append(detail.Members, publicProjectMember{Redacted: true, Name: maskedText(publicPersonName(member)), Duties: maskedText(membership.GetString("duties"))})
+				continue
+			}
 			detail.Members = append(detail.Members, publicProjectMember{
-				ID:     member.Id,
-				Name:   publicPersonName(member),
-				Duties: membership.GetString("duties"),
+				ID: member.Id, Name: publicPersonName(member), Duties: membership.GetString("duties"),
 			})
 		}
 		if e.Auth != nil {
@@ -421,13 +426,20 @@ func projectSummary(e *core.RequestEvent, project *core.Record, owners map[strin
 	}
 	ownerName := ""
 	ownerAvatarURL := ""
+	ownerRedacted := false
 	if owner != nil {
 		ownerName = publicPersonName(owner)
-		if owner.GetString("avatar") != "" {
+		ownerRedacted = profileSectionHidden(owner, "projects") || profileSectionHidden(owner, "project:"+project.Id)
+		if ownerRedacted {
+			ownerName = maskedText(ownerName)
+			ownerID = ""
+		}
+		if !ownerRedacted && owner.GetString("avatar") != "" {
 			ownerAvatarURL = contentURL("members", owner.Id, "avatar")
 		}
 	}
 	return publicProject{
+		OwnerRedacted:  ownerRedacted,
 		ID:             project.Id,
 		Title:          project.GetString("title"),
 		Summary:        project.GetString("summary"),

@@ -12,6 +12,7 @@ import (
 )
 
 type myProject struct {
+	OwnerRedacted  bool   `json:"ownerRedacted,omitempty"`
 	ID             string `json:"id"`
 	Title          string `json:"title"`
 	Summary        string `json:"summary"`
@@ -102,13 +103,19 @@ func bindMyProjectRoutes(e *core.ServeEvent) {
 		converted := func(project *core.Record) myProject {
 			ownerName := ""
 			ownerAvatarURL := ""
+			ownerRedacted := false
 			if owner, err := e.App.FindRecordById("users", project.GetString("owner_user_id")); err == nil {
 				ownerName = publicPersonName(owner)
-				if owner.GetString("avatar") != "" {
+				ownerRedacted = profileSectionHidden(owner, "projects") || profileSectionHidden(owner, "project:"+project.Id)
+				if ownerRedacted {
+					ownerName = maskedText(ownerName)
+				}
+				if !ownerRedacted && owner.GetString("avatar") != "" {
 					ownerAvatarURL = contentURL("members", owner.Id, "avatar")
 				}
 			}
 			return myProject{
+				OwnerRedacted:  ownerRedacted,
 				ID:             project.Id,
 				Title:          project.GetString("title"),
 				Summary:        project.GetString("summary"),

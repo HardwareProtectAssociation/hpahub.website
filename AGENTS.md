@@ -6,7 +6,7 @@
 
 开发前先根据此索引定位相关代码，再按需阅读具体实现；本节是导航而非完整文件清单，实际代码为准。项目结构或职责发生变化时，agent 应在同一改动中更新本节，保持路径和说明准确；新增迁移目录或调整迁移方式时，也要同步更新下方数据库变更约束。
 
-- `frontend/`：Svelte 和 Vite 前端。`src/main.js` 为入口，`App.svelte` 管理应用和导航；`Hardware.svelte`、`PersonalCenter.svelte`、`SkillEditor.svelte`、`PublicPages.svelte`、`Editors.svelte`、`AdminDirectory.svelte`、`MyProjects.svelte`、`Messages.svelte` 分别实现硬件数据库、个人中心、技能编辑、公共页面、编辑功能、管理控制台的成员/申请/项目目录、我的项目分类和站内消息；`AvatarCrop.svelte` 和 `avatarCrop.js` 负责头像裁切、缩略图生成及裁切计算测试；`Warehouse.svelte` 为已下线的仓库页（保留代码）；`style.css` 为全局样式（含统一的等级/评分档位特效），`tiers.js` 为等级与难度到档位的映射及测试，`i18n*.js` 为多语言及对应测试。
+- `frontend/`：Svelte 和 Vite 前端。`src/main.js` 为入口，`App.svelte` 管理应用和导航；`Hardware.svelte`、`PersonalCenter.svelte`、`SkillEditor.svelte`、`PublicPages.svelte`、`Editors.svelte`、`AdminDirectory.svelte`、`MyProjects.svelte`、`Messages.svelte` 分别实现硬件数据库、个人中心、技能编辑、公共页面、编辑功能、管理控制台的成员/申请/项目目录、我的项目分类和站内消息；`AvatarCrop.svelte` 和 `avatarCrop.js` 负责头像裁切、缩略图生成及裁切计算测试；`ProfileVisibility.svelte`、`VisibilityToggle.svelte` 和 `RedactedText.svelte` 负责名片展示设置与隐藏资料的遮挡；`Warehouse.svelte` 为已下线的仓库页（保留代码）；`style.css` 为全局样式（含统一的等级/评分档位特效），`tiers.js` 为等级与难度到档位的映射及测试，`i18n*.js` 为多语言及对应测试。
 - `backend/`：Go 和 PocketBase 后端。`main.go` 注册应用、路由及备份策略；`invitations.go`、`roles.go` 处理邀请码和权限；`hardware*.go`、`member_relations.go`、`warehouse*.go`、`public_content.go`、`public_projects.go`、`home.go`、`personal_center.go`、`admin_console.go`、`my_projects.go`、`messages.go`、`difficulty_voting.go` 分别处理硬件（含硬件评测与点赞）、成员互动关系、仓库内部逻辑、公共内容、公开项目、首页热门聚合、个人中心聚合、管理控制台目录/审批、我的项目/关注、站内消息和难度投票；`maintenance*.go` 负责维护操作，`*_test.go` 为测试。
 - `backend/migrations/`：版本化 PocketBase 迁移，由后端启动时注册；维护唯一生产部署的升级与恢复路径；`README.md` 记录共创平台表结构、PocketBase 适配和待服务层补齐的规则。
 - `scripts/`：隔离本地环境的 Compose 配置、启动、恢复和重置脚本，以及 Windows 开发服务器脚本。

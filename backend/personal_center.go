@@ -103,6 +103,7 @@ type centerProject struct {
 }
 
 type centerBadge struct {
+	Redacted       bool   `json:"redacted,omitempty"`
 	CareerID       string `json:"careerId"`
 	CareerName     string `json:"careerName"`
 	Category       string `json:"category"`
@@ -797,7 +798,7 @@ func bindPersonalCenterRoutes(e *core.ServeEvent) {
 		if err != nil {
 			return e.NotFoundError("Not found.", nil)
 		}
-		if !owner.GetBool("profilePublic") || profileSectionHidden(owner, "skills") {
+		if !owner.GetBool("profilePublic") || profileSectionHidden(owner, "skills") || profileSectionHidden(owner, "skill:"+row.Id) {
 			if e.Auth == nil {
 				return e.NotFoundError("Not found.", nil)
 			}

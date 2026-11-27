@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { locale, t } from './i18n.js';
   import { difficultyRank, levelRank } from './tiers.js';
+  import RedactedText from './RedactedText.svelte';
   export let pathname;
   export let token = '';
   let data = null;
@@ -54,8 +55,7 @@
           ['career', data.career?.length || 0],
           ['skills', data.skills?.length || 0],
         ];
-        const visible = candidates.filter(([key]) => !(data.hiddenSections || []).includes(key === 'completed' || key === 'ongoing' ? 'projects' : key));
-        activeTab = visible.find(([, count]) => count > 0)?.[0] || visible[0]?.[0] || '';
+        activeTab = candidates.find(([, count]) => count > 0)?.[0] || 'completed';
       }
     } catch (e) { error = e.message; } finally { loading = false; }
   });
@@ -232,7 +232,7 @@
               {#if project.ownerAvatarUrl}<img class="yt-avatar" src={project.ownerAvatarUrl} alt="" loading="lazy" />{:else}<span class="yt-avatar" aria-hidden="true"></span>{/if}
               <div>
                 <h3>{project.title}</h3>
-                <p class="yt-meta">{project.ownerName || '—'}</p>
+                <p class="yt-meta"><RedactedText text={project.ownerName || '—'} hidden={!!project.ownerRedacted} /></p>
                 <p class="yt-meta">{$t('关注')} {project.followCount}{#if project.updated} · {formatDate(project.updated)}{/if}</p>
               </div>
             </div>
@@ -247,7 +247,7 @@
           <a class="engineer-card" href={engineer.id ? '/community/' + encodeURIComponent(engineer.id) : '/community'}>
             {#if engineer.avatarUrl}<img class="engineer-avatar" src={engineer.avatarUrl} alt="" loading="lazy" />{:else}<span class="engineer-avatar" aria-hidden="true"></span>{/if}
             <h3>{engineer.name}</h3>
-            <p class="yt-meta">{#if engineer.identities.length}{engineer.identities.map((identity) => identity.name).join(' · ')} · {/if}{$t('关注')} {engineer.admireCount}</p>
+            <p class="yt-meta">{#if engineer.identities.length}{#each engineer.identities as identity, i}{#if i} · {/if}<RedactedText text={identity.name} hidden={!!identity.redacted} />{/each} · {/if}{$t('关注')} {engineer.admireCount}</p>
           </a>
         {/each}
       </div>
@@ -277,8 +277,8 @@
   {:else if error}<p class="message error" role="alert">{$t(error, errorParams)}</p>
   {:else if section === 'community'}
     {#if id}
-      <a href="/community">{$t('返回成员列表')}</a><header class="profile-heading">{#if data.avatarUrl}<img class="avatar" src={data.avatarUrl} alt="" />{:else}<span class="avatar avatar-default" aria-hidden="true"></span>{/if}<div><h1>{data.name}</h1><p>{data.bio}</p>{#if data.currentStatus}<span class:busy={data.currentStatus === 'busy'} class="public-current-status">{$t('当前状态')}：{$t(currentStatusLabels[data.currentStatus] || data.currentStatus)}</span>{/if}</div></header>
-      {#if data.identities?.length}<div class="member-identities">{#each data.identities as identity}<span class={`rank rank-pill rank-${identity.category === 'main' ? 4 : 3}`}>{$t(identity.category === 'main' ? '主力职业' : '辅助职业')} · {identity.name}</span>{/each}</div>{/if}
+      <a href="/community">{$t('返回成员列表')}</a><header class="profile-heading">{#if data.avatarRedacted}<span class="avatar redacted-avatar" title={$t('资料隐藏')} aria-label={$t('资料隐藏')}></span>{:else if data.avatarUrl}<img class="avatar" src={data.avatarUrl} alt="" />{:else}<span class="avatar avatar-default" aria-hidden="true"></span>{/if}<div><h1>{data.name}</h1><p><RedactedText text={data.bio} hidden={!!data.bioRedacted} /></p>{#if data.currentStatus}<span class:busy={data.currentStatus === 'busy'} class="public-current-status">{$t('当前状态')}：<RedactedText text={$t(currentStatusLabels[data.currentStatus] || data.currentStatus)} hidden={!!data.statusRedacted} /></span>{/if}</div></header>
+      {#if data.identities?.length}<div class="member-identities">{#each data.identities as identity}{#if identity.redacted}<RedactedText text={identity.name} hidden={true} />{:else}<span class={`rank rank-pill rank-${identity.category === 'main' ? 4 : 3}`}>{$t(identity.category === 'main' ? '主力职业' : '辅助职业')} · {identity.name}</span>{/if}{/each}</div>{/if}
       {#if data.relations}
         <div class="relation-panel">
           <div class="relation-counts">
@@ -298,22 +298,23 @@
           {#if !token}<p class="relation-hint">{$t('登录后可设置互动关系。')}</p>{/if}
         </div>
       {/if}
-      {#if !(data.hiddenSections || []).includes('cards')}{#if data.cards?.length}<div class="public-grid">{#each data.cards as card}<article class="public-card"><h2>{card.title}</h2><p>{card.text}</p><div class="image-grid">{#each card.imageUrls || [] as url}<a href={url} target="_blank" rel="noreferrer"><img src={url} alt={card.title} loading="lazy" /></a>{/each}</div></article>{/each}</div>{:else}<p>{$t('暂无公开卡片。')}</p>{/if}{/if}
+      {#if data.cards?.length}<div class="public-grid">{#each data.cards as card}<article class="public-card"><h2><RedactedText text={card.title} hidden={!!card.redacted} /></h2><p><RedactedText text={card.text} hidden={!!card.redacted} /></p><div class="image-grid">{#if card.redacted}{#each Array(card.imageCount || 0) as _}<span class="redacted-image" title={$t('资料隐藏')} aria-label={$t('资料隐藏')}></span>{/each}{/if}{#each card.imageUrls || [] as url}<a href={url} target="_blank" rel="noreferrer"><img src={url} alt={card.title} loading="lazy" /></a>{/each}</div></article>{/each}</div>{:else}<p>{$t('暂无公开卡片。')}</p>{/if}
       <nav class="profile-tabs" aria-label={$t('公开资料')}>
-        {#if !(data.hiddenSections || []).includes('projects')}<button type="button" class:active={activeTab === 'completed'} on:click={() => activeTab = 'completed'}>{$t('完成项目')}<span>{data.projectsCompleted?.length || 0}</span></button>
-        <button type="button" class:active={activeTab === 'ongoing'} on:click={() => activeTab = 'ongoing'}>{$t('进行中项目')}<span>{data.projectsOngoing?.length || 0}</span></button>{/if}
-        {#if !(data.hiddenSections || []).includes('career')}<button type="button" class:active={activeTab === 'career'} on:click={() => activeTab = 'career'}>{$t('职业等级')}<span>{data.career?.length || 0}</span></button>{/if}
-        {#if !(data.hiddenSections || []).includes('skills')}<button type="button" class:active={activeTab === 'skills'} on:click={() => activeTab = 'skills'}>{$t('技能展示')}<span>{shownSkills.length}</span></button>{/if}
+        <button type="button" class:active={activeTab === 'completed'} on:click={() => activeTab = 'completed'}>{$t('完成项目')}<span>{data.projectsCompleted?.length || 0}</span></button>
+        <button type="button" class:active={activeTab === 'ongoing'} on:click={() => activeTab = 'ongoing'}>{$t('进行中项目')}<span>{data.projectsOngoing?.length || 0}</span></button>
+        <button type="button" class:active={activeTab === 'career'} on:click={() => activeTab = 'career'}>{$t('职业等级')}<span>{data.career?.length || 0}</span></button>
+        <button type="button" class:active={activeTab === 'skills'} on:click={() => activeTab = 'skills'}>{$t('技能展示')}<span>{shownSkills.length}</span></button>
       </nav>
       {#if activeTab === 'completed'}
         {#if data.projectsCompleted?.length}
           <div class="public-grid">
             {#each data.projectsCompleted as project}
               <article class="public-card project-card">
+                {#if project.redacted}<h2><RedactedText text={project.title} hidden={true} /></h2><p><RedactedText text={project.summary} hidden={true} /></p>{:else}
                 <div class="project-meta"><span class="project-status done">{$t('已完成')}</span>{#if project.difficulty}<span class={`rank rank-pill difficulty-badge rank-${difficultyRank(project.difficulty)}`}>{$t('难度')} {project.difficulty}</span>{:else}<span class="rank-pending">{$t('难度')} {$t('待定')}</span>{/if}</div>
                 <h2><a href={'/showcase/' + encodeURIComponent(project.id)}>{project.title}</a></h2>
                 <p>{project.summary}</p>
-                <p class="project-owner">{#if project.ownerAvatarUrl}<img class="owner-avatar" src={project.ownerAvatarUrl} alt="" loading="lazy" />{:else}<span class="owner-avatar" aria-hidden="true"></span>{/if}{$t('负责人')}：{project.ownerName || '—'}{#if project.updated} · {$t('更新于')} {formatDate(project.updated)}{/if}</p>
+                <p class="project-owner">{#if project.ownerAvatarUrl}<img class="owner-avatar" src={project.ownerAvatarUrl} alt="" loading="lazy" />{:else}<span class="owner-avatar" aria-hidden="true"></span>{/if}{$t('负责人')}：<RedactedText text={project.ownerName || '—'} hidden={!!project.ownerRedacted} />{#if project.updated} · {$t('更新于')} {formatDate(project.updated)}{/if}</p>{/if}
               </article>
             {/each}
           </div>
@@ -325,10 +326,11 @@
           <div class="public-grid">
             {#each data.projectsOngoing as project}
               <article class="public-card project-card">
+                {#if project.redacted}<h2><RedactedText text={project.title} hidden={true} /></h2><p><RedactedText text={project.summary} hidden={true} /></p>{:else}
                 <div class="project-meta"><span class="project-status">{$t('进行中')}</span>{#if project.difficulty}<span class={`rank rank-pill difficulty-badge rank-${difficultyRank(project.difficulty)}`}>{$t('难度')} {project.difficulty}</span>{:else}<span class="rank-pending">{$t('难度')} {$t('待定')}</span>{/if}</div>
                 <h2><a href={'/showcase/' + encodeURIComponent(project.id)}>{project.title}</a></h2>
                 <p>{project.summary}</p>
-                <p class="project-owner">{#if project.ownerAvatarUrl}<img class="owner-avatar" src={project.ownerAvatarUrl} alt="" loading="lazy" />{:else}<span class="owner-avatar" aria-hidden="true"></span>{/if}{$t('负责人')}：{project.ownerName || '—'}{#if project.updated} · {$t('更新于')} {formatDate(project.updated)}{/if}</p>
+                <p class="project-owner">{#if project.ownerAvatarUrl}<img class="owner-avatar" src={project.ownerAvatarUrl} alt="" loading="lazy" />{:else}<span class="owner-avatar" aria-hidden="true"></span>{/if}{$t('负责人')}：<RedactedText text={project.ownerName || '—'} hidden={!!project.ownerRedacted} />{#if project.updated} · {$t('更新于')} {formatDate(project.updated)}{/if}</p>{/if}
               </article>
             {/each}
           </div>
@@ -340,6 +342,7 @@
           <div class="career-grid">
             {#each data.career as badge}
               <article class="career-card">
+                {#if badge.redacted}<h3><RedactedText text={badge.careerName} hidden={true} /></h3><RedactedText text={badge.levelTitle} hidden={true} />{:else}
                 <div class="career-head"><h3>{badge.careerName}</h3><span class={`rank rank-text rank-${levelRank(badge.level)}`}>{badge.levelTitle || `Lv.${badge.level}`}</span></div>
                 <p>{badge.totalXp} XP · {$t('最高等级')} Lv.{badge.maxLevel}</p>
                 <div class="progress" role="img" aria-label={`${badge.totalXp} / ${badge.nextLevelXp} XP`}><span style={`width:${careerProgress(badge)}%`}></span></div>
@@ -348,6 +351,7 @@
                   <div class="milestones" aria-label={$t('徽章占位')}>
                     <span class={`rank rank-disc rank-${levelRank(badge.level)}`} title={`Lv.${badge.level} ${$t('徽章占位')}`}><span class="flash-layer" aria-hidden="true"></span>{medalLevel(badge.level)}</span>
                   </div>
+                {/if}
                 {/if}
               </article>
             {/each}
@@ -359,8 +363,9 @@
         {#if skillError}<p class="message error" role="alert">{$t(skillError)}</p>{/if}
         {#if shownSkills.length}
           <ul class="public-skill-list">
-            {#each shownSkills as skill (skill.userSkillId)}
+            {#each shownSkills as skill}
               <li class="public-skill">
+                {#if skill.redacted}<strong><RedactedText text={skill.name} hidden={true} /></strong><p><RedactedText text={skill.abilityNote} hidden={true} /></p><p><RedactedText text={skill.proficiency} hidden={true} /></p><div class="image-grid">{#each Array(skill.imageCount || 0) as _}<span class="redacted-image" title={$t('资料隐藏')} aria-label={$t('资料隐藏')}></span>{/each}</div>{#each skill.links || [] as link}<p><RedactedText text={link} hidden={true} /></p>{/each}{:else}
                 <div class="public-skill-head"><strong>{skill.name}</strong>{#if skill.proficiency}<span class="meta">{$t('熟练程度')}：{$t(skill.proficiency)}</span>{/if}</div>
                 {#if skill.abilityNote}<p>{skill.abilityNote}</p>{/if}
                 {#if skill.images?.length}
@@ -393,7 +398,7 @@
                   {/if}
                   {#if skill.likeTier > 0}<span class={`recognized rank rank-pill rank-${skill.likeTier}`}><span class="flash-layer" aria-hidden="true"></span>{$t(recognizedLabels[skill.likeTier])}</span>{/if}
                   {#if !token}<span class="meta">{$t('登录后可点赞')}</span>{/if}
-                </div>
+                </div>{/if}
               </li>
             {/each}
           </ul>
@@ -411,7 +416,7 @@
         <div class="project-meta"><span class:done={data.status === 'completed'} class="project-status">{statusLabel(data.status)}</span>{#if data.difficulty}<span class={`rank rank-pill difficulty-badge rank-${difficultyRank(data.difficulty)}`}>{$t('难度')} {data.difficulty}</span>{:else}<span class="rank-pending">{$t('难度')} {$t('待定')}</span>{/if}{#if data.currentStage}<span class="project-stage">{$t('当前阶段')}：{data.currentStage}</span>{/if}</div>
         <h1>{data.title}</h1>
         <p>{data.summary}</p>
-        <p class="project-owner">{$t('负责人')}：{data.ownerName || '—'}{#if data.updated} · {$t('更新于')} {formatDate(data.updated)}{/if}</p>
+        <p class="project-owner">{$t('负责人')}：<RedactedText text={data.ownerName || '—'} hidden={!!data.ownerRedacted} />{#if data.updated} · {$t('更新于')} {formatDate(data.updated)}{/if}</p>
         {#if data.description && data.description !== data.summary}<p class="project-description">{data.description}</p>{/if}
         {#if data.estimatedDurationDays}<p class="project-owner">{$t('预计周期')}：{data.estimatedDurationDays} {$t('天')}</p>{/if}
         {#if data.proposedDifficulty}<p class="project-owner">{$t('发起人自评')}：<span class={`rank rank-text rank-${difficultyRank(data.proposedDifficulty)}`}>{data.proposedDifficulty}</span></p>{:else}<p class="project-owner">{$t('发起人自评')}：{$t('待定')}</p>{/if}
@@ -476,7 +481,7 @@
         {#if data.members?.length}
           <ul class="project-members">
             {#each data.members as member}
-              <li><strong>{member.name || '—'}</strong>{#if member.duties}<span>{member.duties}</span>{/if}</li>
+              <li><strong><RedactedText text={member.name || '—'} hidden={!!member.redacted} /></strong>{#if member.duties}<span><RedactedText text={member.duties} hidden={!!member.redacted} /></span>{/if}</li>
             {/each}
           </ul>
         {:else}
@@ -493,7 +498,7 @@
               <div class="project-meta"><span class:done={project.status === 'completed'} class="project-status">{statusLabel(project.status)}</span>{#if project.difficulty}<span class={`rank rank-pill difficulty-badge rank-${difficultyRank(project.difficulty)}`}>{$t('难度')} {project.difficulty}</span>{:else}<span class="rank-pending">{$t('难度')} {$t('待定')}</span>{/if}</div>
               <h2><a href={'/showcase/' + encodeURIComponent(project.id)}>{project.title}</a></h2>
               <p>{project.summary}</p>
-              <p class="project-owner">{#if project.ownerAvatarUrl}<img class="owner-avatar" src={project.ownerAvatarUrl} alt="" loading="lazy" />{:else}<span class="owner-avatar" aria-hidden="true"></span>{/if}{$t('负责人')}：{project.ownerName || '—'}{#if project.updated} · {$t('更新于')} {formatDate(project.updated)}{/if}</p>
+              <p class="project-owner">{#if project.ownerAvatarUrl}<img class="owner-avatar" src={project.ownerAvatarUrl} alt="" loading="lazy" />{:else}<span class="owner-avatar" aria-hidden="true"></span>{/if}{$t('负责人')}：<RedactedText text={project.ownerName || '—'} hidden={!!project.ownerRedacted} />{#if project.updated} · {$t('更新于')} {formatDate(project.updated)}{/if}</p>
             </article>
           {/each}
         </div>
@@ -503,6 +508,8 @@
 </main>
 
 <style>
+  .redacted-avatar { display:inline-block; background:#000; }
+  .redacted-image { display:inline-block; width:80px; height:80px; background:#000; border-radius:var(--radius-sm); }
   .public-hero {
     position: relative;
     overflow: hidden;
