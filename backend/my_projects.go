@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"errors"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -293,6 +294,31 @@ func bindMyProjectRoutes(e *core.ServeEvent) {
 			})
 		}
 		return e.JSON(200, map[string]any{"items": items})
+	})
+	e.Router.GET("/api/hpahub/me/projects/{id}/versions/{version}", func(e *core.RequestEvent) error {
+		noCache(e)
+		project, _, err := loadOwned(e)
+		if err != nil {
+			return err
+		}
+		version, err := strconv.Atoi(e.Request.PathValue("version"))
+		if err != nil {
+			return e.NotFoundError("Not found.", nil)
+		}
+		row, err := e.App.FindFirstRecordByFilter("project_versions", "project_id = {:project} && version = {:version}", dbx.Params{"project": project.Id, "version": version})
+		if err != nil {
+			return e.NotFoundError("Not found.", nil)
+		}
+		editorName := ""
+		if editor, err := e.App.FindRecordById("users", row.GetString("editor_id")); err == nil {
+			editorName = publicPersonName(editor)
+		}
+		return e.JSON(200, map[string]any{
+			"version":    row.GetInt("version"),
+			"created":    row.GetString("created"),
+			"editorName": editorName,
+			"snapshot":   row.Get("snapshot"),
+		})
 	})
 	e.Router.PATCH("/api/hpahub/me/projects/{id}", func(e *core.RequestEvent) error {
 		noCache(e)

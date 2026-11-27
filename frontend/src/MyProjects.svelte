@@ -25,6 +25,11 @@
   let coverFile = null;
   let coverPreview = '';
   let removeCover = false;
+  let versionDetail = null;
+  let versionBusy = '';
+  let versionError = '';
+  const needLabelMap = Object.fromEntries(needOptions);
+  const offerLabelMap = Object.fromEntries(offerOptions);
 
   async function request(path, options = {}) {
     const response = await fetch(path, {
@@ -46,6 +51,9 @@
     removeCover = false;
     if (coverPreview) URL.revokeObjectURL(coverPreview);
     coverPreview = '';
+    versionDetail = null;
+    versionError = '';
+    versionBusy = '';
     try {
       const [detail, versionList] = await Promise.all([
         request(`/api/hpahub/me/projects/${encodeURIComponent(project.id)}`),
@@ -78,6 +86,9 @@
     removeCover = false;
     if (coverPreview) URL.revokeObjectURL(coverPreview);
     coverPreview = '';
+    versionDetail = null;
+    versionError = '';
+    versionBusy = '';
   }
 
   function selectCover(event) {
@@ -99,6 +110,19 @@
       coverFile = null;
       if (coverPreview) URL.revokeObjectURL(coverPreview);
       coverPreview = '';
+    }
+  }
+
+  async function openVersion(version) {
+    versionBusy = String(version.version);
+    versionError = '';
+    versionDetail = null;
+    try {
+      versionDetail = await request(`/api/hpahub/me/projects/${encodeURIComponent(manageProject.id)}/versions/${version.version}`);
+    } catch (err) {
+      versionError = err.message || String(err);
+    } finally {
+      versionBusy = '';
     }
   }
 
@@ -253,9 +277,24 @@
       <section class="version-history">
         <h3>{$t('版本历史')}</h3>
         {#if versions.length}
-          <ol>{#each versions as version}<li><strong>{$t('版本')} {version.version}</strong><span>{new Date(version.created).toLocaleString()}{#if version.editorName} · {version.editorName}{/if}</span></li>{/each}</ol>
+          <ol>{#each versions as version}<li><strong>{$t('版本')} {version.version}</strong><span>{new Date(version.created).toLocaleString()}{#if version.editorName} · {version.editorName}{/if}</span><button type="button" class="version-view" on:click={() => openVersion(version)} disabled={versionBusy === String(version.version)}>{$t('查看')}</button></li>{/each}</ol>
         {:else}
           <p class="empty">{$t('暂无版本记录。')}</p>
+        {/if}
+        {#if versionError}<p class="message error" role="alert">{$t(versionError)}</p>{/if}
+        {#if versionDetail?.snapshot}
+          <div class="version-detail">
+            <div class="version-detail-head"><strong>{$t('版本')} {versionDetail.version}</strong><span>{new Date(versionDetail.created).toLocaleString()}</span></div>
+            <dl>
+              <div><dt>{$t('项目名称')}</dt><dd>{versionDetail.snapshot.title || '—'}</dd></div>
+              <div><dt>{$t('项目简介')}</dt><dd>{versionDetail.snapshot.summary || '—'}</dd></div>
+              <div><dt>{$t('项目详情')}</dt><dd>{versionDetail.snapshot.description || '—'}</dd></div>
+              <div><dt>{$t('项目状态')}</dt><dd>{$t(statusLabels[versionDetail.snapshot.executionStatus] || '—')}</dd></div>
+              <div><dt>{$t('项目性质')}</dt><dd>{$t(natureLabels[versionDetail.snapshot.projectNature] || '—')}</dd></div>
+              <div><dt>{$t('项目需要')}</dt><dd>{(versionDetail.snapshot.projectNeeds || []).map((value) => $t(needLabelMap[value] || value)).join(' · ') || '—'}</dd></div>
+              <div><dt>{$t('发起人可提供')}</dt><dd>{(versionDetail.snapshot.providerOffers || []).map((value) => $t(offerLabelMap[value] || value)).join(' · ') || '—'}</dd></div>
+            </dl>
+          </div>
         {/if}
       </section>
     </div>
@@ -321,6 +360,14 @@
   .version-history { margin-top: 20px; border-top: 1px solid var(--border-subtle); padding-top: 14px; }
   .version-history h3 { margin: 0 0 8px; font-size: 15px; }
   .version-history ol { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
-  .version-history li { display: flex; justify-content: space-between; gap: 12px; padding: 6px 10px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-soft); font-size: 12px; }
+  .version-history li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 10px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-soft); font-size: 12px; }
   .version-history li span { color: var(--ink-subtle); }
+  .version-view { flex: none; padding: 2px 10px; border: 1px solid var(--border-default); border-radius: 999px; background: transparent; color: var(--ink-secondary); font-size: 12px; cursor: pointer; }
+  .version-view:hover { border-color: var(--accent); color: var(--accent-deep); background: var(--accent-soft); }
+  .version-detail { margin-top: 12px; padding: 12px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-soft); }
+  .version-detail-head { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 8px; color: var(--ink-subtle); font-size: 12px; }
+  .version-detail dl { margin: 0; display: grid; gap: 6px; }
+  .version-detail dl > div { display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: 10px; font-size: 12px; }
+  .version-detail dt { color: var(--ink-subtle); }
+  .version-detail dd { margin: 0; color: var(--ink-secondary); white-space: pre-wrap; overflow-wrap: anywhere; }
 </style>

@@ -235,6 +235,25 @@ func TestCreateProjectDetails(t *testing.T) {
 	if len(versionList.Items) != 1 || versionList.Items[0].Version != 2 {
 		t.Fatalf("unexpected versions: %+v", versionList.Items)
 	}
+	versionDetailRequest := httptest.NewRequest("GET", "/api/hpahub/me/projects/"+project.Id+"/versions/2", nil)
+	versionDetailRequest.Header.Set("Authorization", "Bearer "+token)
+	versionDetailResponse := httptest.NewRecorder()
+	mux.ServeHTTP(versionDetailResponse, versionDetailRequest)
+	if versionDetailResponse.Code != http.StatusOK {
+		t.Fatalf("version detail = %d: %s", versionDetailResponse.Code, versionDetailResponse.Body.String())
+	}
+	var versionDetail struct {
+		Version  int `json:"version"`
+		Snapshot struct {
+			Title string `json:"title"`
+		} `json:"snapshot"`
+	}
+	if err := json.Unmarshal(versionDetailResponse.Body.Bytes(), &versionDetail); err != nil {
+		t.Fatal(err)
+	}
+	if versionDetail.Version != 2 || versionDetail.Snapshot.Title != "更新后的项目" {
+		t.Fatalf("unexpected version detail: %+v", versionDetail)
+	}
 	other := publicProjectTestUser(t, app, "other-create@example.com", "其他人")
 	otherToken, err := other.NewAuthToken()
 	if err != nil {

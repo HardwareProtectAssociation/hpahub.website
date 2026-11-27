@@ -75,6 +75,7 @@ export default {
   '管理项目': ['管理專案', 'プロジェクトを管理', 'Manage project'],
   '版本': ['版本', 'バージョン', 'Version'],
   '版本历史': ['版本歷史', 'バージョン履歴', 'Version history'],
+  '查看': ['查看', '表示', 'View'],
   '暂无版本记录。': ['暫無版本記錄。', 'バージョン履歴はありません。', 'No version history yet.'],
   '保存修改': ['儲存修改', '変更を保存', 'Save changes'],
   '项目已保存为版本 {version}。': ['專案已儲存為版本 {version}。', 'プロジェクトをバージョン {version} として保存しました。', 'Project saved as version {version}.'],
