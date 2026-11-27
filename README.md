@@ -16,7 +16,7 @@ docker compose up -d --build --remove-orphans
 
 访问 `http://localhost:18763`。设置 `PORT` 环境变量可更改宿主机端口。PocketBase 数据保存在 Docker 卷 `pb_data` 中，更新容器不会清除数据。
 
-硬件数据、仓库项目与文件由 PocketBase 管理，保存在 `pb_data`；默认本地文件存储会随 PocketBase 备份一起保存。视频缩略图和预览依赖容器内的 FFmpeg、ffprobe。
+已有硬件数据、仓库项目与文件由 PocketBase 管理，保存在 `pb_data`；硬件数据库功能当前已清空，等待重新设计；默认本地文件存储会随 PocketBase 备份一起保存。视频缩略图和预览依赖容器内的 FFmpeg、ffprobe。
 
 创建 PocketBase 超级管理员（将邮箱和密码替换为自己的值）：
 

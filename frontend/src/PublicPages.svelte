@@ -72,14 +72,8 @@
     { id: '', name: '示例工程师 B', avatarUrl: '', identities: [{ name: '机械设计师' }], admireCount: 12 },
     { id: '', name: '示例工程师 C', avatarUrl: '', identities: [{ name: '固件工程师' }], admireCount: 6 },
   ];
-  const demoHardware = [
-    { id: '', name: 'GeForce RTX 4080 SUPER', brand: 'NVIDIA', subtitle: '16GB GDDR6X', likeCount: 32 },
-    { id: '', name: 'Ryzen 7 9800X3D', brand: 'AMD', subtitle: '8 核 16 线程', likeCount: 18 },
-    { id: '', name: 'HHKB Professional', brand: 'PFU', subtitle: '静电容键盘', likeCount: 9 },
-  ];
   $: shownProjects = home?.popularProjects?.length ? home.popularProjects : demoProjects;
   $: shownEngineers = home?.popularEngineers?.length ? home.popularEngineers : demoEngineers;
-  $: shownHardware = home?.popularHardware?.length ? home.popularHardware : demoHardware;
   $: featuredSkills = (data?.skills || []).filter((skill) => skill.featured);
   $: shownSkills = featuredSkills.length ? featuredSkills : (data?.skills || []);
   const statusLabels = { ongoing: '进行中', paused: '暂停', terminated: '已中止', completed: '已完成' };
@@ -249,23 +243,6 @@
             {#if engineer.avatarUrl}<img class="engineer-avatar" src={engineer.avatarUrl} alt="" loading="lazy" />{:else}<span class="engineer-avatar" aria-hidden="true"></span>{/if}
             <h3>{engineer.name}</h3>
             <p class="yt-meta">{#if engineer.identities.length}{#each engineer.identities as identity, i}{#if i} · {/if}<RedactedText text={identity.name} hidden={!!identity.redacted} />{/each} · {/if}{$t('关注')} {engineer.admireCount}</p>
-          </a>
-        {/each}
-      </div>
-    </section>
-    <section class="home-shelf">
-      <div class="shelf-head"><h2>{$t('热门硬件')}</h2><a href="/hardware">{$t('硬件数据库')} →</a></div>
-      <div class="home-grid">
-        {#each shownHardware as hardware (hardware.id || hardware.name)}
-          <a class="yt-card" href="/hardware">
-            <span class="yt-thumb yt-hardware"></span>
-            <div class="yt-body">
-              <div>
-                <h3>{hardware.name}</h3>
-                <p class="yt-meta">{[hardware.brand, hardware.subtitle].filter(Boolean).join(' · ')}</p>
-                <p class="yt-meta">♥ {hardware.likeCount}</p>
-              </div>
-            </div>
           </a>
         {/each}
       </div>
@@ -809,14 +786,6 @@
       linear-gradient(135deg, #f5e2e4 0%, #e5b7bd 100%);
     background-size: 18px 18px, 18px 18px, auto;
   }
-  .yt-thumb.yt-hardware {
-    border-color: rgba(58, 96, 82, 0.16);
-    background:
-      linear-gradient(to right, rgba(58, 96, 82, 0.08) 1px, transparent 1px),
-      linear-gradient(to bottom, rgba(58, 96, 82, 0.08) 1px, transparent 1px),
-      linear-gradient(135deg, #e1ece7 0%, #b8cfc5 100%);
-    background-size: 18px 18px, 18px 18px, auto;
-  }
   .yt-badge { position: absolute; top: 8px; right: 8px; }
   .yt-body { display: flex; gap: 10px; margin-top: 12px; }
   .yt-avatar { flex: none; width: 34px; height: 34px; border-radius: 50%; object-fit: cover; background: var(--surface-tint); border: 1px solid var(--border-subtle); }
@@ -884,7 +853,7 @@
   .hero-motto { color: var(--ink-secondary); }
   .hero-actions a:first-child, .hero-actions a:first-child:hover { background: #62e893; color: #031008; }
   .home-shelf { border-top: 1px solid var(--border-subtle); padding-top: 26px; }
-  .yt-thumb, .yt-thumb.yt-dungeon, .yt-thumb.yt-boss, .yt-thumb.yt-hardware {
+  .yt-thumb, .yt-thumb.yt-dungeon, .yt-thumb.yt-boss {
     border-color: var(--border-default);
     background: linear-gradient(to right, #62ff9b10 1px, transparent 1px),
       linear-gradient(to bottom, #62ff9b10 1px, transparent 1px),

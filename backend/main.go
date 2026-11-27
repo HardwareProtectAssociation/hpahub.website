@@ -73,8 +73,6 @@ func main() {
 			return err
 		}
 		bindInvitationRoutes(e)
-		bindHardwareRoutes(e)
-		bindHardwareReviewRoutes(e)
 		bindPublicRoutes(e)
 		bindPublicProjectRoutes(e)
 		bindHomeRoutes(e)

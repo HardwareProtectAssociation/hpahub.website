@@ -347,7 +347,7 @@
   {#if checking}
     <main class="dashboard"><p role="status">{$t('正在验证登录状态…')}</p></main>
   {:else if pathname === '/hardware'}
-    <Hardware {token} {role} />
+    <Hardware />
   {:else if pathname === '/me/skills'}
     {#if token}
       <SkillEditor {token} />
