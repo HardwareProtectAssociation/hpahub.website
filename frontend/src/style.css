@@ -1427,7 +1427,7 @@ tbody tr:hover td {
   --bg-canvas-deep: #06110b;
   --surface: #09170f;
   --surface-elevated: #0d1d13;
-  --surface-glass: rgba(4, 15, 9, .94);
+  --surface-glass: #040f09;
   --surface-tint: #122b1c;
   --surface-tint-hover: #1b3b28;
   --surface-soft: #0c1b12;
@@ -1452,17 +1452,16 @@ tbody tr:hover td {
   --shadow-xs: 0 2px 8px #0004;
   --shadow-sm: 0 8px 24px #0005;
   --shadow-md: 0 18px 40px #0007;
-  --shadow-glow: 0 0 20px #20e87322;
+  --shadow-glow: none;
   --radius-sm: 5px;
   --radius-md: 8px;
   --radius-lg: 10px;
 }
 body {
   background-color: var(--bg-canvas);
-  background-image: radial-gradient(ellipse 900px 500px at 75% 8%, #0b4a2a66, transparent 70%),
-    linear-gradient(to right, #62ff9b08 1px, transparent 1px),
+  background-image: linear-gradient(to right, #62ff9b08 1px, transparent 1px),
     linear-gradient(to bottom, #62ff9b08 1px, transparent 1px);
-  background-size: auto, 40px 40px, 40px 40px;
+  background-size: 40px 40px;
 }
 ::selection { background: #3ab56e; color: #031008; }
 .site-footer { background: #030d07d9; }
@@ -1478,6 +1477,8 @@ body {
 .archive-art {
   background: linear-gradient(to right, #62ff9b12 1px, transparent 1px),
     linear-gradient(to bottom, #62ff9b12 1px, transparent 1px),
-    radial-gradient(circle at 75% 50%, #124c2c, #07160d 70%);
+    #07160d;
   background-size: 20px 20px, 20px 20px, auto;
 }
+
+.topbar, .menu-backdrop { backdrop-filter: none; -webkit-backdrop-filter: none; }

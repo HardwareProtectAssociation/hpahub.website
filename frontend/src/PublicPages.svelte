@@ -808,19 +808,18 @@
   .public-hero {
     min-height: 390px;
     padding: 72px 56px;
-    background: radial-gradient(ellipse at 78% 48%, #0b553080, transparent 39%),
-      linear-gradient(to right, #62ff9b0b 1px, transparent 1px),
+    background: linear-gradient(to right, #62ff9b0b 1px, transparent 1px),
       linear-gradient(to bottom, #62ff9b0b 1px, transparent 1px), #041008;
-    background-size: auto, 32px 32px, 32px 32px, auto;
+    background-size: 32px 32px;
   }
   .hero-orb {
     width: 280px; height: 280px; right: 10%; top: 50%;
     margin-top: -140px; border: 1px solid #4fa56d;
-    box-shadow: 0 0 75px #13ef782b, inset 0 0 60px #0be36c16;
+    box-shadow: none;
   }
   .hero-orb::before { content: ''; position: absolute; inset: -24px; border: 1px dashed #4fa56d70; border-radius: 50%; }
   .hero-orb span { border-color: #4fa56d99; }
-  .hero-orb span:nth-child(2) { border: 1px solid #62ff9b; border-radius: 0; transform: rotate(45deg); background: linear-gradient(135deg, #104c2b, #041008); box-shadow: 0 0 50px #00e87830; }
+  .hero-orb span:nth-child(2) { border: 1px solid #62ff9b; border-radius: 0; transform: rotate(45deg); background: #0a2515; box-shadow: none; }
   .hero-badge { background: #071b0e; color: var(--accent-bright); }
   .public-hero h1 { background: none; color: var(--ink-primary); }
   .hero-en { color: var(--accent-bright); }
@@ -831,7 +830,7 @@
     border-color: var(--border-default);
     background: linear-gradient(to right, #62ff9b10 1px, transparent 1px),
       linear-gradient(to bottom, #62ff9b10 1px, transparent 1px),
-      radial-gradient(ellipse at 65% 40%, #15552f, #07150d 75%);
+      #0b2013;
     background-size: 20px 20px, 20px 20px, auto;
   }
   .engineer-avatar { background: linear-gradient(135deg, #143c24, #07150d); }
